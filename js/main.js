@@ -238,10 +238,10 @@ function applyControls(dt) {
   if (keys["ArrowRight"] || keys["d"]) { sim.craft.angle -= STEER * dt; steering = true; }
   if (keys["ArrowUp"]) { sim.craft.throttle = Math.min(1, sim.craft.throttle + THR * dt); }
   if (keys["ArrowDown"]) { sim.craft.throttle = Math.max(0, sim.craft.throttle - THR * dt); }
-  if (mapView) {
-    if (keys["="] || keys["+"]) Render.zoomMap(Math.exp(-2.2 * dt)); // zoom in
-    if (keys["-"] || keys["_"]) Render.zoomMap(Math.exp(2.2 * dt));  // zoom out
-  }
+  // Zoom works in BOTH flight views now (Render routes it): the follow camera pulls back
+  // to see the planet, the map frame widens to see the system.
+  if (keys["="] || keys["+"]) Render.zoomMap(Math.exp(-2.2 * dt)); // zoom in
+  if (keys["-"] || keys["_"]) Render.zoomMap(Math.exp(2.2 * dt));  // zoom out
   // Time warp only makes sense while coasting; thrusting or steering snaps back to real time.
   if (sim.craft.throttle > 0 || steering) sim.timeWarp = 1;
 }

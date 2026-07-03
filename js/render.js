@@ -31,6 +31,8 @@ let flightView = "follow"; // "follow" | "map"
 let mapFrame = 0;          // map-view scale actually used this frame (base * user zoom)
 let mapBase = 0;           // auto-fit scale (grow-only)
 let mapZoom = 1;           // user zoom: >1 = zoomed OUT (toward the planets), <1 = in
+let followZoom = 1;        // follow-view zoom (scroll / +/-): pull back to see the planet
+let followDist = 60;       // current follow camera distance (arrows scale with it)
 let headingArrow = null;   // cyan: where the nose points
 let progradeArrow = null;  // green: where the ship is actually moving (vs the local world)
 let targetArrow = null;    // gold: where to AIM
@@ -524,7 +526,8 @@ function attachBuildControls() {
       e.preventDefault();
       const factor = Math.exp(e.deltaY * 0.001);
       buildCam.distance = Math.max(3, Math.min(200, buildCam.distance * factor));
-    } else if (mode === "flight" && flightView === "map") {
+    } else if (mode === "flight") {
+      // Scroll zooms BOTH flight views (zoomMap routes): map frame, or follow camera.
       e.preventDefault();
       zoomMap(Math.exp(e.deltaY * 0.0015));
     }
@@ -677,6 +680,7 @@ function setMode(m) {
     if (connieMesh) connieMesh.visible = false;
     if (orbitLine) orbitLine.visible = true;
     flightView = "follow";
+    followZoom = 1; // every launch starts framed on the rocket
   }
 }
 
@@ -814,18 +818,20 @@ function updateFlight(sim) {
   updateDirArrows(sim, dom, angle, false);
 
   // Follow-cam: a little behind/above the craft. "Up" = radial from the dominant body.
-  // The camera tips DOWN toward the local world so it stays in frame — from low orbit the
-  // planet fills the bottom anyway, but from high orbit (2-3 radii up) a straight-at-the-
-  // craft camera shows only stars while Saturn sits 70° below the view axis.
+  // The camera tips gently toward the local world, but THE ROCKET MUST NEVER LEAVE THE
+  // FRAME (the first public play-test lost it seconds after launch): the tilt is capped
+  // at ~0.4x the camera distance, which keeps the craft within ~18° of the view axis.
+  // To see the whole planet from up high, scroll out — follow view zooms now too.
   const rl = Math.hypot(dom.rel.x, dom.rel.y);
   const radial = _v2.set(dom.rel.x, dom.rel.y, 0);
   if (rl > 0.5) radial.multiplyScalar(1 / rl); else radial.set(0, 1, 0);
 
-  const camDist = Math.max(20, craftHeight * 4 + 30);
+  const camDist = Math.max(20, craftHeight * 4 + 30) * followZoom;
+  followDist = camDist; // arrows scale with it so guides stay readable zoomed out
   camera.position.set(radial.x * camDist * 0.35, radial.y * camDist * 0.35, camDist);
   camera.up.copy(radial);
   const distSurface = Math.max(0, rl - dom.body.radius);
-  const L = Math.min(distSurface * 0.8, camDist * 2.2); // craft stays upper-frame, world in view
+  const L = Math.min(distSurface * 0.8, camDist * 0.4);
   camera.lookAt(-radial.x * L, -radial.y * L, 0);
 }
 
@@ -876,15 +882,22 @@ function updateMapCamera(sim, dom, states) {
   }
 }
 
-// User map zoom (scroll wheel or +/- keys). factor > 1 zooms out toward the planets.
+// User zoom (scroll wheel or +/- keys). factor > 1 zooms out. Routes to whichever flight
+// view is active: the map's frame, or the follow camera's distance.
 function zoomMap(factor) {
-  mapZoom = Math.max(0.05, Math.min(2e6, mapZoom * factor));
+  if (mode === "flight" && flightView === "follow") {
+    followZoom = Math.max(0.4, Math.min(50000, followZoom * factor));
+  } else {
+    mapZoom = Math.max(0.05, Math.min(2e6, mapZoom * factor));
+  }
 }
 
 // Guide arrows, sized per view. Directions are measured RELATIVE TO THE DOMINANT BODY —
 // "prograde" next to the Moon means your motion vs the Moon, not vs the Sun.
 function updateDirArrows(sim, dom, angle, inMap) {
-  const len = inMap ? mapFrame * 0.12 : Math.max(5, craftHeight * 1.6);
+  // Follow view: arrows scale with the camera distance so the guides stay readable
+  // when the kid zooms way out to see the planet.
+  const len = inMap ? mapFrame * 0.12 : Math.max(5, craftHeight * 1.6, followDist * 0.22);
   const headLen = len * (inMap ? 0.28 : 0.3);
   const headW = len * (inMap ? 0.18 : 0.1);
   const z = inMap ? mapFrame * 0.02 : 0;

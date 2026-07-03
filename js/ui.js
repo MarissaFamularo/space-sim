@@ -76,7 +76,7 @@ export const UI = {
 
     const help = document.createElement("div");
     help.style.cssText = "font-size:11px;color:#9fb3da;margin-top:8px;line-height:1.5;";
-    help.innerHTML = "<b>Flight keys</b><br>← → tilt rocket<br>↑ ↓ throttle &nbsp;·&nbsp; Z full / X cut<br>Space stage &nbsp;·&nbsp; , . time-warp<br><b>M</b> map view &nbsp;·&nbsp; <b>P</b> parachute";
+    help.innerHTML = "<b>Flight keys</b><br>← → tilt rocket<br>↑ ↓ throttle &nbsp;·&nbsp; Z full / X cut<br>Space stage &nbsp;·&nbsp; , . time-warp<br><b>M</b> map view &nbsp;·&nbsp; <b>P</b> parachute<br>scroll or <b>+ −</b> zoom (both views)";
     fc.appendChild(help);
 
     // Guide-arrow toggles.
