@@ -2,9 +2,10 @@
 import { pathToFileURL } from "url";
 const base = "/Users/marissafamularo/Desktop/CoworkProjects/Kids Games/space-sim/js/";
 const { Physics } = await import(pathToFileURL(base + "physics.js"));
-const { BODIES, newSimState } = await import(pathToFileURL(base + "state.js"));
+const { BODIES, newSimState, bodyStateAt } = await import(pathToFileURL(base + "state.js"));
 
 const E = BODIES.earth;
+const EW = (t = 0) => bodyStateAt("earth", t); // heliocentric world: offset by Earth's state
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}  ${detail}`);
@@ -18,11 +19,12 @@ const check = (name, ok, detail = "") => {
   const v = Math.sqrt(E.mu / r);
   const sim = newSimState(E);
   sim.mode = "flight"; sim.status = "orbit";
-  sim.craft.pos = { x: r, y: 0 }; sim.craft.vel = { x: 0, y: v };
+  const e = EW(0);
+  sim.craft.pos = { x: e.pos.x + r, y: e.pos.y }; sim.craft.vel = { x: e.vel.x, y: e.vel.y + v };
   sim.craft.mass = 2; sim.craft.throttle = 0;
   const period = 2 * Math.PI * Math.sqrt(r * r * r / E.mu);
   for (let t = 0; t < period; t += 0.05) Physics.step(sim, 0.05);
-  const altNow = Math.hypot(sim.craft.pos.x, sim.craft.pos.y) - E.radius;
+  const altNow = sim.altitude;
   check("LEO circular orbit stable", Math.abs(altNow - alt) / alt < 0.01, `alt drift ${((altNow-alt)/alt*100).toFixed(2)}%`);
   check("no heating in vacuum", (sim.heat || 0) === 0, `heat=${sim.heat}`);
   const o = Physics.computeOrbit(sim);
@@ -37,8 +39,9 @@ const check = (name, ok, detail = "") => {
   const vPeri = Math.sqrt(E.mu * (2 / rPeri - 1 / a));
   const sim = newSimState(E);
   sim.mode = "flight"; sim.status = "orbit";
-  // periapsis on +X axis, moving +Y -> periAngle should be ~0 and stay ~0
-  sim.craft.pos = { x: rPeri, y: 0 }; sim.craft.vel = { x: 0, y: vPeri };
+  // periapsis on +X axis (Earth-relative), moving +Y -> periAngle should be ~0 and stay ~0
+  const e = EW(0);
+  sim.craft.pos = { x: e.pos.x + rPeri, y: e.pos.y }; sim.craft.vel = { x: e.vel.x, y: e.vel.y + vPeri };
   sim.craft.mass = 2; sim.craft.throttle = 0;
   const angles = [];
   for (let i = 0; i < 5; i++) {
@@ -58,7 +61,8 @@ const check = (name, ok, detail = "") => {
   const vApo = Math.sqrt(E.mu * (2 / rApo - 1 / a));
   const sim = newSimState(E);
   sim.mode = "flight"; sim.status = "flying";
-  sim.craft.pos = { x: rApo, y: 0 }; sim.craft.vel = { x: 0, y: -vApo }; // heading down-orbit
+  const e = EW(0);
+  sim.craft.pos = { x: e.pos.x + rApo, y: e.pos.y }; sim.craft.vel = { x: e.vel.x, y: e.vel.y - vApo }; // heading down-orbit
   sim.craft.mass = 1.5; sim.craft.throttle = 0;
   let maxHeat = 0, steps = 0;
   while (sim.status !== "landed" && sim.status !== "crashed" && steps < 400000) {
@@ -75,8 +79,9 @@ const check = (name, ok, detail = "") => {
   sim.mode = "flight"; sim.status = "flying";
   const r0 = E.radius + 50000;
   const vEsc = Math.sqrt(2 * E.mu / (E.radius + 8000)); // ~escape speed = lunar return energy
-  sim.craft.pos = { x: r0, y: 0 };
-  sim.craft.vel = { x: -vEsc, y: vEsc * 0.05 }; // nearly straight down, tiny sideways
+  const e = EW(0);
+  sim.craft.pos = { x: e.pos.x + r0, y: e.pos.y };
+  sim.craft.vel = { x: e.vel.x - vEsc, y: e.vel.y + vEsc * 0.05 }; // nearly straight down, tiny sideways
   sim.craft.mass = 1.5; sim.craft.throttle = 0;
   let maxHeat = 0, steps = 0;
   while (sim.status !== "landed" && sim.status !== "crashed" && steps < 200000) {
@@ -90,8 +95,9 @@ const check = (name, ok, detail = "") => {
 {
   const sim = newSimState(E);
   sim.mode = "flight"; sim.status = "flying";
-  sim.craft.pos = { x: 0, y: E.radius };
-  sim.craft.vel = { x: 0, y: 0 };
+  const e = EW(0);
+  sim.craft.pos = { x: e.pos.x, y: e.pos.y + E.radius };
+  sim.craft.vel = { x: e.vel.x, y: e.vel.y };
   sim.craft.mass = 6; sim.craft.throttle = 1;
   sim.craft.thrust = 215; sim.craft.exhaustVelocity = 2800; sim.craft.fuelRemaining = 4;
   let maxHeat = 0;

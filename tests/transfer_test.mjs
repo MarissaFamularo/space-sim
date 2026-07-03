@@ -2,7 +2,10 @@
 // Verifies Physics.transferWindow: sane fields, guarded cases, periodicity, and the real
 // proof — burning prograde at the indicated moment from circular LEO reaches the Moon's SOI.
 import { Physics } from "../js/physics.js";
-import { BODIES, newSimState } from "../js/state.js";
+import { BODIES, newSimState, bodyStateAt } from "../js/state.js";
+// The world is heliocentric now (Phase 4): Earth-relative test coordinates get offset by
+// Earth's world state at the sim's time.
+const EW = (t = 0) => bodyStateAt("earth", t);
 
 const E = BODIES.earth;
 const M = BODIES.moon;
@@ -16,10 +19,11 @@ const check = (name, ok, detail = "") => {
 // dir=+1 CCW (same way as the Moon), dir=-1 CW (retrograde).
 function circularSim(r, t = 0, angleOnOrbit = 0, dir = +1) {
   const v = Math.sqrt(E.mu / r);
-  const sim = newSimState(E);
+  const e = EW(t);
+  const sim = newSimState(E, t);
   sim.mode = "flight"; sim.status = "orbit"; sim.time = t;
-  sim.craft.pos = { x: r * Math.cos(angleOnOrbit), y: r * Math.sin(angleOnOrbit) };
-  sim.craft.vel = { x: -dir * v * Math.sin(angleOnOrbit), y: dir * v * Math.cos(angleOnOrbit) };
+  sim.craft.pos = { x: e.pos.x + r * Math.cos(angleOnOrbit), y: e.pos.y + r * Math.sin(angleOnOrbit) };
+  sim.craft.vel = { x: e.vel.x - dir * v * Math.sin(angleOnOrbit), y: e.vel.y + dir * v * Math.cos(angleOnOrbit) };
   sim.craft.mass = 6; sim.craft.throttle = 0;
   return sim;
 }
@@ -36,7 +40,8 @@ const rLEO = E.radius + E.atmosphere.height + 50000; // comfortable circular LEO
 {
   const sim = circularSim(rLEO);
   const tw = Physics.transferWindow(sim);
-  const rBurn = tw ? Math.hypot(tw.burnPos.x, tw.burnPos.y) : 0;
+  const e = EW(sim.time);
+  const rBurn = tw ? Math.hypot(tw.burnPos.x - e.pos.x, tw.burnPos.y - e.pos.y) : 0;
   check("window object from LEO", !!tw, tw ? `degToGo=${tw.degToGo.toFixed(1)}` : "null");
   check("degToGo in [0,360)", tw && tw.degToGo >= 0 && tw.degToGo < 360, tw && tw.degToGo.toFixed(1));
   check("transfer time positive & plausible", tw && tw.transferTime_s > 0 &&
@@ -61,9 +66,10 @@ const rLEO = E.radius + E.atmosphere.height + 50000; // comfortable circular LEO
   const rApo = M.orbitRadius * 0.8;
   const a = (rLEO + rApo) / 2;
   const vP = Math.sqrt(E.mu * (2 / rLEO - 1 / a));
+  const e = EW(0);
   const sim = newSimState(E);
   sim.mode = "flight"; sim.status = "orbit";
-  sim.craft.pos = { x: rLEO, y: 0 }; sim.craft.vel = { x: 0, y: vP };
+  sim.craft.pos = { x: e.pos.x + rLEO, y: e.pos.y }; sim.craft.vel = { x: e.vel.x, y: e.vel.y + vP };
   sim.craft.mass = 6; sim.craft.throttle = 0;
   check("null once apoapsis reaches high", Physics.transferWindow(sim) === null);
 }
@@ -119,7 +125,9 @@ const rLEO = E.radius + E.atmosphere.height + 50000; // comfortable circular LEO
   // reaches the Moon's orbit radius; then cut and coast.
   let burnT = 0;
   while (burnT < 600) {
-    const v = sim.craft.vel;
+    // Prograde RELATIVE TO EARTH — world velocity is dominated by Earth's solar orbit.
+    const eNow = EW(sim.time);
+    const v = { x: sim.craft.vel.x - eNow.vel.x, y: sim.craft.vel.y - eNow.vel.y };
     sim.craft.angle = Math.atan2(-v.x, v.y); // heading vec (-sin a, cos a) parallel to v
     sim.craft.throttle = 1;
     Physics.step(sim, 0.1);

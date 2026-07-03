@@ -1,83 +1,119 @@
 // state.js — shared data shapes, body constants, and derived-stat math.
 // This is the contract backbone. See ../ARCHITECTURE.md.
+//
+// PHASE 4: the world is now HELIOCENTRIC. The Sun sits at the world origin and every
+// planet rides a fixed circular CCW orbit around it (the Moon around Earth). The same
+// forgiving-scale rule applies to the whole solar system: every RADIUS and every ORBIT
+// DISTANCE is shrunk by SCALE, and every surface gravity is kept REAL (mu = g0*r^2).
+// Geometry stays faithful — the Moon is still ~60 Earth-radii out, Mars is still ~1.5x
+// Earth's distance from the Sun — the whole system is just 10x smaller and, as a side
+// effect of the scaling, runs about sqrt(10) ≈ 3.2x faster.
 
-// G in SI. Forgiving Earth: scaled down so reaching orbit is fun (KSP-style training wheels).
-// Flip SCALE to 1 for real Earth later.
-const SCALE = 0.1; // 0.1 = forgiving (smaller planet, lower orbital speeds). 1.0 = real Earth.
+// G in SI. Flip SCALE to 1 for the real-size universe later.
+const SCALE = 0.1; // 0.1 = forgiving (smaller worlds, lower orbital speeds). 1.0 = real.
 
 const G = 6.674e-11;
-const REAL_EARTH = { mass: 5.972e24, radius: 6.371e6 };
-// Real Moon. g0 = surface gravity (1.62 m/s²); orbitRadius = mean Earth distance (semi-major).
-const REAL_MOON = { radius: 1.737e6, g0: 1.62, orbitRadius: 3.844e8 };
 
-function makeEarth(scale) {
-  // Scale radius down; keep surface gravity g0 ~9.81 so rockets feel right, which sets mass.
-  const radius = REAL_EARTH.radius * scale;
-  const g0 = 9.81;
-  const mu = g0 * radius * radius;     // mu = g0 * r^2  (so surface gravity stays 9.81)
-  const mass = mu / G;
-  return {
-    name: "Earth",
-    radius, mass, mu, g0,
-    atmosphere: { height: 70000 * scale, seaLevelDensity: 1.225 }, // exponential falloff in physics
-  };
-}
-
-// The Moon: a second world to travel to. Scaled the SAME way as Earth — shrink radius by
-// `scale`, keep real surface gravity, recompute mu (so Moon physics is real, only size shrinks).
-// Distance is scaled too, so the Moon stays at ~60 Earth-radii — geometrically faithful.
-function makeMoon(scale, earth) {
-  const radius = REAL_MOON.radius * scale;
-  const g0 = REAL_MOON.g0;
-  const mu = g0 * radius * radius;        // mu = g0 * r^2 (keeps real lunar surface gravity)
-  const mass = mu / G;
-  const orbitRadius = REAL_MOON.orbitRadius * scale;
-  // Angular rate of the Moon around Earth (two-body, lunar mass negligible): omega = sqrt(mu_E/a^3).
-  const omega = Math.sqrt(earth.mu / (orbitRadius * orbitRadius * orbitRadius));
-  // Sphere of influence (patched conics): r_soi = a * (m_moon / m_earth)^(2/5). Inside it, the
-  // Moon's gravity dominates and we'll switch the craft's reference body to the Moon.
-  const soiRadius = orbitRadius * Math.pow(mu / earth.mu, 0.4);
-  return {
-    name: "Moon",
-    radius, mass, mu, g0,
-    atmosphere: null,
-    parent: "earth",
-    orbitRadius, omega,
-    phase0: 0,            // orbital angle at t=0 (0 = along +X)
-    soiRadius,
-  };
-}
-
-const _earth = makeEarth(SCALE);
-export const BODIES = {
-  earth: _earth,
-  moon: makeMoon(SCALE, _earth),
+// Real solar-system data: radius (m), surface gravity g0 (m/s^2), orbit semi-major axis
+// a (m) around the parent, atmosphere (height m, sea-level density kg/m^3) or null.
+// solid: can you stand on it? (gas giants and the Sun have no surface to land on)
+// phase0: starting angle on its orbit (radians, deterministic — scatters the sky).
+const REAL = {
+  sun:     { radius: 6.957e8,  g0: 274.0, parent: null,    a: 0,         solid: false, atmo: null, phase0: 0 },
+  mercury: { radius: 2.4397e6, g0: 3.70,  parent: "sun",   a: 5.791e10,  solid: true,  atmo: null, phase0: 0.8 },
+  venus:   { radius: 6.0518e6, g0: 8.87,  parent: "sun",   a: 1.0821e11, solid: true,  atmo: { height: 250000, seaLevelDensity: 65 }, phase0: 2.4 },
+  earth:   { radius: 6.371e6,  g0: 9.81,  parent: "sun",   a: 1.4960e11, solid: true,  atmo: { height: 70000, seaLevelDensity: 1.225 }, phase0: 0 },
+  moon:    { radius: 1.737e6,  g0: 1.62,  parent: "earth", a: 3.844e8,   solid: true,  atmo: null, phase0: 0 },
+  mars:    { radius: 3.3895e6, g0: 3.71,  parent: "sun",   a: 2.2794e11, solid: true,  atmo: { height: 125000, seaLevelDensity: 0.020 }, phase0: 5.2 },
+  jupiter: { radius: 6.9911e7, g0: 24.79, parent: "sun",   a: 7.7857e11, solid: false, atmo: { height: 1000000, seaLevelDensity: 0.16 }, phase0: 1.7 },
+  saturn:  { radius: 5.8232e7, g0: 10.44, parent: "sun",   a: 1.4335e12, solid: false, atmo: { height: 1000000, seaLevelDensity: 0.19 }, phase0: 3.9 },
+  uranus:  { radius: 2.5362e7, g0: 8.87,  parent: "sun",   a: 2.8725e12, solid: false, atmo: { height: 900000, seaLevelDensity: 0.42 }, phase0: 5.8 },
+  neptune: { radius: 2.4622e7, g0: 11.15, parent: "sun",   a: 4.4951e12, solid: false, atmo: { height: 900000, seaLevelDensity: 0.45 }, phase0: 0.5 },
 };
 
-// Which body "owns" a craft at Earth-centered position `pos` and time `t` — Earth normally,
-// the Moon once inside the Moon's sphere of influence. Used for the predicted-orbit display
-// and Navigator messaging (the integrator itself uses real superposed gravity, no switching).
-// Returns { body, rel:{x,y} relative to that body's center, vel:{x,y} of that body }.
-export function dominantBody(pos, t = 0) {
-  const m = moonStateAt(t);
-  const rel = { x: pos.x - m.pos.x, y: pos.y - m.pos.y };
-  if (Math.hypot(rel.x, rel.y) < BODIES.moon.soiRadius) {
-    return { body: BODIES.moon, rel, vel: m.vel };
+// Build the scaled BODIES table. Two passes: parents before children (sun -> planets -> moon)
+// so omega and SOI can read the parent's mu.
+function buildBodies(scale) {
+  const out = {};
+  const order = ["sun", "mercury", "venus", "earth", "moon", "mars", "jupiter", "saturn", "uranus", "neptune"];
+  for (const key of order) {
+    const d = REAL[key];
+    const radius = d.radius * scale;
+    const mu = d.g0 * radius * radius; // keep REAL surface gravity; size sets mu
+    const body = {
+      key,
+      name: key[0].toUpperCase() + key.slice(1),
+      radius, mu, g0: d.g0, mass: mu / G,
+      solid: d.solid,
+      atmosphere: d.atmo ? { height: d.atmo.height * scale, seaLevelDensity: d.atmo.seaLevelDensity } : null,
+      parent: d.parent,
+      orbitRadius: d.a * scale,
+      phase0: d.phase0,
+      omega: 0, soiRadius: 0,
+    };
+    if (d.parent) {
+      const p = out[d.parent];
+      body.omega = Math.sqrt(p.mu / (body.orbitRadius ** 3)); // circular two-body rate, CCW
+      // Sphere of influence (patched conics): r_soi = a * (mu/mu_parent)^(2/5).
+      body.soiRadius = body.orbitRadius * Math.pow(body.mu / p.mu, 0.4);
+    }
+    out[key] = body;
   }
-  return { body: BODIES.earth, rel: { x: pos.x, y: pos.y }, vel: { x: 0, y: 0 } };
+  return out;
 }
 
-// Moon center state in the EARTH-centered frame at sim time `t` (seconds): position {x,y} (m)
-// and velocity {x,y} (m/s). The Moon rides a fixed circular orbit (CCW). Used by render now,
-// and by the patched-conic SOI switch later.
+export const BODIES = buildBodies(SCALE);
+
+// Every body except the Sun, ordered for target pickers / map labels.
+export const PLANET_KEYS = ["mercury", "venus", "earth", "moon", "mars", "jupiter", "saturn", "uranus", "neptune"];
+
+// World (Sun-centered) position/velocity of a body's CENTER at sim time t (seconds).
+// Recursive through the parent chain: Moon = Earth's state + Moon's circle around Earth.
+export function bodyStateAt(key, t = 0) {
+  const b = BODIES[key];
+  if (!b || !b.parent) return { pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 }, angle: 0 };
+  const parent = bodyStateAt(b.parent, t);
+  const th = (b.phase0 || 0) + b.omega * t;
+  const a = b.orbitRadius;
+  const v = a * b.omega;
+  return {
+    pos: { x: parent.pos.x + a * Math.cos(th), y: parent.pos.y + a * Math.sin(th) },
+    vel: { x: parent.vel.x - v * Math.sin(th), y: parent.vel.y + v * Math.cos(th) }, // CCW
+    angle: th,
+  };
+}
+
+// Back-compat helper: the Moon's state RELATIVE TO EARTH (its classic Phase-2 meaning).
 export function moonStateAt(t = 0, moon = BODIES.moon) {
   const a = moon.orbitRadius;
   const th = (moon.phase0 || 0) + moon.omega * t;
   const v = a * moon.omega;
   return {
     pos: { x: a * Math.cos(th), y: a * Math.sin(th) },
-    vel: { x: -v * Math.sin(th), y: v * Math.cos(th) }, // perpendicular, CCW
+    vel: { x: -v * Math.sin(th), y: v * Math.cos(th) },
     angle: th,
+  };
+}
+
+// Which body "owns" a craft at WORLD position `pos` and time `t` — the DEEPEST sphere of
+// influence containing the point (Moon beats Earth beats Sun). Used for orbit display,
+// readouts, and Navigator messaging; the integrator itself superposes ALL gravity.
+// Returns { body, rel:{x,y} relative to that body's center, vel:{x,y} of that body }.
+export function dominantBody(pos, t = 0) {
+  let best = BODIES.sun, bestState = { pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 } };
+  for (const key of PLANET_KEYS) {
+    const b = BODIES[key];
+    const st = bodyStateAt(key, t);
+    const d = Math.hypot(pos.x - st.pos.x, pos.y - st.pos.y);
+    if (d < b.soiRadius && (best.key === "sun" || b.soiRadius < best.soiRadius)) {
+      best = b; bestState = st;
+    }
+  }
+  return {
+    body: best,
+    rel: { x: pos.x - bestState.pos.x, y: pos.y - bestState.pos.y },
+    vel: { x: bestState.vel.x, y: bestState.vel.y },
+    center: bestState.pos,
   };
 }
 
@@ -125,17 +161,21 @@ export function computeStats(craft, catalog, body = BODIES.earth) {
   return { totalMass, dryMass, fuelMass, thrust, twr, deltaV, stageCount: stages.size || 1 };
 }
 
-// ---- Fresh SimState for a launch ----
-export function newSimState(body = BODIES.earth) {
+// ---- Fresh SimState for a launch (on Earth's launchpad, wherever Earth is right now) ----
+// The pad sits at Earth's local +Y (Earth doesn't rotate in this game), and the craft
+// starts co-moving with Earth — you're standing on a planet that's flying around the Sun.
+export function newSimState(body = BODIES.earth, t = 0) {
+  const e = bodyStateAt("earth", t);
   return {
     mode: "build",
     body,
-    craft: { pos: { x: 0, y: body.radius }, vel: { x: 0, y: 0 }, angle: 0,
-             throttle: 0, fuelRemaining: 0, mass: 0, currentStage: 0 },
+    craft: { pos: { x: e.pos.x, y: e.pos.y + body.radius }, vel: { x: e.vel.x, y: e.vel.y },
+             angle: 0, throttle: 0, fuelRemaining: 0, mass: 0, currentStage: 0 },
     orbit: null,
     altitude: 0, speed: 0,
     heat: 0,               // hull heating 0..1 (reentry); 1 = burned up
-    time: 0, timeWarp: 1,
+    time: t, timeWarp: 1,
     status: "prelaunch",
+    target: "moon",        // current destination for guidance / distance readout
   };
 }

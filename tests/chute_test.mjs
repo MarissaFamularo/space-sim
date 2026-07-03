@@ -1,8 +1,9 @@
 // Parachute physics tests (node, no browser). Run: node chute_test.mjs
 import { Physics } from "../js/physics.js";
-import { BODIES, newSimState, moonStateAt } from "../js/state.js";
+import { BODIES, newSimState, bodyStateAt } from "../js/state.js";
 
 const E = BODIES.earth;
+const EW = (t = 0) => bodyStateAt("earth", t); // heliocentric world: offset by Earth's state
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}  ${detail}`);
@@ -13,7 +14,8 @@ function fallFrom(altStart, { chutes = 0, deployed = false, mass = 1.5 } = {}) {
   const sim = newSimState(E);
   sim.mode = "flight"; sim.status = "flying";
   const r = E.radius + altStart;
-  sim.craft.pos = { x: 0, y: r }; sim.craft.vel = { x: 0, y: 0 };
+  const e = EW(0);
+  sim.craft.pos = { x: e.pos.x, y: e.pos.y + r }; sim.craft.vel = { x: e.vel.x, y: e.vel.y };
   sim.craft.mass = mass; sim.craft.throttle = 0;
   sim.craft.chuteCount = chutes; sim.craft.chuteDeployed = deployed;
   let maxSpeed = 0, steps = 0, lastSpeed = 0;
@@ -45,11 +47,12 @@ function fallFrom(altStart, { chutes = 0, deployed = false, mass = 1.5 } = {}) {
   sim.mode = "flight"; sim.status = "orbit";
   const r = E.radius + E.atmosphere.height + 100000;
   const v = Math.sqrt(E.mu / r);
-  sim.craft.pos = { x: r, y: 0 }; sim.craft.vel = { x: 0, y: v };
+  const e = EW(0);
+  sim.craft.pos = { x: e.pos.x + r, y: e.pos.y }; sim.craft.vel = { x: e.vel.x, y: e.vel.y + v };
   sim.craft.mass = 1.5; sim.craft.throttle = 0;
   sim.craft.chuteCount = 1; sim.craft.chuteDeployed = true;
   for (let i = 0; i < 2000; i++) Physics.step(sim, 0.05);
-  const altNow = Math.hypot(sim.craft.pos.x, sim.craft.pos.y) - E.radius;
+  const altNow = sim.altitude;
   check("chute never opens in vacuum (orbit unchanged)",
     sim.chuteOpen === false && Math.abs(altNow - (E.atmosphere.height + 100000)) < 2000,
     `chuteOpen=${sim.chuteOpen} alt=${(altNow/1000).toFixed(1)}km`);
@@ -59,8 +62,9 @@ function fallFrom(altStart, { chutes = 0, deployed = false, mass = 1.5 } = {}) {
 {
   const sim = newSimState(E);
   sim.mode = "flight"; sim.status = "flying";
-  sim.craft.pos = { x: 0, y: E.radius + 6000 };
-  sim.craft.vel = { x: 0, y: -400 }; // diving at 400 m/s inside the atmosphere
+  const e4 = EW(0);
+  sim.craft.pos = { x: e4.pos.x, y: e4.pos.y + E.radius + 6000 };
+  sim.craft.vel = { x: e4.vel.x, y: e4.vel.y - 400 }; // diving at 400 m/s inside the atmosphere
   sim.craft.mass = 1.5; sim.craft.throttle = 0;
   sim.craft.chuteCount = 1; sim.craft.chuteDeployed = true;
   Physics.step(sim, 0.05);
@@ -78,7 +82,7 @@ function fallFrom(altStart, { chutes = 0, deployed = false, mass = 1.5 } = {}) {
 {
   const sim = newSimState(E);
   sim.mode = "flight"; sim.status = "flying";
-  const m0 = moonStateAt(0);
+  const m0 = bodyStateAt("moon", 0); // world (Sun-centered) state of the Moon
   const M = BODIES.moon;
   // 5 km above the lunar surface, falling at 30 m/s relative to the Moon.
   const r = M.radius + 5000;
