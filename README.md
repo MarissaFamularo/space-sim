@@ -1,6 +1,6 @@
 # Space Sim
 
-A KSP-inspired browser space game and coding on-ramp. Build a multi-stage rocket, launch it, and fly to orbit — vanilla JS ES modules + Three.js, no build step.
+A KSP-inspired browser space game and coding on-ramp. Build a multi-stage rocket, launch it, reach orbit — then fly the **whole solar system**: the Moon, Mars, Saturn's rings, all of it, with real physics, transfer windows, and mid-course corrections. Vanilla JS ES modules + Three.js, no build step.
 
 ## Run it
 

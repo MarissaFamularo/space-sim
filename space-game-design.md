@@ -184,6 +184,7 @@ Each phase is a complete, playable thing, not a half-built tease.
 **Phase 3 — "Modding / his first code."** Open parts as editable JSON, then one-line scripts. Navigator becomes coding mentor. Mostly *exposing* systems we already built — this is the phase that turns the game into a coding education.
 
 **Phase 4 — "The solar system."** Real planets + major moons with accurate data, time-warp, the mission ladder outward, the real-astronomy facts thread. Mostly data/content on Phase 2's engine.
+*(DELIVERED EARLY, 2026-07-03 — pulled ahead of the rest of Phase 3 because the customer kept asking for planets. Shipped: heliocentric world, Sun + all 8 planets on real scaled orbits, 🎯 target picker, 500,000× time-warp, transfer windows to any world, mid-course correction guidance, per-world landings/lessons, planet facts thread. Major moons beyond ours still to come.)*
 
 **Phase 5 — "Spaceplanes & aero."** Aerodynamics layer: lift, drag, wings, runway takeoffs, atmospheric flight, reentry. Hardest physics, saved for last on a solid foundation. Craft sharing shines here.
 

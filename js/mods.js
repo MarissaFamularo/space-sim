@@ -224,6 +224,16 @@ export function updateCustom(id, def) {
   if (i >= 0) { _mods.customs[i] = { ...def, id }; persist(); applyMods(); }
 }
 
+// Delete ONE of his custom parts (the caller confirms + removes orphaned craft instances).
+export function removeCustom(id) {
+  const i = _mods.customs.findIndex((c) => c.id === id);
+  if (i < 0) return false;
+  _mods.customs.splice(i, 1);
+  persist();
+  applyMods();
+  return true;
+}
+
 // Wipe everything back to stock (the caller confirms with the user first).
 export function resetMods() {
   _mods = emptyMods();

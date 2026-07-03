@@ -1,6 +1,7 @@
 // Mods (Phase 3 part editing) tests — pure merge/validate/parse logic, node-only.
 // Run: node mods_test.mjs   (mods.js guards localStorage, so importing in node is safe)
 import {
+  removeCustom,
   PARTS, mergeCatalog, validatePartDef, parsePartJSON, explainJsonError,
   makeCustomFrom, setOverride, addCustom, resetMods, getMods, modsSummary, hasMods,
 } from "../js/mods.js";
@@ -107,6 +108,15 @@ check("explainJsonError never throws on junk", typeof explainJsonError("", null)
   check("resetMods returns to stock", !hasMods() && PARTS.length === STOCK.length &&
     PARTS.find((p) => p.id === "engine_sparrow").thrust === sparrow.thrust);
   check("getMods empty after reset", Object.keys(getMods().overrides).length === 0 && getMods().customs.length === 0);
+
+  // Per-part delete for customs (Phase 4 stretch).
+  const mine = makeCustomFrom(sparrow, PARTS.map((p) => p.id));
+  addCustom(mine);
+  check("custom present before delete", PARTS.some((p) => p.id === mine.id));
+  check("removeCustom deletes it", removeCustom(mine.id) === true && !PARTS.some((p) => p.id === mine.id));
+  check("removeCustom on unknown id is a safe no-op", removeCustom("nope_never") === false);
+  check("stock catalog untouched by delete", PARTS.length === STOCK.length);
+  resetMods();
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

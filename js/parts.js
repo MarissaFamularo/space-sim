@@ -35,6 +35,14 @@ export const PARTS = [
     attachTop: true, attachBottom: true,
   },
   {
+    id: "tank_mega",
+    type: "tank",
+    name: "Mega Fuel Tank",
+    dryMass: 1.1, fuelMass: 18.0,
+    height: 4.2, radius: 0.8, shape: "cylinder",
+    attachTop: true, attachBottom: true,
+  },
+  {
     id: "engine_sparrow",
     type: "engine",
     name: "Sparrow Engine",
@@ -48,6 +56,16 @@ export const PARTS = [
     name: "Hawk Heavy Engine",
     dryMass: 1.2, thrust: 600, exhaustVelocity: 3000, // ~Isp 306s
     height: 1.4, radius: 0.8, shape: "nozzle",
+    attachTop: true, attachBottom: false,
+  },
+  {
+    // Deep-space specialist: weak push, but squeezes far more speed from every ton of
+    // fuel (high exhaust velocity — real vacuum engines make this exact trade).
+    id: "engine_osprey",
+    type: "engine",
+    name: "Osprey Vacuum Engine",
+    dryMass: 0.9, thrust: 90, exhaustVelocity: 4400, // ~Isp 449s
+    height: 1.2, radius: 0.7, shape: "nozzle",
     attachTop: true, attachBottom: false,
   },
   {

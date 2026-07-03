@@ -7,17 +7,27 @@ JS ES modules + Three.js. See `space-game-design.md` for the full vision.
 **This file is the contract. Every module builds against the shapes and APIs below.
 Do not change a shared shape without updating this file.**
 
-## Coordinate & units conventions
+## Coordinate & units conventions (Phase 4: heliocentric)
 - Physics is **planar 2D**: positions/velocities are `{x, y}` in the orbital plane, meters & m/s.
-- The world origin is the **center of Earth**. Surface is at radius `body.radius`.
-- Render lifts the 2D plane into 3D: physics `(x, y)` → Three.js `(x, y, 0)` (orbit in the XY plane).
+- The world origin is the **center of the SUN**. Every body rides a fixed circular CCW orbit
+  around its parent (`state.js bodyStateAt(key, t)`); Earth moves, the pad moves with it.
+- Render lifts the 2D plane into 3D: physics `(x, y)` → Three.js `(x, y, 0)` (orbit in the XY plane),
+  MINUS a per-frame **floating origin** (the craft in flight) so float32 survives Neptune distances.
+  The subtraction happens in float64 inside render.js before any THREE.Vector3 is touched.
 - Mass in **tonnes (t)**, thrust in **kN**, exhaust velocity in **m/s**, time in **seconds**.
 - Angles in **radians**, 0 = pointing along +Y (the rocket "up" at launch), increasing CCW.
+- "Local" quantities (altitude, speed, prograde, orbit elements) are measured against the
+  **dominant body** = deepest sphere of influence containing the craft (`dominantBody(pos, t)`):
+  Moon beats Earth beats Sun. The integrator itself superposes gravity from ALL bodies.
 
 ## Forgiving by default (training wheels)
-Real-scale Earth makes reaching orbit brutal. Phase 1 ships a **scaled, forgiving Earth** by
-default so getting to orbit is fun; a real-scale flag flips it later. Values live in
-`state.js` `BODIES.earth` — do not hardcode body constants elsewhere.
+Real-scale space makes everything brutal. The whole solar system ships **scaled**: every
+radius and orbit distance ×`SCALE` (0.1), every surface gravity kept REAL (`mu = g0·r²`).
+Geometry stays faithful (Mars is still 1.52× Earth's distance from the Sun); the system runs
+~√10 ≈ 3.2× faster as a side effect. Values live in `state.js` `BODIES` — do not hardcode
+body constants elsewhere. `BODIES[key]` has: `name, key, radius, mu, g0, mass, solid,
+atmosphere|null, parent, orbitRadius, omega, phase0, soiRadius`. Gas giants + the Sun have
+`solid: false` — contact means sinking/melting, never landing.
 
 ---
 
@@ -67,44 +77,75 @@ position; explicit coordinates are not needed in Phase 1 (render derives them by
 ```js
 {
   mode: "build"|"flight",
-  body: BodyDef,                 // dominant body (Phase 1: always earth)
+  body: BodyDef,                 // launch body (Earth)
   craft: { pos:{x,y}, vel:{x,y}, angle, throttle /*0..1*/, fuelRemaining /*t*/, mass /*t*/, currentStage },
-  orbit: { apoapsis, periapsis, eccentricity, semiMajor, isOrbit, periAngle } | null, // alt above surface, m; periAngle = world angle of periapsis (from ecc vector)
-  altitude, speed,               // convenience, above surface / inertial
+  orbit: { apoapsis, periapsis, eccentricity, semiMajor, isOrbit, periAngle,
+           bodyName, bodyKey, bodyRadius, center } | null, // about the DOMINANT body; alts above its surface
+  altitude, speed,               // vs the dominant body (speed is body-relative: parked on the Moon reads 0)
+  soi,                           // dominant body's name ("Earth", "Moon", "Sun", "Mars", ...)
+  target: "moon"|planetKey,      // 🎯 destination; guidance + distTarget follow it
+  distTarget, distMoon,          // meters to the target's / Moon's center
   heat: 0..1,                    // reentry hull heat; 1 = burned up (sim.burnedUp set)
-  time, timeWarp,                // sim seconds, warp multiplier
+  time, timeWarp,                // sim seconds, warp multiplier (tiers to 500,000×)
+  warpLimited,                   // true when physics capped the requested warp this frame
   status: "prelaunch"|"flying"|"orbit"|"crashed"|"landed",
+  landed: { body: key, offset } | null,   // landed craft co-move with their body
+  crashedInto: key | undefined,  // what we hit; sankIntoClouds for gas giants, burnedUp for heat/Sun
   crew: { name, hero } | undefined, // the Connie aboard (set by main.js at launch, from connies.js)
-  transfer: TransferWindow | null,  // Moon-burn phasing (main.js sets from Physics.transferWindow each frame)
+  transfer: TransferWindow | null,  // burn-window phasing toward sim.target
+  course: CourseCheck | null,       // mid-course closest-pass prediction (when transfer is null)
 }
 ```
 
-### TransferWindow (from `Physics.transferWindow(sim)`)
-Hohmann-style Moon-transfer phasing, valid only in a stable CCW Earth orbit whose apoapsis
-is still well below the Moon (< 0.6 × Moon orbit radius); `null` otherwise (incl. retrograde
-orbits — no guidance rather than wrong guidance).
+### CourseCheck (from `Physics.courseCorrection(sim)` — the Apollo 13 move)
+Kepler-propagates the current conic (two-body about the dominant central) and reports the
+predicted closest pass to the target, plus which small burn shrinks it. Recomputed ~2×/s by
+main.js when no transfer window applies.
+```js
+{
+  miss,                 // predicted closest approach to the target's center (m)
+  tClosest_s,           // sim-seconds until that pass
+  onTarget,             // miss < target's SOI — stop correcting, prepare to capture
+  burnVec: {x,y}|null,  // unit vector: burn THIS way (gold arrow rides it)
+  dirLabel,             // "prograde"|"retrograde-out"|... human flavor for the Navigator
+  perDv, targetKey,
+}
+```
+
+### TransferWindow (from `Physics.transferWindow(sim, targetKey?)`)
+Hohmann phasing from a stable CCW orbit around a CENTRAL body toward a TARGET circling that
+same central: Moon from Earth orbit, any planet (or Earth-home) from a Sun orbit. `null` when
+guidance doesn't apply: not in a stable orbit, target doesn't circle your dominant body,
+retrograde, or the orbit has already stretched >70% of the way from the current radius to
+the target's (once the burn is underway the job is "keep burning", not "wait").
 ```js
 {
   open,            // bool: burn moment is NOW (ship within ~15 deg of the burn point)
   degToGo,         // degrees of the ship's orbit left before the burn point (0..360)
   timeToWindow_s, transferTime_s,
-  leadAngle_deg,   // required Moon lead at the burn: PI - omega_moon * t_transfer
+  leadAngle_deg,   // required target lead at the burn: PI - omega_target * t_transfer
   burnPos: {x,y},  // world position ON the current orbit where the burn starts
+  dir,             // "prograde" (outward trips) | "retrograde" (inward: Venus, Mercury, home)
+  targetKey, centralKey,
 }
 ```
 Render draws a gold "Burn" label sprite at `burnPos` in map view, and while `open` the gold
-targetArrow rides prograde instead of the gravity-turn schedule. The Copilot snapshot exposes
-`flight.transferWindow: { open, degToGo }`.
+targetArrow rides prograde/retrograde per `dir`. The Copilot snapshot exposes
+`flight.transferWindow` and `flight.courseCheck`.
 
 ### Connie (crew member, from `connies.js`)
 Connies are the game's astronauts: snakes in bubble helmets. `{ name, hero }` — `name` is a
 pun on a real astronaut, `hero` the true fact behind it (Navigator shares it). Render owns the
 Connie mesh: beside the pad in build mode, EVA beside the craft when `sim.status === "landed"`.
 
-### BodyDef (from BODIES in state.js)
+### BodyDef (from BODIES in state.js — Sun + 8 planets + Moon)
 ```js
-{ name:"Earth", mass, radius, mu /*=G*mass*/, g0 /*surface gravity*/, atmosphere:{ height, seaLevelDensity } | null }
+{ key:"earth", name:"Earth", mass, radius, mu /*=g0*r^2*/, g0, solid,
+  atmosphere:{ height, seaLevelDensity } | null,
+  parent:"sun"|"earth"|null, orbitRadius, omega, phase0, soiRadius }
 ```
+World position/velocity of a body at time t: `bodyStateAt(key, t)` (recursive through the
+parent chain). `PLANET_KEYS` lists every body except the Sun.
 
 ---
 
@@ -113,14 +154,18 @@ Connie mesh: beside the pad in build mode, EVA beside the craft when `sim.status
 ### physics.js — `export const Physics`
 Pure functions, **no DOM, no Three.js**. Owns orbital integration.
 ```js
-Physics.step(sim, dtSeconds)        // advance sim.craft by dt under gravity + thrust + (optional) drag.
-                                    //   applies throttle along sim.craft.angle, burns fuel, updates mass,
-                                    //   integrates pos/vel (use semi-implicit Euler or RK4, small dt).
-                                    //   handles ground collision (status "crashed"/"landed").
-Physics.computeOrbit(sim)           // -> orbit object (apo/peri/ecc/semiMajor/isOrbit) from pos/vel/mu.
-                                    //   isOrbit = periapsis > atmosphere top (or surface if no atmo).
+Physics.step(sim, dtSeconds)        // advance sim.craft by dt under SUPERPOSED gravity from every
+                                    //   body + thrust + drag vs the LOCAL air (each atmosphere moves
+                                    //   with its planet). Semi-implicit Euler with ADAPTIVE substeps
+                                    //   (0.02 s landing burns → hour-long interplanetary coasts),
+                                    //   capped per call; sets sim.warpLimited when the cap bites.
+                                    //   Collisions vs every body: soft-land/crash on solid worlds,
+                                    //   sink/melt on gas giants and the Sun.
+Physics.maxStableStep(sim)          // -> the substep bound step() will use (dynamics/tunneling/thrust).
+Physics.computeOrbit(sim)           // -> orbit about the DOMINANT body (see SimState.orbit shape).
 Physics.applyStage(sim, craft)      // drop spent stage parts, recompute dry mass/fuel for new stage.
-Physics.transferWindow(sim)         // -> TransferWindow | null (see shape above). Pure, node-testable.
+Physics.transferWindow(sim, key?)   // -> TransferWindow | null (see shape above). Pure, node-testable.
+Physics.courseCorrection(sim, key?) // -> CourseCheck | null (see shape above). Pure, node-testable.
 ```
 Provide a tiny self-check at bottom under `if (import.meta.url === ... )`-style guard OR an
 exported `Physics._selfTest()` that logs a known circular-orbit check. Keep it deterministic.

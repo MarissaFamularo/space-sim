@@ -231,6 +231,28 @@ function makePaletteRow(def) {
   });
   row.appendChild(codeBtn);
 
+  // His own parts get a delete button (stock parts can't be deleted, only reset).
+  if (def.custom) {
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "🗑";
+    delBtn.title = "Delete this part of yours";
+    delBtn.style.cssText = "flex-shrink:0;font-size:10px;padding:2px 5px;";
+    delBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!window.confirm(`Delete "${def.name}" forever? (It comes off your rocket too.)`)) return;
+      Mods.removeCustom(def.id);
+      if (_editing && _editing.id === def.id) closeEditor();
+      // The part no longer exists — take any copies off the rocket (never fly a ghost part).
+      for (let i = _craft.parts.length - 1; i >= 0; i--) {
+        if (_craft.parts[i].partId === def.id) _craft.parts.splice(i, 1);
+      }
+      reflowStages();
+      renderPalette();
+      commit();
+    });
+    row.appendChild(delBtn);
+  }
+
   return row;
 }
 
