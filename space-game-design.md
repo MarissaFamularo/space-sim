@@ -1,6 +1,6 @@
 # Space Game — Design Doc
 
-*A KSP-inspired space sandbox + coding on-ramp, built for an 8-year-old who's an advanced reader, great with computers, ready to learn to code, obsessed with space/physics/aerodynamics, and (importantly) a graphics snob.*
+*A KSP-inspired space sandbox + coding on-ramp, built for a young kid who's an advanced reader, great with computers, ready to learn to code, obsessed with space/physics/aerodynamics, and (importantly) a graphics snob.*
 
 Status: **Phase 1 playable; Phase 2 (the Moon) built & node-verified (2026-07-01) in `space-sim/`.**
 Phase 1 verified in-browser end to end — built a multi-stage rocket and flew it to a stable orbit,

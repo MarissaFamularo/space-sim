@@ -1,14 +1,14 @@
 # Space Sim — Handoff for the next agent
 <!-- Rewritten 2026-07-03 after the overnight Phase-4 build (solar system pulled forward). -->
 
-A KSP-inspired browser space game + coding on-ramp, built for Dr. Famularo's 7-year-old son
+A KSP-inspired browser space game + coding on-ramp, built for a young kid
 (advanced reader, ready to learn to code, space/physics/aerodynamics obsessed, graphics snob).
-This file is the single source you need to pick up the work. Read it first.
+This file is the single source an agent needs to pick up the work. Read it first.
 
 - **Vision & full plan:** `space-game-design.md`
 - **Architecture & data contracts:** `ARCHITECTURE.md` (updated for the heliocentric world)
 - **Code:** `js/` (vanilla ES modules + Three.js vendored in `vendor/`)
-- **Repo:** https://github.com/MarissaFamularo/space-sim (private; push to `main`)
+- **Repo:** https://github.com/MarissaFamularo/space-sim (push to `main`)
 
 ---
 
@@ -82,7 +82,7 @@ Mars window + full mission, sloppy-burn + course-correction rescue, sky-crane, J
 ## How to run / verify (IMPORTANT)
 
 ```
-cd "/Users/marissafamularo/Desktop/CoworkProjects/Kids Games/space-sim"
+cd space-sim
 python3 -m http.server 8011      # any free port; 8000 was often busy on this machine
 # open http://localhost:8011
 ```
@@ -173,7 +173,7 @@ frame, in-place craft reset, e.repeat one-shots, input blur, palette rows are di
 
 ## Working style notes
 
-- The parent iterates fast and tests live — one focused change, she hard-reloads, screenshot.
-- She cares that the **physics is genuinely real** and that he learns real-world facts.
-- Per `../../CLAUDE.md`: lead with status, be brief, flag outstanding items FIRST, no padding.
-- Commit + push to GitHub (`main`) at every milestone — she reviews from the app.
+- The project owner iterates fast and tests live — one focused change, hard-reload, screenshot.
+- The bar: the **physics is genuinely real** and the kid learns real-world facts, not game trivia.
+- Status reports lead with what's done AND what's flagged — outstanding items first, no padding.
+- Commit + push to GitHub (`main`) at every milestone.

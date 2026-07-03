@@ -10,6 +10,10 @@ python3 server.py
 
 Then open http://localhost:8000. (A local server is needed because the game uses ES modules; opening `index.html` directly won't work.)
 
+## License
+
+MIT — see [LICENSE](LICENSE). Bundles [three.js](https://threejs.org) (`vendor/three.module.js`), also MIT-licensed, © three.js authors.
+
 ## Docs
 
 - [HANDOFF.md](HANDOFF.md) — current status and pickup point for the next work session (read this first)
