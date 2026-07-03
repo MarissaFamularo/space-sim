@@ -319,7 +319,9 @@ export const Physics = {
     const c = sim.craft;
     const dom = dominantBody(c.pos, sim.time || 0);
     sim.altitude = mag(dom.rel) - dom.body.radius;
-    sim.speed = mag(c.vel);
+    // Speed RELATIVE to the body that owns you — parked on the Moon must read 0, not the
+    // Moon's own orbital speed (the readout confused the first Moon landing otherwise).
+    sim.speed = Math.hypot(c.vel.x - dom.vel.x, c.vel.y - dom.vel.y);
     sim.soi = dom.body.name;
     const m = moonStateAt(sim.time || 0);
     sim.distMoon = Math.hypot(c.pos.x - m.pos.x, c.pos.y - m.pos.y);
