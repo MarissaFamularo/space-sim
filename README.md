@@ -1,0 +1,17 @@
+# Space Sim
+
+A KSP-inspired browser space game and coding on-ramp. Build a multi-stage rocket, launch it, and fly to orbit — vanilla JS ES modules + Three.js, no build step.
+
+## Run it
+
+```
+python3 server.py
+```
+
+Then open http://localhost:8000. (A local server is needed because the game uses ES modules; opening `index.html` directly won't work.)
+
+## Docs
+
+- [HANDOFF.md](HANDOFF.md) — current status and pickup point for the next work session (read this first)
+- [space-game-design.md](space-game-design.md) — vision and full plan
+- [ARCHITECTURE.md](ARCHITECTURE.md) — architecture and frozen data contracts
