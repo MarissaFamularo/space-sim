@@ -38,6 +38,10 @@ const REAL = {
   titan:    { radius: 2.5747e6, g0: 1.352, parent: "saturn", a: 1.22187e9, solid: true, atmo: { height: 600000, seaLevelDensity: 5.3 }, phase0: 1.2 },
   uranus:  { radius: 2.5362e7, g0: 8.87,  parent: "sun",   a: 2.8725e12, solid: false, atmo: { height: 900000, seaLevelDensity: 0.42 }, phase0: 5.8 },
   neptune: { radius: 2.4622e7, g0: 11.15, parent: "sun",   a: 4.4951e12, solid: false, atmo: { height: 900000, seaLevelDensity: 0.45 }, phase0: 0.5 },
+  // Pluto: a dwarf planet, but there is NO version of this game without Pluto. Real orbit
+  // is stretched and tilted (it even dips inside Neptune's) — ours is circular at its
+  // semi-major axis, like every body here; the Navigator teaches the real shape.
+  pluto:   { radius: 1.1883e6, g0: 0.62,  parent: "sun",   a: 5.9064e12, solid: true,  atmo: null, phase0: 2.9 },
 };
 
 // Build the scaled BODIES table. Two passes: parents before children (sun -> planets -> moon)
@@ -46,7 +50,7 @@ function buildBodies(scale) {
   const out = {};
   const order = ["sun", "mercury", "venus", "earth", "moon", "mars",
                  "jupiter", "io", "europa", "ganymede", "callisto",
-                 "saturn", "titan", "uranus", "neptune"];
+                 "saturn", "titan", "uranus", "neptune", "pluto"];
   for (const key of order) {
     const d = REAL[key];
     const radius = d.radius * scale;
@@ -77,7 +81,7 @@ export const BODIES = buildBodies(SCALE);
 
 // Every body except the Sun, ordered for target pickers / map labels.
 export const PLANET_KEYS = ["mercury", "venus", "earth", "moon", "mars",
-  "jupiter", "io", "europa", "ganymede", "callisto", "saturn", "titan", "uranus", "neptune"];
+  "jupiter", "io", "europa", "ganymede", "callisto", "saturn", "titan", "uranus", "neptune", "pluto"];
 
 // World (Sun-centered) position/velocity of a body's CENTER at sim time t (seconds).
 // Recursive through the parent chain: Moon = Earth's state + Moon's circle around Earth.

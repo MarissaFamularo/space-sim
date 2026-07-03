@@ -72,6 +72,7 @@ const BODY_STYLE = {
   callisto: { color: 0x6f665c },  // the most cratered surface anywhere
   saturn:  { color: 0xd9c08a, stripes: ["#d9c08a", "#c2a86f", "#e8d5a8"], rings: true, halo: 0xd9c08a },
   titan:    { color: 0xd8a04a, halo: 0xe0b060 }, // hazy orange — air thicker than Earth's
+  pluto:    { color: 0xd8c0ae }, // pale tan with the famous heart
   uranus:  { color: 0x9ad4d6, halo: 0x9ad4d6 },
   neptune: { color: 0x3f66d4, halo: 0x5f86e4 },
 };
@@ -862,10 +863,15 @@ function updateMapCamera(sim, dom, states) {
   }
 
   // Body dots + labels — never smaller than the true sphere (zoomed close, reality wins).
+  // DECLUTTER RULE: a body only gets its dot+label once it visually SEPARATES from its
+  // parent at this zoom (> ~4.5% of the frame). Otherwise Jupiter and its four moons pile
+  // onto one pixel and the stacked names read as alphabet soup (first play-test bug #2).
   for (const key of ALL_KEYS) {
     const b = BODIES[key];
     const st = states[key];
     const { dot, label } = mapDots[key];
+    const separated = key === "sun" || b.orbitRadius > mapFrame * 0.045;
+    if (!separated) { dot.visible = false; label.visible = false; continue; }
     const sx = st.pos.x - ORIGIN.x, sy = st.pos.y - ORIGIN.y;
     const size = Math.max(b.radius, mapFrame * (key === "sun" ? 0.02 : 0.012));
     dot.visible = true;

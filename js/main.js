@@ -18,7 +18,7 @@ let sim = newSimState(BODIES.earth);
 
 // Time-warp tiers: , and . step through. Interplanetary cruises need the top ones —
 // a Mars transfer is ~82 (scaled) days of coasting.
-const WARPS = [1, 5, 25, 100, 1000, 10000, 100000, 500000];
+const WARPS = [1, 5, 25, 100, 1000, 10000, 100000, 500000, 2000000]; // top tier: Pluto runs
 
 // One-shot copilot callouts per flight. soi/landed are per-BODY maps.
 function freshAnnounced() {
@@ -42,6 +42,7 @@ const WORLD_FACTS = {
   Titan: "Titan's air is thicker than Earth's, with rain and lakes — but of liquid methane. The Huygens probe landed here by parachute in 2005.",
   Uranus: "Uranus rolls around the Sun on its side — its seasons last 21 Earth-years each.",
   Neptune: "Neptune has the fastest winds in the solar system — over 2,000 km/h. Only Voyager 2 has ever visited it.",
+  Pluto: "Pluto is a dwarf planet with a giant heart-shaped nitrogen glacier. New Horizons flew past in 2015 after a 9-year trip. (Its REAL orbit is stretched and tilted — it even dips inside Neptune's!)",
   Sun: "The Sun holds 99.8% of all the mass in the solar system.",
   Earth: "The only world where your parachute, your lungs, and your snack supply all work.",
 };
@@ -274,6 +275,7 @@ const LANDED_LINES = {
   ganymede: "🪐 ON GANYMEDE",
   callisto: "🎯 ON CALLISTO",
   titan: "🟠 ON TITAN",
+  pluto: "🤍 ON PLUTO",
 };
 
 function updateBanner() {

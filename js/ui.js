@@ -6,7 +6,7 @@ import { BODIES } from "./state.js";
 // show indented under their planet (capture at the planet first, then hop to the moon).
 const TARGETS = ["moon", "mercury", "venus", "mars",
   "jupiter", "io", "europa", "ganymede", "callisto",
-  "saturn", "titan", "uranus", "neptune", "earth"];
+  "saturn", "titan", "uranus", "neptune", "pluto", "earth"];
 const MOON_OF = { io: "jupiter", europa: "jupiter", ganymede: "jupiter", callisto: "jupiter", titan: "saturn" };
 
 // Distances read better in the right unit: km up close, million-km across the system.
