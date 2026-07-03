@@ -163,6 +163,63 @@ const check = (name, ok, detail = "") => {
     `soi=${sim.soi} closest=${(minD / 1e6).toFixed(1)} Mm (SOI=${(MARS.soiRadius / 1e6).toFixed(1)} Mm)`);
 }
 
+// --- 5b. Mid-course correction rescues a SLOPPY transfer (the kid reality) ---
+{
+  const r = E.orbitRadius;
+  const v = Math.sqrt(SUN.mu / r);
+  const sim = newSimState(E, 0);
+  sim.mode = "flight"; sim.status = "orbit"; sim.target = "mars";
+  sim.craft.pos = { x: 0, y: r }; sim.craft.vel = { x: -v, y: 0 }; // CCW, 90° from Earth
+  sim.craft.mass = 6; sim.craft.throttle = 0;
+  sim.craft.thrust = 215; sim.craft.exhaustVelocity = 2800; sim.craft.fuelRemaining = 4;
+
+  // Coast to the window SLOPPILY: stop ~2 degrees early (a kid's reflexes).
+  let tw = null, guard = 0;
+  while (guard++ < 100000) {
+    tw = Physics.transferWindow(sim, "mars");
+    if (!tw) break;
+    if (tw.degToGo <= 8 || tw.degToGo >= 358) break; // VERY sloppy: 8 degrees early
+    Physics.step(sim, Math.max(200, Math.min(8000, tw.timeToWindow_s * 0.5)));
+  }
+  // Burn prograde to Mars-distance apoapsis (also sloppy: cut a hair over).
+  let burnT = 0;
+  while (burnT < 120) {
+    const vv = sim.craft.vel;
+    sim.craft.angle = Math.atan2(-vv.x, vv.y);
+    sim.craft.throttle = 1;
+    Physics.step(sim, 0.1); burnT += 0.1;
+    const o = Physics.computeOrbit(sim);
+    if (o && isFinite(o.apoapsis) && SUN.radius + o.apoapsis >= MARS.orbitRadius * 1.02) break; // and overshoots
+  }
+  sim.craft.throttle = 0;
+
+  const c0 = Physics.courseCorrection(sim, "mars");
+  check("sloppy burn: course check reports a real miss with a fix direction",
+    !!c0 && !c0.onTarget && !!c0.burnVec,
+    c0 ? `miss=${(c0.miss / 1e6).toFixed(0)} Mm dir=${c0.dirLabel}` : "null");
+
+  // Follow the guidance: short tangential burns in the suggested direction until onTarget.
+  let fixes = 0;
+  let c = c0;
+  while (c && !c.onTarget && c.burnVec && fixes < 400) {
+    sim.craft.angle = Math.atan2(-c.burnVec.x, c.burnVec.y); // nose along the gold arrow
+    sim.craft.throttle = 0.3;
+    Physics.step(sim, 0.1);
+    sim.craft.throttle = 0;
+    c = Physics.courseCorrection(sim, "mars");
+    fixes++;
+  }
+  check("following the gold arrow converges to on-target", !!c && c.onTarget === true,
+    c ? `after ${fixes} nudges, miss=${(c.miss / 1e6).toFixed(1)} Mm (SOI=${(MARS.soiRadius / 1e6).toFixed(1)} Mm)` : "lost the plot");
+
+  // Cruise: must actually enter Mars's SOI now.
+  const tLimit = sim.time + 1.5 * (tw ? tw.transferTime_s : 7.1e6);
+  while (sim.time < tLimit && sim.soi !== "Mars" && sim.status !== "crashed") {
+    Physics.step(sim, 4000);
+  }
+  check("corrected cruise arrives inside Mars's SOI", sim.soi === "Mars", `soi=${sim.soi}`);
+}
+
 // --- 6. Mars landing: chute alone is NOT enough (thin air) — engines + chute land it ---
 {
   const drop = (useEngine) => {

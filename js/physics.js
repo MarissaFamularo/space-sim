@@ -524,6 +524,78 @@ export const Physics = {
     };
   },
 
+  // --- Mid-course correction (the Apollo 13 move) ---
+  // Once the transfer burn is done, the window guidance goes quiet — but a kid's burn is
+  // never perfect, and at interplanetary scale a 2° timing slip misses Mars by 40 SOI
+  // radii. This predicts the CLOSEST APPROACH to the target over the coming cruise by
+  // Kepler-propagating the craft's current conic (two-body about the dominant central —
+  // pure math, no integration), and numerically finds whether a small prograde or
+  // retrograde nudge shrinks the miss.
+  //
+  // Returns null when it doesn't apply (wrong SOI, retrograde, hyperbolic, or the orbit
+  // never gets near the target). Otherwise:
+  //   { miss,            // predicted closest approach to the target's CENTER (m)
+  //     tClosest_s,      // sim-seconds from now until that closest approach
+  //     onTarget,        // miss < target SOI: you'll be captured-able, stop correcting
+  //     dir,             // "prograde"|"retrograde": which small burn shrinks the miss
+  //     perDv,           // m of miss removed per m/s of burn in that direction (rough)
+  //     targetKey }
+  courseCorrection(sim, targetKey) {
+    if (!sim || !sim.craft) return null;
+    const target = BODIES[targetKey || sim.target || "moon"];
+    if (!target || !target.parent) return null;
+    const central = BODIES[target.parent];
+    const t = sim.time || 0;
+    const dom = dominantBody(sim.craft.pos, t);
+    if (dom.body.key !== central.key) return null;
+
+    const cState = bodyStateAt(central.key, t);
+    const pos = { x: sim.craft.pos.x - cState.pos.x, y: sim.craft.pos.y - cState.pos.y };
+    const vel = { x: sim.craft.vel.x - cState.vel.x, y: sim.craft.vel.y - cState.vel.y };
+
+    const base = predictClosest(pos, vel, central, target, t);
+    if (!base) return null;
+    // Only meaningful when the orbit actually attempts the trip.
+    if (base.miss > 0.35 * target.orbitRadius) return null;
+
+    const soi = target.soiRadius || 0;
+    if (base.miss < soi) {
+      return { miss: base.miss, tClosest_s: base.tMin, onTarget: true, burnVec: null, dirLabel: null, perDv: 0, targetKey: target.key };
+    }
+
+    // Which way does a nudge help? A purely prograde/retrograde fix can't always close a
+    // late transfer — probe 8 compass directions (in the velocity frame) and keep the one
+    // that shrinks the predicted miss the most. The kid just points at the gold arrow.
+    const vm = Math.hypot(vel.x, vel.y) || 1;
+    const uv = { x: vel.x / vm, y: vel.y / vm };   // prograde
+    const un = { x: -uv.y, y: uv.x };              // 90° left of travel
+    const DV = 5; // m/s probe
+    let best = null;
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      const dx = Math.cos(a) * uv.x + Math.sin(a) * un.x;
+      const dy = Math.cos(a) * uv.y + Math.sin(a) * un.y;
+      const v2 = { x: vel.x + DV * dx, y: vel.y + DV * dy };
+      const p = predictClosest(pos, v2, central, target, t);
+      if (p && (!best || p.miss < best.miss)) best = { ...p, dx, dy, a };
+    }
+    if (!best || best.miss >= base.miss) {
+      return { miss: base.miss, tClosest_s: base.tMin, onTarget: false, burnVec: null, dirLabel: null, perDv: 0, targetKey: target.key };
+    }
+    // Human-readable flavor for the Navigator ("mostly prograde", "pull inward", ...).
+    const labels = ["prograde", "prograde-out", "radial-out", "retrograde-out",
+                    "retrograde", "retrograde-in", "radial-in", "prograde-in"];
+    return {
+      miss: base.miss,
+      tClosest_s: base.tMin,
+      onTarget: false,
+      burnVec: { x: best.dx, y: best.dy }, // world-frame unit vector: burn THIS way
+      dirLabel: labels[Math.round(best.a / (Math.PI / 4)) % 8],
+      perDv: (base.miss - best.miss) / DV,
+      targetKey: target.key,
+    };
+  },
+
   // Staging: drop the spent lowest stage's parts, recompute thrust/fuel/mass for the
   // new current stage, and advance sim.craft.currentStage. (Unchanged from Phase 1.)
   applyStage(sim, craft) {
@@ -616,3 +688,76 @@ export const Physics = {
 function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
 function wrap2pi(a) { const t = a % (2 * Math.PI); return t < 0 ? t + 2 * Math.PI : t; }
 function wrapPi(a) { const t = wrap2pi(a); return t > Math.PI ? t - 2 * Math.PI : t; }
+
+// --- Kepler two-body propagation (elliptic, CCW) for the course-correction predictor ---
+// From state (pos, vel) relative to a body with parameter mu, give the position `dt`
+// seconds later on the SAME conic. Pure math: elements -> Kepler's equation -> position.
+function keplerElements(pos, vel, mu) {
+  const r = Math.hypot(pos.x, pos.y);
+  const v2 = vel.x * vel.x + vel.y * vel.y;
+  const eps = v2 / 2 - mu / r;
+  if (eps >= 0) return null;                    // parabolic/hyperbolic: not handled here
+  const hz = pos.x * vel.y - pos.y * vel.x;
+  if (hz <= 0) return null;                     // retrograde: guidance stays quiet
+  const a = -mu / (2 * eps);
+  const rv = pos.x * vel.x + pos.y * vel.y;
+  const ex = ((v2 - mu / r) * pos.x - rv * vel.x) / mu;
+  const ey = ((v2 - mu / r) * pos.y - rv * vel.y) / mu;
+  const e = Math.hypot(ex, ey);
+  if (e >= 0.995) return null;
+  const periAngle = Math.atan2(ey, ex);
+  // True anomaly now, then eccentric anomaly, then mean anomaly.
+  const theta0 = wrap2pi(Math.atan2(pos.y, pos.x) - periAngle);
+  const E0 = Math.atan2(Math.sqrt(1 - e * e) * Math.sin(theta0), e + Math.cos(theta0));
+  const M0 = E0 - e * Math.sin(E0);
+  const n = Math.sqrt(mu / (a * a * a));
+  return { a, e, periAngle, M0, n };
+}
+function keplerPosAt(el, dt) {
+  const M = el.M0 + el.n * dt;
+  // Newton's method on Kepler's equation M = E - e sinE (converges in a few steps).
+  let E = M;
+  for (let i = 0; i < 8; i++) {
+    const f = E - el.e * Math.sin(E) - M;
+    E -= f / (1 - el.e * Math.cos(E));
+  }
+  const cosE = Math.cos(E), sinE = Math.sin(E);
+  const rr = el.a * (1 - el.e * cosE);
+  const theta = Math.atan2(Math.sqrt(1 - el.e * el.e) * sinE, cosE - el.e);
+  const ang = el.periAngle + theta;
+  return { x: rr * Math.cos(ang), y: rr * Math.sin(ang) };
+}
+
+// Closest approach of the craft's conic (rel to `central`) to `target`'s circle over the
+// coming cruise. Coarse scan + local refinement. Returns { miss, tMin } or null.
+function predictClosest(pos, vel, central, target, tNow) {
+  const el = keplerElements(pos, vel, central.mu);
+  if (!el) return null;
+  const period = (2 * Math.PI) / el.n;
+  // Enough horizon to cover an outbound half-ellipse (or a whole lap, whichever is less).
+  const rNow = Math.hypot(pos.x, pos.y);
+  const aT = (rNow + target.orbitRadius) / 2;
+  const horizon = Math.min(period, 1.4 * Math.PI * Math.sqrt((aT * aT * aT) / central.mu));
+  const cAt = (dt) => bodyStateAt(central.key, tNow + dt).pos;
+  const tAt = (dt) => bodyStateAt(target.key, tNow + dt).pos;
+  const missAt = (dt) => {
+    const p = keplerPosAt(el, dt);
+    const c = cAt(dt), g = tAt(dt);
+    return Math.hypot(c.x + p.x - g.x, c.y + p.y - g.y);
+  };
+  const N = 240;
+  let minD = Infinity, tMin = 0;
+  for (let i = 1; i <= N; i++) {
+    const dt = (i / N) * horizon;
+    const d = missAt(dt);
+    if (d < minD) { minD = d; tMin = dt; }
+  }
+  // Refine around the best sample (golden-section-ish trisection).
+  let lo = Math.max(0, tMin - horizon / N), hi = Math.min(horizon, tMin + horizon / N);
+  for (let i = 0; i < 24; i++) {
+    const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3;
+    if (missAt(m1) < missAt(m2)) hi = m2; else lo = m1;
+  }
+  const tBest = (lo + hi) / 2;
+  return { miss: missAt(tBest), tMin: tBest };
+}

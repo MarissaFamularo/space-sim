@@ -1,11 +1,9 @@
 // main.js — PM-owned glue. Boots modules, runs the game loop, switches build<->flight,
-// drives flight controls (steer / throttle / stage / time-warp), detects the orbit goal,
-// and wires the copilot. Integrates physics.js + render.js + builder.js against the contract.
+// drives flight controls (steer / throttle / stage / time-warp / target), detects goals,
+// and wires the copilot. Integrates physics.js + render.js + builder.js per the contract.
 
-// PARTS comes from mods.js: the stock catalog (parts.js, pristine on disk) merged with the
-// kid's saved overrides + custom parts. Same array shape; edits mutate it in place.
 import { PARTS } from "./mods.js";
-import { BODIES, newCraft, newSimState, computeStats, findPart } from "./state.js";
+import { BODIES, newCraft, newSimState, computeStats, findPart, bodyStateAt } from "./state.js";
 import { Physics } from "./physics.js";
 import { Render } from "./render.js";
 import { Builder } from "./builder.js";
@@ -17,12 +15,33 @@ const canvas = document.getElementById("scene");
 let craft = newCraft();
 craft._catalog = PARTS; // lets Physics.applyStage read part data if ever needed
 let sim = newSimState(BODIES.earth);
-// one-shot copilot callouts per flight
-let announced = { orbit: false, crashed: false, landed: false, moonSoi: false, moonOrbit: false, reentry: false, transferBurn: false };
+
+// Time-warp tiers: , and . step through. Interplanetary cruises need the top ones —
+// a Mars transfer is ~82 (scaled) days of coasting.
+const WARPS = [1, 5, 25, 100, 1000, 10000, 100000, 500000];
+
+// One-shot copilot callouts per flight. soi/landed are per-BODY maps.
+function freshAnnounced() {
+  return { orbit: false, crashed: false, reentry: false, transferBurn: false,
+           escapedEarth: false, soi: {}, landed: {} };
+}
+let announced = freshAnnounced();
+
+// A true fact per world — the Navigator's arrival lines. Real numbers, real missions.
+const WORLD_FACTS = {
+  Moon: "Apollo astronauts did this for real in 1969 — you braked with the engine, just like them.",
+  Mercury: "Mercury is the closest planet to the Sun — its daytime is hot enough to melt lead, but its shadowed craters hold ICE.",
+  Venus: "Venus is the hottest planet of all — about 460°C day and night, hotter than Mercury, because its thick air traps the heat.",
+  Mars: "Mars is the only planet we've sent rovers to. Its air is so thin that real landers use a parachute AND rockets — the sky crane!",
+  Jupiter: "Jupiter is so big that 1,300 Earths would fit inside it. NASA's Galileo probe dove into its clouds in 2003 and melted on the way down.",
+  Saturn: "Saturn's rings are made of billions of chunks of ice, some as small as snowflakes, some as big as houses.",
+  Uranus: "Uranus rolls around the Sun on its side — its seasons last 21 Earth-years each.",
+  Neptune: "Neptune has the fastest winds in the solar system — over 2,000 km/h. Only Voyager 2 has ever visited it.",
+  Sun: "The Sun holds 99.8% of all the mass in the solar system.",
+  Earth: "The only world where your parachute, your lungs, and your snack supply all work.",
+};
 
 // ---- propulsion for a given stage (integration owns this; physics reads the live fields) ----
-// stageNum active = engines/tanks whose PartInstance.stage === stageNum fire & feed.
-// Remaining mass = every part at stage >= stageNum (upper stages still full of fuel).
 function activeStage(craft, stageNum) {
   let thrust = 0, veSum = 0, engines = 0, stageFuel = 0, remainingMass = 0, chutes = 0;
   for (const inst of craft.parts) {
@@ -30,7 +49,7 @@ function activeStage(craft, stageNum) {
     if (!def) continue;
     if (inst.stage >= stageNum) {
       remainingMass += (def.dryMass || 0) + (def.fuelMass || 0);
-      if (def.type === "chute") chutes++; // chutes still attached (not dropped with a spent stage)
+      if (def.type === "chute") chutes++;
     }
     if (inst.stage === stageNum) {
       if (def.type === "engine") { thrust += def.thrust || 0; veSum += def.exhaustVelocity || 0; engines++; }
@@ -50,21 +69,23 @@ function loadStage(stageNum) {
   sim.craft.thrust = s.thrust;
   sim.craft.exhaustVelocity = s.exhaustVelocity;
   sim.craft.chuteCount = s.chutes;
-  // Can this stage even lift its own weight off the pad? (thrust kN vs weight kN)
   sim.stageWeightKN = s.remainingMass * BODIES.earth.g0;
   sim.cantLiftOff = s.thrust <= sim.stageWeightKN;
 }
 
-// Deploy the parachute (P key, or auto low over Earth). Teaches: chutes need AIR.
+// Deploy the parachute (P key, or auto low over any world with air). Teaches: chutes need AIR.
 function deployChute(auto) {
   if (sim.mode !== "flight" || sim.craft.chuteDeployed) return;
   if ((sim.craft.chuteCount || 0) === 0) {
-    if (!auto) copilotSay("No parachute on this rocket! Add one on top of the command pod next time — it makes coming home to Earth easy.");
+    if (!auto) copilotSay("No parachute on this rocket! Add one on top of the command pod next time — it makes coming home easy.");
     return;
   }
   sim.craft.chuteDeployed = true;
-  if (sim.soi === "Moon")
-    copilotSay("☂ Parachute deployed… but nothing happens. The Moon has <b>no air</b> — a parachute needs air to push against! Here you land the Apollo way: brake with your engine.");
+  const here = BODIES[sim.soi ? sim.soi.toLowerCase() : "earth"];
+  if (here && !here.atmosphere)
+    copilotSay("☂ Parachute deployed… but nothing happens. " + sim.soi + " has <b>no air</b> — a parachute needs air to push against! Here you land the Apollo way: brake with your engine.");
+  else if (here && here.key === "mars")
+    copilotSay("☂ Parachute out! Mars's air is super thin — the chute helps, but it can't slow you enough by itself. Real Mars landers fire rockets for the last bit (the <b>sky crane</b>). Keep your engine ready!");
   else if (sim.speed >= 250)
     copilotSay("☂ Parachute armed! You're going too fast for it to open (over 250 m/s the cloth would just shred) — it'll blossom automatically once the air slows you below that.");
   else
@@ -92,11 +113,14 @@ function enterBuild() {
 }
 function launch() {
   if (craft.parts.length === 0) { copilotSay("Build a rocket first — add a pod, a fuel tank, and an engine, then launch."); return; }
+  const keepTarget = sim.target || "moon";
   sim = newSimState(BODIES.earth);
+  sim.target = keepTarget;
   sim.mode = "flight"; sim.status = "flying"; sim.craft.throttle = 1; sim.timeWarp = 1;
-  sim.crew = pickConnie(); // a Connie climbs aboard for every flight
-  mapView = false; // start each flight in follow-cam
-  announced = { orbit: false, crashed: false, landed: false, moonSoi: false, moonOrbit: false, reentry: false, transferBurn: false };
+  sim.crew = pickConnie();
+  mapView = false;
+  announced = freshAnnounced();
+  announced.soi.Earth = true; // you start there; no callout for home
   loadStage(0);
   copilotSay("🐍 Commander <b>" + sim.crew.name + "</b> is aboard — helmet sealed, coils braced. Liftoff!");
   if (sim.craft.thrust <= 0) copilotSay("This rocket has no working engine on its first stage — it won't lift off. Add an engine at the bottom.");
@@ -108,9 +132,6 @@ function launch() {
   UI.setMode("flight");
 }
 function reset() {
-  // Clear the rocket IN PLACE (don't swap in a new object) so the Builder keeps the same
-  // reference, then re-bind the Builder to it. Avoids the split where the list shows the old
-  // rocket but a different empty craft gets rendered/flown.
   craft.parts.length = 0;
   craft.name = "My Rocket";
   craft._catalog = PARTS;
@@ -123,9 +144,20 @@ function doStage() {
   const next = (sim.craft.currentStage || 0) + 1;
   if (next > maxStage(craft)) { copilotSay("No more stages to drop — you're flying the last one."); return; }
   loadStage(next);
-  // Visually drop spent parts: rebuild the mesh from the parts still attached.
   const remaining = { name: craft.name, parts: craft.parts.filter((i) => (i.stage || 0) >= next) };
   Render.buildCraftMesh(remaining);
+}
+
+function setTarget(key) {
+  if (!BODIES[key]) return;
+  sim.target = key;
+  announced.transferBurn = false; // a new destination gets its own TLI call
+  announced.courseCheck = false;
+  announced.onTarget = false;
+  const b = BODIES[key];
+  const fact = WORLD_FACTS[b.name] ? " " + WORLD_FACTS[b.name] : "";
+  copilotSay("🎯 Target set: <b>" + b.name + "</b>." + fact +
+    (key === "moon" ? "" : " To get there: reach Earth orbit, burn prograde until you ESCAPE Earth into a Sun orbit, then wait for the gold Burn marker on the map."));
 }
 
 // ---- copilot helper ----
@@ -145,11 +177,12 @@ UI.init({
   onModeChange: (m) => m === "build" && enterBuild(),
   onToggleMap: () => { mapView = !mapView; Render.setFlightView(mapView ? "map" : "follow"); return mapView; },
   onToggleArrow: (which, on) => Render.setArrow(which, on),
+  onTargetChange: (key) => setTarget(key),
 });
 wireCopilot();
 Copilot.initSettings();
 enterBuild();
-copilotSay("Hi! I'm your navigator. Build a rocket on the left, hit Launch, then use the arrow keys to steer. Ask me anything.");
+copilotSay("Hi! I'm your navigator. Build a rocket on the left, hit Launch, then use the arrow keys to steer. The whole solar system is out there — pick a target and go. Ask me anything!");
 
 // ---- copilot input ----
 function wireCopilot() {
@@ -160,7 +193,7 @@ function wireCopilot() {
     d.innerHTML = "<b>You:</b> " + txt; log.appendChild(d); log.scrollTop = log.scrollHeight; };
   async function go() {
     const q = input.value.trim(); if (!q) return; input.value = "";
-    input.blur(); // hand keyboard focus back to the game so flight keys (M, arrows…) work
+    input.blur(); // hand keyboard focus back to the game so flight keys work
     addYou(q);
     const stats = computeStats(craft, PARTS, BODIES.earth);
     copilotSay(await Copilot.ask(q, sim, stats));
@@ -173,19 +206,24 @@ function wireCopilot() {
 const keys = {};
 let mapView = false;
 window.addEventListener("keydown", (e) => {
-  if (e.target && e.target.tagName === "INPUT") return; // don't hijack the navigator box
+  if (e.target && e.target.tagName === "INPUT") return;
   keys[e.key] = true;
-  if (e.repeat) return; // one-shot actions below must not fire on held-key auto-repeat
+  if (e.repeat) return;
   if (e.key === " ") { e.preventDefault(); doStage(); }
   if (e.key === "z" || e.key === "Z") sim.craft.throttle = 1;
   if (e.key === "x" || e.key === "X") sim.craft.throttle = 0;
-  if (e.key === ".") setWarp(sim.timeWarp * 2);
-  if (e.key === ",") setWarp(sim.timeWarp / 2);
+  if (e.key === ".") stepWarp(+1);
+  if (e.key === ",") stepWarp(-1);
   if (e.key === "m" || e.key === "M") { mapView = !mapView; Render.setFlightView(mapView ? "map" : "follow"); }
   if (e.key === "p" || e.key === "P") deployChute(false);
 });
 window.addEventListener("keyup", (e) => { keys[e.key] = false; });
-function setWarp(w) { sim.timeWarp = Math.max(1, Math.min(100, Math.round(w))); }
+function stepWarp(dir) {
+  const i = WARPS.findIndex((w) => w >= sim.timeWarp);
+  const at = i === -1 ? WARPS.length - 1 : i;
+  const next = Math.max(0, Math.min(WARPS.length - 1, at + dir));
+  sim.timeWarp = WARPS[next];
+}
 
 function applyControls(dt) {
   if (sim.mode !== "flight" || sim.status === "crashed") return;
@@ -195,10 +233,9 @@ function applyControls(dt) {
   if (keys["ArrowRight"] || keys["d"]) { sim.craft.angle -= STEER * dt; steering = true; }
   if (keys["ArrowUp"]) { sim.craft.throttle = Math.min(1, sim.craft.throttle + THR * dt); }
   if (keys["ArrowDown"]) { sim.craft.throttle = Math.max(0, sim.craft.throttle - THR * dt); }
-  // Map zoom with +/- (smooth while held). Zoom out to pull back to the Earth-Moon system.
   if (mapView) {
     if (keys["="] || keys["+"]) Render.zoomMap(Math.exp(-2.2 * dt)); // zoom in
-    if (keys["-"] || keys["_"]) Render.zoomMap(Math.exp(2.2 * dt));  // zoom out (find the Moon)
+    if (keys["-"] || keys["_"]) Render.zoomMap(Math.exp(2.2 * dt));  // zoom out
   }
   // Time warp only makes sense while coasting; thrusting or steering snaps back to real time.
   if (sim.craft.throttle > 0 || steering) sim.timeWarp = 1;
@@ -211,29 +248,46 @@ banner.style.cssText = "position:absolute;top:120px;left:50%;transform:translate
   "text-align:center;pointer-events:none;box-shadow:0 6px 30px rgba(0,0,0,.5);";
 document.body.appendChild(banner);
 
-// Map-view hint so the zoom is discoverable (the tester couldn't find the Moon otherwise).
 const mapHint = document.createElement("div");
 mapHint.style.cssText = "position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:8;" +
   "font:600 13px system-ui,sans-serif;color:#cfe0ff;background:rgba(10,16,30,0.72);" +
   "padding:7px 14px;border-radius:9px;display:none;pointer-events:none;white-space:nowrap;";
-mapHint.innerHTML = "🗺️ Map view — scroll or press <b>−</b> to zoom out and find the Moon · <b>+</b> to zoom in";
+mapHint.innerHTML = "🗺️ Map view — scroll or press <b>−</b> to zoom out and find the planets · <b>+</b> to zoom in";
 document.body.appendChild(mapHint);
 function updateMapHint() {
   mapHint.style.display = (sim.mode === "flight" && mapView) ? "block" : "none";
 }
 
+const LANDED_LINES = {
+  earth: "🛬 LANDED",
+  moon: "🌙 ON THE MOON",
+  mercury: "🪨 ON MERCURY",
+  venus: "🌋 ON VENUS",
+  mars: "🔴 ON MARS",
+};
+
 function updateBanner() {
-  const onMoon = sim.landed && sim.landed.body === "moon";
   const crew = sim.crew ? sim.crew.name : "Your Connie";
   if (sim.mode === "flight" && sim.status === "crashed") {
     banner.style.display = "block";
     banner.style.background = "rgba(140,24,24,0.9)"; banner.style.color = "#ffd6d6";
-    const where = sim.burnedUp ? "🔥 BURNED UP ON REENTRY" : (sim.soi === "Moon" ? "CRASHED INTO THE MOON" : "CRASHED");
+    let where;
+    if (sim.sankIntoClouds) {
+      const g = BODIES[sim.crashedInto];
+      where = "🌀 SANK INTO " + (g ? g.name.toUpperCase() : "THE") + "'S CLOUDS — GAS GIANTS HAVE NO GROUND";
+    } else if (sim.burnedUp && sim.crashedInto === "sun") {
+      where = "☀️ MELTED BY THE SUN";
+    } else if (sim.burnedUp) {
+      where = "🔥 BURNED UP ON REENTRY";
+    } else if (sim.crashedInto && sim.crashedInto !== "earth") {
+      const b = BODIES[sim.crashedInto];
+      where = "CRASHED INTO " + (b ? b.name.toUpperCase() : "THE GROUND");
+    } else {
+      where = "CRASHED";
+    }
     banner.innerHTML = "💥 " + where + "<br><span style='font-size:14px;font-weight:400'>" +
       crew + " boinged away safely in the escape bubble — Connies always do. Press Reset to try again</span>";
   } else if (sim.mode === "flight" && sim.status === "flying" && sim.cantLiftOff && sim.altitude < 5 && sim.speed < 2) {
-    // Sitting on the pad, engines lit, going nowhere: SAY SO loudly — this looked like
-    // "the launch button is broken" to the first playtesters.
     banner.style.display = "block";
     banner.style.background = "rgba(150,105,20,0.92)"; banner.style.color = "#ffedc4";
     banner.innerHTML = (sim.craft.thrust <= 0 ? "🚫 NO ENGINE ON STAGE 1" : "🪨 TOO HEAVY TO LIFT OFF") +
@@ -243,83 +297,166 @@ function updateBanner() {
   } else if (sim.mode === "flight" && sim.status === "landed") {
     banner.style.display = "block";
     banner.style.background = "rgba(22,96,44,0.9)"; banner.style.color = "#d6ffe0";
-    banner.innerHTML = onMoon
-      ? "🌙 ON THE MOON<br><span style='font-size:14px;font-weight:400'>" + crew + " is out on the surface — a snake on another world! Throttle up to fly home.</span>"
-      : "🛬 LANDED<br><span style='font-size:14px;font-weight:400'>Gentle touchdown! " + crew + " slithers out, happy.</span>";
+    const bodyKey = sim.landed ? sim.landed.body : "earth";
+    const head = LANDED_LINES[bodyKey] || ("🏁 LANDED ON " + (BODIES[bodyKey] ? BODIES[bodyKey].name.toUpperCase() : "?"));
+    const sub = bodyKey === "earth"
+      ? "Gentle touchdown! " + crew + " slithers out, happy."
+      : crew + " is out on the surface — a snake on another world! Throttle up to fly home.";
+    banner.innerHTML = head + "<br><span style='font-size:14px;font-weight:400'>" + sub + "</span>";
   } else {
     banner.style.display = "none";
   }
 }
 
+// ---- one-shot flight callouts (SOI entries, orbit goals, arrivals) ----
+function flightCallouts() {
+  // Stable orbit around Earth: the Phase-1 goal.
+  if (sim.status === "orbit" && sim.orbit && sim.orbit.bodyName === "Earth" && !announced.orbit) {
+    announced.orbit = true;
+    copilotSay("🎉 You're in a stable orbit! You just fell <i>around</i> the planet instead of back into it — that's exactly how real spacecraft stay up. Apoapsis " +
+      (sim.orbit.apoapsis / 1000).toFixed(0) + " km, periapsis " + (sim.orbit.periapsis / 1000).toFixed(0) +
+      " km. From here you can go ANYWHERE — the Moon, Mars, all of it. Pick a target and follow the gold Burn marker on the map.");
+  }
+  // Entering any new sphere of influence.
+  if (sim.soi && !announced.soi[sim.soi]) {
+    announced.soi[sim.soi] = true;
+    if (sim.soi === "Moon") {
+      copilotSay("🌙 You've entered the Moon's <b>sphere of influence</b> — from here the Moon's gravity is in charge, not Earth's. Your orbit readout now measures from the Moon. To get captured, burn <i>retrograde</i> (opposite the green arrow) near your closest approach.");
+    } else if (sim.soi === "Sun") {
+      if (!announced.escapedEarth) {
+        announced.escapedEarth = true;
+        copilotSay("☀️ <b>You've escaped Earth — cut your engine (X) now!</b> You're not falling around Earth anymore — you're a tiny planet, orbiting the SUN. Don't keep burning or you'll fly past everything: coast, zoom the map way out, and wait for the gold <b>Burn</b> marker. When it comes around, THAT's your moment to head for " + (BODIES[sim.target] ? BODIES[sim.target].name : "your target") + ". (Time-warp with <b>.</b> — space trips take patience!)");
+      }
+    } else {
+      const fact = WORLD_FACTS[sim.soi] ? " " + WORLD_FACTS[sim.soi] : "";
+      copilotSay("🪐 You've entered <b>" + sim.soi + "'s</b> sphere of influence — its gravity runs the show now, and your orbit readout measures from it. Burn retrograde near closest approach to get captured." + fact);
+    }
+  }
+  // The transfer-window moment (Moon TLI or interplanetary injection).
+  if (sim.transfer && sim.transfer.open && !announced.transferBurn) {
+    announced.transferBurn = true;
+    const tName = BODIES[sim.transfer.targetKey] ? BODIES[sim.transfer.targetKey].name : "the target";
+    if (sim.transfer.centralKey === "earth") {
+      copilotSay("🌙 <b>Transfer window open — burn NOW!</b> The Moon is leading you by just the right angle (" +
+        Math.round(sim.transfer.leadAngle_deg) + "°). Burn <i>prograde</i> — the gold arrow is riding your green arrow — until your apoapsis stretches to the Moon's distance, then cut the engine and coast. Apollo timed this exact moment and called it <b>translunar injection</b>.");
+    } else {
+      copilotSay("🚀 <b>" + tName + " window open — burn now!</b> " + tName + " is leading you by " +
+        Math.round(sim.transfer.leadAngle_deg) + "° — burn along the gold arrow until your orbit's " +
+        (sim.transfer.dir === "prograde" ? "apoapsis stretches out to" : "periapsis drops down to") + " " + tName +
+        "'s orbit, then cut and coast for " + Math.round(sim.transfer.transferTime_s / 86400) +
+        " days (use time-warp!). Real mission planners wait months for exactly this alignment.");
+    }
+  }
+  // Captured around a new world.
+  if (sim.orbit && sim.orbit.isOrbit && sim.orbit.bodyName !== "Earth" && !announced["orbit_" + sim.orbit.bodyName]) {
+    announced["orbit_" + sim.orbit.bodyName] = true;
+    const b = sim.orbit.bodyName;
+    copilotSay("🛰️ You're in orbit around <b>" + b + "</b>! Periapsis " + (sim.orbit.periapsis / 1000).toFixed(0) +
+      " km, apoapsis " + (sim.orbit.apoapsis / 1000).toFixed(0) + " km. " +
+      (BODIES[b.toLowerCase()] && !BODIES[b.toLowerCase()].solid
+        ? "Careful — there's nothing to land ON down there. Enjoy the view from up here!"
+        : "To land: lower your periapsis, then brake with the engine on the way down."));
+  }
+  // Mid-course correction coaching (the Apollo 13 move).
+  if (sim.course && !sim.course.onTarget && sim.course.burnVec && !announced.courseCheck) {
+    const tb = BODIES[sim.course.targetKey];
+    const soi = tb ? tb.soiRadius : 0;
+    if (sim.course.miss > 3 * soi) {
+      announced.courseCheck = true;
+      copilotSay("🧭 <b>Course check:</b> right now you'd miss " + (tb ? tb.name : "the target") + " by about " +
+        Math.round(sim.course.miss / 1e6).toLocaleString() + " thousand km. No problem — do what Apollo 13 did: a <b>mid-course correction</b>. " +
+        "Point your nose at the gold arrow, give a SHORT gentle burn, watch the 'Closest pass' number shrink, and stop when it says on target. Tiny burns — a little goes a long way out here.");
+    }
+  }
+  if (sim.course && sim.course.onTarget && !announced.onTarget) {
+    announced.onTarget = true;
+    const tb = BODIES[sim.course.targetKey];
+    copilotSay("🎯 <b>On target!</b> Your path now passes inside " + (tb ? tb.name : "the target") +
+      "'s sphere of influence — coast with time-warp and get ready to burn retrograde at closest approach to capture. Flight dynamics would be proud.");
+  }
+
+  // Reentry plasma — first time the hull glows.
+  if ((sim.heat || 0) > 0.25 && !announced.reentry) {
+    announced.reentry = true;
+    copilotSay("🔥 <b>Reentry!</b> You're hitting the air so fast it's turning to glowing plasma around the ship — that orange fire is real physics (speed + air = heat). Come in at a shallow angle so the air slows you gently. Too steep and too fast… the ship burns up. This is why real capsules have heat shields!");
+  }
+  // Touchdowns.
+  if (sim.status === "landed" && sim.landed && !announced.landed[sim.landed.body]) {
+    announced.landed[sim.landed.body] = true;
+    const crew = sim.crew ? sim.crew.name : "Your Connie";
+    const key = sim.landed.body;
+    if (key === "earth") {
+      copilotSay("🛬 Gentle touchdown back on Earth — nicely flown. " + crew + " is out beside the ship, taking a bow.");
+    } else {
+      const name = BODIES[key] ? BODIES[key].name : key;
+      const fact = WORLD_FACTS[name] ? " " + WORLD_FACTS[name] : "";
+      copilotSay("🏁 <b>You landed on " + name + "!</b> " + crew +
+        " is out of the capsule, standing on another world — look beside your ship!" + fact +
+        " If you've still got fuel, throttle up (Z, then ↑) to lift off again.");
+    }
+  }
+  // Crashes.
+  if (sim.status === "crashed" && !announced.crashed) {
+    announced.crashed = true;
+    const crew = sim.crew ? sim.crew.name : "Your Connie";
+    if (sim.sankIntoClouds) {
+      const g = BODIES[sim.crashedInto];
+      copilotSay("🌀 The ship sank into <b>" + (g ? g.name : "the planet") + "'s</b> clouds and was crushed — gas giants have no surface at all, just air that gets thicker and thicker forever. " + crew + "'s escape bubble bounced back out, naturally. Orbit them, admire them… just don't try to park on them!");
+    } else if (sim.burnedUp && sim.crashedInto === "sun") {
+      copilotSay("☀️💥 You flew into the SUN. It's 5,500°C at the surface — nothing survives that. " + crew + " boinged away at the last second, slightly toasted. Fun fact: it actually takes MORE fuel to fall into the Sun than to escape the solar system!");
+    } else if (sim.burnedUp) {
+      copilotSay("🔥💥 The ship <b>burned up on reentry</b> — too fast and too steep, and the air-friction heat won. " + crew + "'s escape bubble popped out in time, as always. Next time skim the top of the air so it slows you a little at a time — real capsules survive with heat shields and a precise entry angle.");
+    } else if (sim.crashedInto && sim.crashedInto !== "earth") {
+      const b = BODIES[sim.crashedInto];
+      copilotSay("💥 We hit " + (b ? b.name : "the surface") + " too hard. " + (b && !b.atmosphere ? "No air here to slow you — you have to burn the engine to brake all the way down. " : "") + "Hit Reset and try a slower descent.");
+    } else {
+      copilotSay("💥 We hit the ground. Hit Reset, then try a gentler tilt — go straight up first, then lean over slowly once you're high up.");
+    }
+  }
+}
+
 // ---- game loop ----
 let last = 0;
+let courseTimer = 0;
 function frame(t) {
   const dt = last ? Math.min((t - last) / 1000, 0.05) : 0;
   last = t;
 
   if (sim.mode === "flight" && sim.status !== "crashed") {
     applyControls(dt);
-    if (dt > 0) Physics.step(sim, dt * sim.timeWarp); // physics sub-steps internally for warp
+    if (dt > 0) Physics.step(sim, dt * sim.timeWarp); // physics sub-steps adaptively
 
-    // Moon-transfer phasing: null unless we're in a stable CCW Earth orbit still well below
-    // the Moon. render (Burn marker + gold arrow) and the copilot snapshot both read this.
+    // Transfer phasing toward the current target (Moon from Earth orbit, planets from
+    // Sun orbit). null = no guidance applies right now.
     sim.transfer = Physics.transferWindow(sim);
-    // The moment the phasing comes right, say so ONCE — this is Apollo's translunar
-    // injection call ("go for TLI"), and the whole trick of getting to the Moon.
-    if (sim.transfer && sim.transfer.open && !announced.transferBurn) {
-      announced.transferBurn = true;
-      copilotSay("🌙 <b>Transfer window open — burn NOW!</b> The Moon is leading you by just the right angle (" +
-        Math.round(sim.transfer.leadAngle_deg) + "°), so if you burn <i>prograde</i> — the gold arrow is riding your green arrow now — " +
-        "and keep burning until your apoapsis stretches out to the Moon's distance (" + Math.round(BODIES.moon.orbitRadius / 1000) +
-        " km), you and the Moon will arrive at the same spot together. Then cut the engine and coast. Apollo timed this exact moment and called it <b>translunar injection</b>.");
+
+    // Mid-course correction: once the window guidance goes quiet (transfer underway),
+    // predict the closest pass to the target and which tiny burn shrinks the miss.
+    // Recomputed a couple of times a second — it's a 240-sample Kepler scan, not free.
+    courseTimer -= dt;
+    if (!sim.transfer && sim.status !== "landed") {
+      if (courseTimer <= 0) {
+        sim.course = Physics.courseCorrection(sim);
+        courseTimer = 0.5;
+      }
+    } else {
+      sim.course = null;
     }
 
-    if (sim.status === "orbit" && sim.orbit && sim.orbit.bodyName === "Earth" && !announced.orbit) {
-      announced.orbit = true;
-      copilotSay("🎉 You're in a stable orbit! You just fell <i>around</i> the planet instead of back into it — that's exactly how real spacecraft stay up. Apoapsis " +
-        (sim.orbit.apoapsis / 1000).toFixed(0) + " km, periapsis " + (sim.orbit.periapsis / 1000).toFixed(0) + " km. To go to the Moon, raise your apoapsis (burn prograde — your green arrow) until your orbit stretches out to the Moon.");
-    }
-    // Crossed into the Moon's sphere of influence — the Moon now runs the show.
-    if (sim.soi === "Moon" && !announced.moonSoi) {
-      announced.moonSoi = true;
-      copilotSay("🌙 You've entered the Moon's <b>sphere of influence</b> — from here the Moon's gravity is in charge, not Earth's. Your orbit readout now measures from the Moon. To get captured into Moon orbit, burn <i>retrograde</i> (opposite the green arrow) near your closest approach.");
-    }
-    // Captured into a real bound orbit around the Moon.
-    if (sim.orbit && sim.orbit.bodyName === "Moon" && sim.orbit.isOrbit && !announced.moonOrbit) {
-      announced.moonOrbit = true;
-      copilotSay("🛰️ You're in orbit around the <b>Moon</b>! Periapsis " + (sim.orbit.periapsis / 1000).toFixed(0) +
-        " km, apoapsis " + (sim.orbit.apoapsis / 1000).toFixed(0) + " km. The Moon has no air, so there's no parachute landing — you brake with the engine. Lower your periapsis, then burn to kill your speed on the way down.");
-    }
-    // Auto-deploy the chute low over Earth on the way down — the kid shouldn't need to
-    // know the P key for his first successful reentry.
-    if (!sim.craft.chuteDeployed && (sim.craft.chuteCount || 0) > 0 && sim.soi === "Earth" &&
+    flightCallouts();
+
+    // Auto-deploy the chute low over any world WITH AIR on the way down — the kid
+    // shouldn't need to know the P key for his first successful landing.
+    if (!sim.craft.chuteDeployed && (sim.craft.chuteCount || 0) > 0 &&
         sim.status === "flying" && sim.altitude < 2500 && sim.speed < 240) {
-      const c = sim.craft;
-      const vr = (c.vel.x * c.pos.x + c.vel.y * c.pos.y); // >0 climbing, <0 descending
-      if (vr < 0) deployChute(true);
-    }
-    // Reentry plasma — call it out the first time the hull starts glowing.
-    if ((sim.heat || 0) > 0.25 && !announced.reentry) {
-      announced.reentry = true;
-      copilotSay("🔥 <b>Reentry!</b> You're hitting the air so fast it's turning to glowing plasma around the ship — that orange fire is real physics (speed + air = heat). Come in at a shallow angle so the air slows you gently. Too steep and too fast… the ship burns up. This is why real capsules have heat shields!");
-    }
-    if (sim.status === "landed" && !announced.landed) {
-      announced.landed = true;
-      if (sim.landed && sim.landed.body === "moon")
-        copilotSay("🌙🏁 <b>You landed on the Moon!</b> " + (sim.crew ? sim.crew.name : "Your Connie") +
-          " is out of the capsule, standing on the surface — look beside your ship! You braked with the engine and touched down softly on another world, exactly what Apollo did in 1969. If you've still got fuel, throttle up (Z, then ↑) to lift off and fly home.");
-      else
-        copilotSay("🛬 Gentle touchdown back on Earth — nicely flown. " + (sim.crew ? sim.crew.name : "Your Connie") + " is out beside the ship, taking a bow.");
-    }
-    if (sim.status === "crashed" && !announced.crashed) {
-      announced.crashed = true;
-      if (sim.burnedUp)
-        copilotSay("🔥💥 The ship <b>burned up on reentry</b> — you came into the atmosphere too fast and too steep, and the air-friction heat won. " +
-          (sim.crew ? sim.crew.name : "Your Connie") + "'s escape bubble popped out in time, as always. Next time try a shallower path: skim the top of the air so it slows you a little at a time. Real capsules survive this with heat shields and careful entry angles — Apollo hit the air at a precise angle for exactly this reason.");
-      else if (sim.soi === "Moon")
-        copilotSay("💥 We hit the Moon too hard. The Moon has no air to slow you, so you have to burn the engine to brake all the way down. Hit Reset and try a slower descent.");
-      else
-        copilotSay("💥 We hit the ground. Hit Reset, then try a gentler tilt — go straight up first, then lean over slowly once you're high up.");
+      const here = BODIES[sim.soi ? sim.soi.toLowerCase() : ""];
+      if (here && here.atmosphere) {
+        // Descending? Radial velocity vs the local body (its own motion subtracted).
+        const bs = bodyStateAt(here.key, sim.time || 0);
+        const rx = sim.craft.pos.x - bs.pos.x, ry = sim.craft.pos.y - bs.pos.y;
+        const vr = (sim.craft.vel.x - bs.vel.x) * rx + (sim.craft.vel.y - bs.vel.y) * ry;
+        if (vr < 0) deployChute(true);
+      }
     }
     UI.renderStats(null, sim);
   }

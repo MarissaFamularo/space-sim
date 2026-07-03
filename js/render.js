@@ -1,12 +1,17 @@
 // render.js — Three.js renderer. Owns ALL Three.js. API frozen in ../ARCHITECTURE.md.
 // Coordinate conventions (from ARCHITECTURE.md):
-//   - Physics is planar 2D {x,y} in meters; world origin = Earth center.
+//   - Physics is planar 2D {x,y} in meters; WORLD origin = center of the SUN (Phase 4).
 //   - Render lifts 2D -> 3D as (x, y, 0); the orbital plane is the XY plane.
 //   - Craft angle is radians, 0 = pointing along +Y, increasing CCW (rotation about +Z).
-//   - Units are meters. Earth radius is large (~637 km in forgiving mode).
+//
+// FLOATING ORIGIN (Phase 4): world coordinates reach 4.5e11 m (Neptune), far beyond
+// float32 mesh precision. Every scene position is therefore WORLD MINUS ORIGIN, where
+// ORIGIN = the craft's position in flight (so the rocket always sits at (0,0,0) with
+// perfect precision) and (0,0) in build mode. The subtraction happens in float64 here,
+// BEFORE numbers ever touch a THREE.Vector3.
 import * as THREE from "three";
-import { BODIES, moonStateAt } from "./state.js";
-import { PARTS } from "./mods.js"; // merged catalog: stock + the kid's mods (same shape as parts.js)
+import { BODIES, PLANET_KEYS, bodyStateAt, dominantBody } from "./state.js";
+import { PARTS } from "./mods.js"; // merged catalog: stock + the kid's mods
 
 // ---- Module-private Three.js state (no other module touches three) ----
 let renderer = null;
@@ -14,50 +19,61 @@ let scene = null;
 let camera = null;
 let canvas = null;
 
-let earthMesh = null;
-let atmosphereMesh = null;
-let moonMesh = null;       // the Moon — a second world, orbits Earth (positioned per frame)
-let moonOrbitLine = null;  // faint ring tracing the Moon's path around Earth
+const ALL_KEYS = ["sun", ...PLANET_KEYS];
+let bodyGroups = {};       // key -> THREE.Group (planet mesh + halo + rings), positioned per frame
+let orbitRings = {};       // key -> LineLoop around its parent (positioned at parent per frame)
+let mapDots = {};          // key -> { dot, label } markers for map view
+let sunLight = null;       // point light riding the Sun
 let launchpad = null;
-let ground = null;         // build-mode ground plane (so the pad isn't floating in stars)
+let ground = null;         // build-mode ground plane
 let mapMarker = null;      // bright dot marking the craft in map view
-let moonMapDot = null;     // grey dot marking the Moon in map view (the real Moon is sub-pixel
-                           // when zoomed out to the whole system — 173 km in a 38,000 km frame)
-let moonMapLabel = null;   // "Moon" label sprite beside the dot
 let flightView = "follow"; // "follow" | "map"
 let mapFrame = 0;          // map-view scale actually used this frame (base * user zoom)
-let mapBase = 0;           // auto-fit scale (grow-only): keeps Earth + ship + orbit in view
-let mapZoom = 1;           // user zoom: >1 = zoomed OUT (toward the Moon), <1 = zoomed IN
+let mapBase = 0;           // auto-fit scale (grow-only)
+let mapZoom = 1;           // user zoom: >1 = zoomed OUT (toward the planets), <1 = in
 let headingArrow = null;   // cyan: where the nose points
-let progradeArrow = null;  // green: where the ship is actually moving
-let targetArrow = null;    // gold: where to AIM (gravity-turn director)
-let showTarget = true, showHeading = true, showPrograde = true; // per-arrow visibility toggles
+let progradeArrow = null;  // green: where the ship is actually moving (vs the local world)
+let targetArrow = null;    // gold: where to AIM
+let showTarget = true, showHeading = true, showPrograde = true;
 
-let craftGroup = null;     // current rocket THREE.Group (null if 0 parts)
-let craftHeight = 0;       // total stacked height of current craft (meters)
+let craftGroup = null;
+let craftHeight = 0;
 
-let connieMesh = null;     // the Connie (snake astronaut). Beside the pad in build mode;
-                           // comes out for an EVA next to the craft when landed.
+let connieMesh = null;
 
-let heatGlow = null;       // reentry plasma glow around the craft (opacity/size from sim.heat)
-let chuteCanopy = null;    // deployed parachute canopy (shown when sim.chuteOpen)
+let heatGlow = null;
+let chuteCanopy = null;
 
-let snapGhost = null;      // translucent attach indicator (build mode)
+let snapGhost = null;
 
 let orbitLine = null;      // predicted orbit ellipse (THREE.Line)
 
 let mode = "build";        // "build" | "flight"
 
+// Floating origin (world coords, float64). All scene positions subtract this.
+const ORIGIN = { x: 0, y: 0 };
 const EARTH = BODIES.earth;
 const R = EARTH.radius;
-const MOON = BODIES.moon;
 
-// ---- Simple mouse-drag orbit camera for build mode (self-contained, no addons) ----
+// Per-body looks: color, optional stripes (gas bands), rings, atmosphere halo color.
+const BODY_STYLE = {
+  sun:     { color: 0xffd75e, star: true },
+  mercury: { color: 0x9c8e82 },
+  venus:   { color: 0xe8c98e, halo: 0xf2d9a0 },
+  earth:   { color: 0x2a6cc4, halo: 0x6fb4ff },
+  moon:    { color: 0x9aa0a8 },
+  mars:    { color: 0xc1552f, halo: 0xd98a5e },
+  jupiter: { color: 0xc9a97a, stripes: ["#c9a97a", "#a8875d", "#e0c396", "#b5713f"], halo: 0xc9a97a },
+  saturn:  { color: 0xd9c08a, stripes: ["#d9c08a", "#c2a86f", "#e8d5a8"], rings: true, halo: 0xd9c08a },
+  uranus:  { color: 0x9ad4d6, halo: 0x9ad4d6 },
+  neptune: { color: 0x3f66d4, halo: 0x5f86e4 },
+};
+
+// ---- Simple mouse-drag orbit camera for build mode ----
 const buildCam = {
-  // spherical offset around the rocket target
-  azimuth: Math.PI * 0.25,   // around +Y
-  elevation: 0.25,           // tilt up from horizon (radians)
-  distance: 12,              // meters from target — close so a few-meter rocket is visible
+  azimuth: Math.PI * 0.25,
+  elevation: 0.25,
+  distance: 12,
   target: new THREE.Vector3(0, 0, 0),
   dragging: false,
   lastX: 0,
@@ -71,8 +87,6 @@ const _v2 = new THREE.Vector3();
 // ---- Materials (created once in init) ----
 let MAT = null;
 function makeMaterials() {
-  // Low metalness (no env map to reflect, else metals render black) + self-lit emissive so
-  // parts are always visible against black space regardless of lighting angle.
   const m = (color, metalness, roughness) => new THREE.MeshStandardMaterial({
     color, metalness, roughness, emissive: color, emissiveIntensity: 0.35,
   });
@@ -100,8 +114,23 @@ function materialForPart(def) {
   }
 }
 
+// Horizontal-band canvas texture for gas giants (latitude stripes on the sphere's V axis).
+function stripeTexture(colors) {
+  const cv = document.createElement("canvas");
+  cv.width = 8; cv.height = 128;
+  const ctx = cv.getContext("2d");
+  const bandCount = 9;
+  for (let i = 0; i < bandCount; i++) {
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.fillRect(0, Math.floor((i / bandCount) * 128), 8, Math.ceil(128 / bandCount));
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 // =====================================================================
-// Render.init — scene, camera, lights, starfield, Earth + atmosphere.
+// Render.init — scene, camera, lights, starfield, the whole solar system.
 // =====================================================================
 function init(canvasEl) {
   canvas = canvasEl;
@@ -111,58 +140,33 @@ function init(canvasEl) {
 
   scene = new THREE.Scene();
 
-  // Logarithmic-friendly near/far: rocket is ~10m, planet is ~640km, orbits ~1000km+.
-  camera = new THREE.PerspectiveCamera(55, 1, 1, 1e9);
-  camera.position.set(0, R + 12, 12);
-  camera.lookAt(0, R, 0);
+  // Far plane must contain the whole zoomed-out solar system (Neptune at 4.5e11 m).
+  camera = new THREE.PerspectiveCamera(55, 1, 1, 5e12);
+  camera.position.set(0, 12, 12);
+  camera.lookAt(0, 0, 0);
 
-  // Lighting: sun-like directional + soft ambient.
-  const sun = new THREE.DirectionalLight(0xffffff, 1.4);
-  sun.position.set(1, 0.6, 0.8).normalize();
-  scene.add(sun);
-  scene.add(new THREE.AmbientLight(0x404a66, 0.9));
-  scene.add(new THREE.HemisphereLight(0xbcd4ff, 0x202830, 0.6)); // soft sky/ground fill
+  // Sunlight comes FROM THE SUN's direction: a DirectionalLight re-aimed every frame from
+  // the Sun's scene position toward the craft (a PointLight at astronomical distance won't
+  // survive three's physical falloff — planets rendered black). Same brightness everywhere,
+  // a kid-friendly exposure setting; plus soft fill so night sides aren't void-black.
+  sunLight = new THREE.DirectionalLight(0xffffff, 1.4);
+  sunLight.target.position.set(0, 0, 0); // the craft rides the scene origin in flight
+  scene.add(sunLight);
+  scene.add(sunLight.target);
+  scene.add(new THREE.AmbientLight(0x404a66, 0.7));
+  scene.add(new THREE.HemisphereLight(0xbcd4ff, 0x202830, 0.5));
 
-  // Starfield — lots of points on a huge sphere shell. Cosmetic random is fine.
+  // Starfield — screen-size points on a huge shell centered on the floating origin
+  // (the craft), so the stars are always around you no matter where you fly.
   scene.add(makeStarfield());
 
-  // Earth: blue sphere of radius R centered at origin (physics origin = Earth center).
-  const earthGeo = new THREE.SphereGeometry(R, 96, 64);
-  const earthMat = new THREE.MeshStandardMaterial({
-    color: 0x2a6cc4, roughness: 0.95, metalness: 0.0, emissive: 0x06122a, emissiveIntensity: 0.4,
-  });
-  earthMesh = new THREE.Mesh(earthGeo, earthMat);
-  scene.add(earthMesh);
+  // Build every body: the Sun, the planets, the Moon.
+  for (const key of ALL_KEYS) bodyGroups[key] = makeBodyGroup(key);
+  for (const key of PLANET_KEYS) orbitRings[key] = makeOrbitRing(key);
 
-  // Faint atmosphere shell — slightly larger, additive, backside so it reads as a halo.
-  const atmoR = R + (EARTH.atmosphere ? EARTH.atmosphere.height : R * 0.02);
-  const atmoGeo = new THREE.SphereGeometry(atmoR, 96, 64);
-  const atmoMat = new THREE.MeshBasicMaterial({
-    color: 0x6fb4ff, transparent: true, opacity: 0.12,
-    side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false,
-  });
-  atmosphereMesh = new THREE.Mesh(atmoGeo, atmoMat);
-  scene.add(atmosphereMesh);
-
-  // The Moon — a second world to fly to (Phase 2). Real-to-scale: ~60 Earth-radii out and
-  // ~0.5° wide seen from low orbit, just like the real Moon. Positioned each frame from
-  // moonStateAt(sim.time); it rides a fixed circular orbit. Grey, cratered, no atmosphere.
-  const moonGeo = new THREE.SphereGeometry(MOON.radius, 64, 48);
-  const moonMat = new THREE.MeshStandardMaterial({
-    color: 0x9aa0a8, roughness: 1.0, metalness: 0.0, emissive: 0x15171c, emissiveIntensity: 0.5,
-  });
-  moonMesh = new THREE.Mesh(moonGeo, moonMat);
-  moonMesh.visible = false; // shown in flight only
-  scene.add(moonMesh);
-
-  // Faint ring tracing the Moon's orbit so it reads as a destination, not a stray dot.
-  moonOrbitLine = makeMoonOrbit(MOON.orbitRadius);
-  moonOrbitLine.visible = false;
-  scene.add(moonOrbitLine);
-
-  // Simple launchpad at the surface (top of Earth, +Y).
+  // Simple launchpad (build mode).
   launchpad = makeLaunchpad();
-  launchpad.position.set(0, R, 0);
+  launchpad.position.set(0, 0, 0);
   scene.add(launchpad);
 
   // The Connie — waits beside the pad in build mode, EVAs beside the craft after a landing.
@@ -182,25 +186,23 @@ function init(canvasEl) {
   heatGlow.visible = false;
   scene.add(heatGlow);
 
-  // Deployed parachute: red/white canopy dome + shroud lines, positioned above the craft
-  // (opposite the velocity) while sim.chuteOpen. Built once, repositioned per frame.
+  // Deployed parachute canopy.
   chuteCanopy = makeChuteCanopy();
   chuteCanopy.visible = false;
   scene.add(chuteCanopy);
 
-  // Build-mode ground: a large flat disc at y=0 so the pad rests on a surface (night sky
-  // above, ground below) instead of floating in stars. Hidden during flight.
+  // Build-mode ground disc.
   const groundGeo = new THREE.CircleGeometry(2000, 64);
   const groundMat = new THREE.MeshStandardMaterial({
     color: 0x232c3c, roughness: 1, metalness: 0, side: THREE.DoubleSide,
   });
   ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2; // lie flat in the XZ plane at y=0
+  ground.rotation.x = -Math.PI / 2;
   ground.position.y = 0;
   ground.visible = false;
   scene.add(ground);
 
-  // Map-view marker: a bright dot we scale up so the craft is visible from far away.
+  // Map-view marker for the craft.
   mapMarker = new THREE.Mesh(
     new THREE.SphereGeometry(1, 16, 12),
     new THREE.MeshBasicMaterial({ color: 0xffb347 })
@@ -209,71 +211,154 @@ function init(canvasEl) {
   mapMarker.visible = false;
   scene.add(mapMarker);
 
-  // Direction arrows: green = prograde (where you're going), cyan = heading (where the nose points).
-  // Lining them up is the gravity turn. Shown in both flight views, sized per view each frame.
+  // Map dots + name labels for every body (the real spheres are sub-pixel at system zoom).
+  for (const key of ALL_KEYS) {
+    const style = BODY_STYLE[key];
+    const dot = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 16, 12),
+      new THREE.MeshBasicMaterial({ color: style.color })
+    );
+    dot.frustumCulled = false;
+    dot.visible = false;
+    scene.add(dot);
+    const label = makeTextSprite(BODIES[key].name, "#" + style.color.toString(16).padStart(6, "0"));
+    scene.add(label);
+    mapDots[key] = { dot, label };
+  }
+
+  // Direction arrows.
   const UP = new THREE.Vector3(0, 1, 0);
   progradeArrow = new THREE.ArrowHelper(UP, new THREE.Vector3(), 1, 0x6effa0, 0.35, 0.25);
   headingArrow = new THREE.ArrowHelper(UP, new THREE.Vector3(), 1, 0x6fd0ff, 0.35, 0.25);
-  targetArrow = new THREE.ArrowHelper(UP, new THREE.Vector3(), 1, 0xffd24a, 0.35, 0.25); // gold "aim here"
+  targetArrow = new THREE.ArrowHelper(UP, new THREE.Vector3(), 1, 0xffd24a, 0.35, 0.25);
   for (const a of [progradeArrow, headingArrow, targetArrow]) { a.frustumCulled = false; a.visible = false; scene.add(a); }
 
   makeMaterials();
 
-  // Resize handling.
   window.addEventListener("resize", onResize);
   onResize();
 
-  // Build-mode drag-orbit controls.
   attachBuildControls();
+}
+
+// One body: sphere (+ stripes for gas giants), optional atmosphere halo, optional rings.
+// Group positioned per frame at bodyStateAt(key) - ORIGIN. Hidden in build mode.
+function makeBodyGroup(key) {
+  const b = BODIES[key];
+  const style = BODY_STYLE[key];
+  const g = new THREE.Group();
+
+  const detail = key === "earth" ? [96, 64] : [48, 32];
+  let mat;
+  if (style.star) {
+    // The Sun glows by itself — it IS the light source.
+    mat = new THREE.MeshBasicMaterial({ color: style.color });
+  } else if (style.stripes) {
+    mat = new THREE.MeshStandardMaterial({
+      map: stripeTexture(style.stripes), roughness: 0.9, metalness: 0,
+      emissive: style.color, emissiveIntensity: 0.22,
+    });
+  } else {
+    mat = new THREE.MeshStandardMaterial({
+      color: style.color, roughness: 0.95, metalness: 0,
+      emissive: style.color, emissiveIntensity: key === "moon" ? 0.12 : 0.18,
+    });
+  }
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(b.radius, detail[0], detail[1]), mat);
+  g.add(mesh);
+
+  if (style.star) {
+    // Soft additive glow sprite so the Sun reads as blinding, not a yellow ball.
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = 128;
+    const ctx = cv.getContext("2d");
+    const grad = ctx.createRadialGradient(64, 64, 8, 64, 64, 64);
+    grad.addColorStop(0, "rgba(255,235,170,0.9)");
+    grad.addColorStop(0.4, "rgba(255,200,90,0.35)");
+    grad.addColorStop(1, "rgba(255,180,60,0)");
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, 128, 128);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(cv), blending: THREE.AdditiveBlending,
+      depthWrite: false, transparent: true,
+    }));
+    glow.scale.setScalar(b.radius * 7);
+    g.add(glow);
+  }
+
+  if (style.halo && b.atmosphere) {
+    const atmoR = b.radius + b.atmosphere.height * 4; // exaggerated a touch so it reads
+    const halo = new THREE.Mesh(
+      new THREE.SphereGeometry(atmoR, 48, 32),
+      new THREE.MeshBasicMaterial({
+        color: style.halo, transparent: true, opacity: 0.12,
+        side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false,
+      })
+    );
+    g.add(halo);
+  }
+
+  if (style.rings) {
+    // Saturn's rings: flat annulus, tilted so it reads in both follow and map views.
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(b.radius * 1.25, b.radius * 2.3, 96),
+      new THREE.MeshBasicMaterial({
+        color: 0xcdbb96, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
+      })
+    );
+    ring.rotation.x = 0.45; // tilt out of the orbital plane
+    g.add(ring);
+  }
+
+  g.visible = false; // shown in flight
+  scene.add(g);
+  return g;
+}
+
+// Circle tracing a body's orbit, centered on its PARENT (positioned per frame).
+function makeOrbitRing(key) {
+  const b = BODIES[key];
+  const SEG = 256;
+  const positions = new Float32Array((SEG + 1) * 3);
+  for (let i = 0; i <= SEG; i++) {
+    const t = (i / SEG) * Math.PI * 2;
+    positions[i * 3 + 0] = b.orbitRadius * Math.cos(t);
+    positions[i * 3 + 1] = b.orbitRadius * Math.sin(t);
+    positions[i * 3 + 2] = 0;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  const mat = new THREE.LineBasicMaterial({ color: 0x555f70, transparent: true, opacity: 0.3 });
+  const line = new THREE.LineLoop(geo, mat);
+  line.frustumCulled = false;
+  line.visible = false;
+  scene.add(line);
+  return line;
 }
 
 function makeStarfield() {
   const COUNT = 4000;
   const positions = new Float32Array(COUNT * 3);
-  // Far beyond Earth AND the Moon (else the Moon renders amongst the stars), inside far plane.
-  const shell = Math.max(R * 60, MOON.orbitRadius * 1.5);
+  const shell = 1.5e12; // beyond Neptune's orbit; the shell rides the floating origin
   for (let i = 0; i < COUNT; i++) {
-    // Random direction on a sphere (cosmetic — Math.random acceptable for stars).
     const u = Math.random() * 2 - 1;
     const theta = Math.random() * Math.PI * 2;
     const s = Math.sqrt(1 - u * u);
-    const x = s * Math.cos(theta);
-    const y = s * Math.sin(theta);
-    const z = u;
-    positions[i * 3 + 0] = x * shell;
-    positions[i * 3 + 1] = y * shell;
-    positions[i * 3 + 2] = z * shell;
+    positions[i * 3 + 0] = s * Math.cos(theta) * shell;
+    positions[i * 3 + 1] = s * Math.sin(theta) * shell;
+    positions[i * 3 + 2] = u * shell;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  // Fixed pixel size (no attenuation): stars stay stars from LEO to Neptune.
   const mat = new THREE.PointsMaterial({
-    color: 0xffffff, size: R * 0.06, sizeAttenuation: true, depthWrite: false,
+    color: 0xffffff, size: 1.6, sizeAttenuation: false, depthWrite: false,
   });
   const pts = new THREE.Points(geo, mat);
   pts.frustumCulled = false;
   return pts;
 }
 
-// A flat circle in the XY plane (Earth-centered) tracing the Moon's orbit.
-function makeMoonOrbit(radius) {
-  const SEG = 256;
-  const positions = new Float32Array((SEG + 1) * 3);
-  for (let i = 0; i <= SEG; i++) {
-    const t = (i / SEG) * Math.PI * 2;
-    positions[i * 3 + 0] = radius * Math.cos(t);
-    positions[i * 3 + 1] = radius * Math.sin(t);
-    positions[i * 3 + 2] = 0;
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  const mat = new THREE.LineBasicMaterial({ color: 0x555f70, transparent: true, opacity: 0.35 });
-  const line = new THREE.LineLoop(geo, mat);
-  line.frustumCulled = false;
-  return line;
-}
-
 // A Connie: coiled green snake, head up, inside a clear bubble helmet (his design).
-// Built from primitives, ~1.6 m tall, base of the coil at the group's y=0.
 function makeConnie() {
   const g = new THREE.Group();
   const snakeMat = new THREE.MeshStandardMaterial({
@@ -286,7 +371,6 @@ function makeConnie() {
     color: 0xf2f4f8, metalness: 0.15, roughness: 0.5, emissive: 0x666a72, emissiveIntensity: 0.35,
   });
 
-  // Coiled body: three stacked rings, wide at the bottom.
   const coils = [
     { R: 0.42, tube: 0.155, y: 0.15 },
     { R: 0.30, tube: 0.135, y: 0.42 },
@@ -294,18 +378,16 @@ function makeConnie() {
   ];
   for (const c of coils) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(c.R, c.tube, 12, 28), snakeMat);
-    ring.rotation.x = Math.PI / 2; // lie flat (hole pointing up)
+    ring.rotation.x = Math.PI / 2;
     ring.position.y = c.y;
     g.add(ring);
   }
 
-  // Neck rising out of the coil, leaning slightly forward (+Z = her front).
   const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.13, 0.55, 14), snakeMat);
   neck.position.set(0, 0.95, 0.05);
   neck.rotation.x = 0.18;
   g.add(neck);
 
-  // Head + snout.
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.165, 18, 14), snakeMat);
   head.position.set(0, 1.26, 0.12);
   g.add(head);
@@ -313,7 +395,6 @@ function makeConnie() {
   snout.position.set(0, 1.22, 0.24);
   g.add(snout);
 
-  // Eyes — big and friendly, looking forward.
   const eyeMat = new THREE.MeshBasicMaterial({ color: 0x101418 });
   const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
   for (const side of [-1, 1]) {
@@ -325,12 +406,10 @@ function makeConnie() {
     g.add(pupil);
   }
 
-  // Forked tongue — a thin red sliver, because of course.
   const tongue = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.012, 0.14), new THREE.MeshBasicMaterial({ color: 0xd03a4a }));
   tongue.position.set(0, 1.18, 0.34);
   g.add(tongue);
 
-  // Bubble helmet: clear sphere around the head, on a white suit collar.
   const helmet = new THREE.Mesh(
     new THREE.SphereGeometry(0.30, 24, 18),
     new THREE.MeshBasicMaterial({
@@ -343,7 +422,6 @@ function makeConnie() {
   collar.rotation.x = Math.PI / 2;
   collar.position.set(0, 1.01, 0.08);
   g.add(collar);
-  // Little backpack (life support) behind the neck.
   const pack = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.3, 0.12), suitMat);
   pack.position.set(0, 0.86, -0.18);
   g.add(pack);
@@ -351,12 +429,11 @@ function makeConnie() {
   return g;
 }
 
-// Deployed parachute canopy: hemisphere dome, alternating red/white gores suggested by a
-// striped second shell, plus shroud lines converging to the group's origin (the craft).
+// Deployed parachute canopy.
 function makeChuteCanopy() {
   const g = new THREE.Group();
-  const RIG = 7;    // shroud line length: canopy rim sits this far up
-  const RAD = 4.5;  // canopy radius
+  const RIG = 7;
+  const RAD = 4.5;
   const domeMat = new THREE.MeshStandardMaterial({
     color: 0xe8564a, metalness: 0, roughness: 0.9, side: THREE.DoubleSide,
     emissive: 0x772620, emissiveIntensity: 0.45,
@@ -365,7 +442,6 @@ function makeChuteCanopy() {
     new THREE.SphereGeometry(RAD, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2), domeMat);
   dome.position.y = RIG;
   g.add(dome);
-  // White stripe band near the rim (reads as gores from a distance).
   const stripeMat = new THREE.MeshStandardMaterial({
     color: 0xf2f4f8, metalness: 0, roughness: 0.9, side: THREE.DoubleSide,
     emissive: 0x6a6f78, emissiveIntensity: 0.4,
@@ -374,7 +450,6 @@ function makeChuteCanopy() {
     new THREE.SphereGeometry(RAD * 1.01, 24, 3, 0, Math.PI * 2, Math.PI * 0.30, Math.PI * 0.12), stripeMat);
   stripe.position.y = RIG;
   g.add(stripe);
-  // Shroud lines from craft (origin) to the canopy rim.
   const linePts = [];
   const LINES = 8;
   for (let i = 0; i < LINES; i++) {
@@ -389,7 +464,7 @@ function makeChuteCanopy() {
   return g;
 }
 
-// Place the Connie standing on a surface: feet (coil base) at `basePos`, body up along `up`.
+// Place the Connie standing on a surface: feet at scene `basePos`, body up along `up`.
 function placeConnie(basePos, up) {
   if (!connieMesh) return;
   connieMesh.position.copy(basePos);
@@ -399,11 +474,10 @@ function placeConnie(basePos, up) {
 
 function makeLaunchpad() {
   const g = new THREE.Group();
-  // Small pad sized for a few-meter rocket (NOT a 14m slab that fills the view).
   const padGeo = new THREE.CylinderGeometry(1.8, 2.2, 0.5, 24);
   const padMat = new THREE.MeshStandardMaterial({ color: 0x3a3f48, roughness: 0.9 });
   const pad = new THREE.Mesh(padGeo, padMat);
-  pad.position.y = 0.25; // pad top at y=0.5
+  pad.position.y = 0.25;
   g.add(pad);
   return g;
 }
@@ -412,8 +486,7 @@ function onResize() {
   if (!renderer || !camera) return;
   const w = window.innerWidth;
   const h = window.innerHeight;
-  renderer.setSize(w, h); // updateStyle=true: sets canvas CSS size to match the window
-  // (was setSize(w,h,false): buffer set but display size left at 2x, overflowing bottom-right)
+  renderer.setSize(w, h); // updateStyle=true (see HANDOFF gotchas)
   camera.aspect = w / Math.max(1, h);
   camera.updateProjectionMatrix();
 }
@@ -447,7 +520,6 @@ function attachBuildControls() {
       const factor = Math.exp(e.deltaY * 0.001);
       buildCam.distance = Math.max(3, Math.min(200, buildCam.distance * factor));
     } else if (mode === "flight" && flightView === "map") {
-      // Scroll to zoom the map: down/away = zoom out (toward the Moon), up = zoom in.
       e.preventDefault();
       zoomMap(Math.exp(e.deltaY * 0.0015));
     }
@@ -458,7 +530,6 @@ function attachBuildControls() {
 // Render.buildCraftMesh — (re)build rocket Group, bottom->top, centered.
 // =====================================================================
 function buildCraftMesh(craft) {
-  // Remove previous group.
   if (craftGroup) {
     scene.remove(craftGroup);
     disposeGroup(craftGroup);
@@ -467,26 +538,23 @@ function buildCraftMesh(craft) {
   craftHeight = 0;
 
   if (!craft || !craft.parts || craft.parts.length === 0) {
-    return; // robust: 0 parts -> no mesh
+    return;
   }
 
-  // Resolve PartDefs: each PartInstance carries partId; look up in the PARTS catalog.
   const defs = resolveDefs(craft);
   if (defs.length === 0) return;
 
-  // Total height for centering.
   let total = 0;
   for (const d of defs) total += (d.height || 0);
   craftHeight = total;
 
   const group = new THREE.Group();
 
-  // Stack bottom->top along +Y. parts[0] = bottom. Center the whole stack on origin.
-  let cursor = -total / 2; // y of the bottom face of current part
+  let cursor = -total / 2;
   for (const def of defs) {
     const h = def.height || 1;
     const r = def.radius || 0.5;
-    const cy = cursor + h / 2; // center of this part
+    const cy = cursor + h / 2;
     const partObj = makePartObject(def, h, r);
     partObj.position.y = cy;
     group.add(partObj);
@@ -496,7 +564,6 @@ function buildCraftMesh(craft) {
   craftGroup = group;
   scene.add(group);
 
-  // Reset snap ghost position relative to new stack top.
   if (snapGhost) snapGhost.visible = false;
 }
 
@@ -509,12 +576,10 @@ function resolveDefs(craft) {
   return out;
 }
 
-// Build the THREE.Object3D for one part based on its shape.
 function makePartObject(def, h, r) {
   const mat = materialForPart(def);
   switch (def.shape) {
     case "cone": {
-      // Pod / nose cone: cone pointing +Y.
       const geo = new THREE.ConeGeometry(r, h, 24);
       return new THREE.Mesh(geo, mat);
     }
@@ -523,8 +588,6 @@ function makePartObject(def, h, r) {
       return new THREE.Mesh(geo, mat);
     }
     case "nozzle": {
-      // Engine bell: cylinder tapering wider at the BOTTOM (narrow top, flared bottom).
-      // CylinderGeometry(radiusTop, radiusBottom, height). Open-ended -> render both sides.
       const geo = new THREE.CylinderGeometry(r * 0.55, r, h, 24, 1, true);
       const bellMat = mat.clone();
       bellMat._isClone = true;
@@ -532,12 +595,11 @@ function makePartObject(def, h, r) {
       return new THREE.Mesh(geo, bellMat);
     }
     case "chute": {
-      // Packed parachute: a small red-and-white striped dome canister on the pod's tip.
       const grp = new THREE.Group();
       const dome = new THREE.Mesh(
         new THREE.SphereGeometry(r * 0.75, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat);
-      dome.scale.y = h / (r * 0.75); // stretch hemisphere to the part height
-      dome.position.y = -h / 2;      // dome base at the part's bottom face
+      dome.scale.y = h / (r * 0.75);
+      dome.position.y = -h / 2;
       grp.add(dome);
       const band = new THREE.Mesh(
         new THREE.CylinderGeometry(r * 0.76, r * 0.76, h * 0.22, 20),
@@ -547,14 +609,11 @@ function makePartObject(def, h, r) {
       return grp;
     }
     case "fin": {
-      // Thin triangular-ish fin attached to the side. Use a thin box offset on +X.
       const grp = new THREE.Group();
       const finGeo = new THREE.BoxGeometry(r * 1.2, h, 0.08);
       const fin = new THREE.Mesh(finGeo, mat);
-      // Offset so the inner edge sits near the stack surface, fin sticks out on +X.
       fin.position.x = r * 0.9;
       grp.add(fin);
-      // Mirror on -X so it reads as a pair (cosmetic stabilizers).
       const fin2 = fin.clone();
       fin2.position.x = -r * 0.9;
       grp.add(fin2);
@@ -572,24 +631,25 @@ function makePartObject(def, h, r) {
 // =====================================================================
 function setMode(m) {
   mode = m === "flight" ? "flight" : "build";
+  const showWorld = mode === "flight";
+  for (const key of ALL_KEYS) if (bodyGroups[key]) bodyGroups[key].visible = showWorld;
+  for (const key of PLANET_KEYS) if (orbitRings[key]) orbitRings[key].visible = showWorld;
+  if (sunLight) sunLight.visible = true; // lights both modes (build uses it as a key light)
+
   if (mode === "build") {
-    // Build happens near the ORIGIN against the stars (Earth hidden) so the framing is
-    // robust regardless of planet scale — at the surface (y~637000) precision/framing break.
-    // Rocket rests on a small pad with its bottom at the pad top (~1.2m).
-    if (earthMesh) earthMesh.visible = false;
-    if (atmosphereMesh) atmosphereMesh.visible = false;
-    if (moonMesh) moonMesh.visible = false;
-    if (moonOrbitLine) moonOrbitLine.visible = false;
+    // Build happens near the scene origin against the stars (world hidden): the framing is
+    // robust regardless of where Earth is. ORIGIN resets to (0,0).
+    ORIGIN.x = 0; ORIGIN.y = 0;
+    if (sunLight) sunLight.position.set(3e3, 2e3, 4e3); // pleasant studio angle
     if (launchpad) { launchpad.visible = true; launchpad.position.set(0, 0, 0); }
     if (ground) ground.visible = true;
-    // Connie waits beside the pad, watching you build her ride.
     if (connieMesh) {
       connieMesh.position.set(2.7, 0, 1.4);
       connieMesh.quaternion.identity();
-      connieMesh.rotation.y = -0.5; // angled toward the rocket
+      connieMesh.rotation.y = -0.5;
       connieMesh.visible = true;
     }
-    const baseY = 0.2; // seat the rocket onto the pad (pad top ~0.5; slight overlap looks planted)
+    const baseY = 0.2;
     if (craftGroup) {
       craftGroup.position.set(0, baseY + craftHeight / 2, 0);
       craftGroup.rotation.set(0, 0, 0);
@@ -597,27 +657,27 @@ function setMode(m) {
     } else {
       buildCam.target.set(0, baseY + 1, 0);
     }
-    // Frame the rocket up close.
     buildCam.distance = Math.max(8, craftHeight * 2.2 + 6);
     if (orbitLine) orbitLine.visible = false;
     if (heatGlow) heatGlow.visible = false;
     if (chuteCanopy) chuteCanopy.visible = false;
     if (mapMarker) mapMarker.visible = false;
-    if (moonMapDot) { moonMapDot.visible = false; moonMapLabel.visible = false; }
+    hideMapDots();
     if (progradeArrow) progradeArrow.visible = false;
     if (headingArrow) headingArrow.visible = false;
     if (targetArrow) targetArrow.visible = false;
   } else {
-    // Flight: show the planet again; the launchpad would overlap the craft at the surface.
-    if (earthMesh) earthMesh.visible = true;
-    if (atmosphereMesh) atmosphereMesh.visible = true;
-    if (moonMesh) moonMesh.visible = true;
-    if (moonOrbitLine) moonOrbitLine.visible = true;
     if (launchpad) launchpad.visible = false;
     if (ground) ground.visible = false;
-    if (connieMesh) connieMesh.visible = false; // she's inside the capsule now
+    if (connieMesh) connieMesh.visible = false;
     if (orbitLine) orbitLine.visible = true;
-    flightView = "follow"; // launches start in follow-cam
+    flightView = "follow";
+  }
+}
+
+function hideMapDots() {
+  for (const key of ALL_KEYS) {
+    if (mapDots[key]) { mapDots[key].dot.visible = false; mapDots[key].label.visible = false; }
   }
 }
 
@@ -633,7 +693,6 @@ function update(sim) {
     updateFlight(sim);
   }
 
-  // Predicted orbit ellipse (only when sim.orbit exists and we're in flight).
   if (mode === "flight" && sim && sim.orbit) {
     updateOrbitLine(sim);
   } else {
@@ -642,28 +701,21 @@ function update(sim) {
     if (peMarker) peMarker.visible = false;
   }
 
-  // Transfer "Burn" marker: gold dot on the current orbit where the Moon burn should start
-  // (map view only — that's where you plan the trip). main.js fills sim.transfer each frame
-  // from Physics.transferWindow; null means no guidance (wrong orbit / already going).
   updateBurnMarker(sim);
 
   renderer.render(scene, camera);
 }
 
 function updateBuildCamera() {
-  // Spherical -> Cartesian offset around the build target.
   const ce = Math.cos(buildCam.elevation);
   const se = Math.sin(buildCam.elevation);
   const ca = Math.cos(buildCam.azimuth);
   const sa = Math.sin(buildCam.azimuth);
   const d = buildCam.distance;
-  const ox = d * ce * sa;
-  const oy = d * se;
-  const oz = d * ce * ca;
   camera.position.set(
-    buildCam.target.x + ox,
-    buildCam.target.y + oy,
-    buildCam.target.z + oz
+    buildCam.target.x + d * ce * sa,
+    buildCam.target.y + d * se,
+    buildCam.target.z + d * ce * ca
   );
   camera.up.set(0, 1, 0);
   camera.lookAt(buildCam.target);
@@ -671,33 +723,44 @@ function updateBuildCamera() {
 
 function updateFlight(sim) {
   if (!sim || !sim.craft) return;
-  const px = sim.craft.pos.x;
-  const py = sim.craft.pos.y;
+  const t = sim.time || 0;
+
+  // FLOATING ORIGIN: the craft. Everything else is drawn relative to it (float64 math
+  // here, so a 10 m rocket at Neptune renders as crisply as on the pad).
+  ORIGIN.x = sim.craft.pos.x;
+  ORIGIN.y = sim.craft.pos.y;
   const angle = sim.craft.angle || 0;
 
-  // Place the Moon for this instant (rides its fixed circular orbit around Earth).
-  if (moonMesh) {
-    const m = moonStateAt(sim.time || 0);
-    moonMesh.position.set(m.pos.x, m.pos.y, 0);
+  // The local world: who owns the craft right now (arrows, cameras, EVA all use it).
+  const dom = dominantBody(sim.craft.pos, t);
+
+  // Place every body and its orbit ring.
+  const states = {};
+  for (const key of ALL_KEYS) {
+    const st = bodyStateAt(key, t);
+    states[key] = st;
+    bodyGroups[key].position.set(st.pos.x - ORIGIN.x, st.pos.y - ORIGIN.y, 0);
   }
+  for (const key of PLANET_KEYS) {
+    const parent = states[BODIES[key].parent];
+    orbitRings[key].position.set(parent.pos.x - ORIGIN.x, parent.pos.y - ORIGIN.y, 0);
+  }
+  sunLight.position.copy(bodyGroups.sun.position);
 
   if (craftGroup) {
-    // Place craft: 2D -> 3D as (x, y, 0).
-    craftGroup.position.set(px, py, 0);
-    // Rotate by angle about Z so local +Y aligns with craft facing.
+    craftGroup.position.set(0, 0, 0);
     craftGroup.rotation.set(0, 0, angle);
   }
 
-  // Reentry glow: fades in with sim.heat, hugs the craft, stretches slightly along velocity.
+  // Reentry glow.
   if (heatGlow) {
     const heat = sim.heat || 0;
     if (heat > 0.06 && sim.status !== "landed" && sim.status !== "crashed") {
       const size = Math.max(2.5, craftHeight * (0.8 + heat * 1.2));
-      heatGlow.position.set(px, py, 0);
+      heatGlow.position.set(0, 0, 0);
       heatGlow.scale.set(size, size * 1.35, size);
-      heatGlow.rotation.z = angle; // stretch roughly along the hull
+      heatGlow.rotation.z = angle;
       heatGlow.material.opacity = Math.min(0.85, heat * 1.1);
-      // shift color orange -> white-hot as heat climbs
       heatGlow.material.color.setHSL(0.07, 1.0, 0.5 + heat * 0.35);
       heatGlow.visible = true;
     } else {
@@ -705,15 +768,15 @@ function updateFlight(sim) {
     }
   }
 
-  // Open parachute: canopy above the craft, pointing opposite the velocity (or radially up
-  // when nearly stopped), anchored at the craft's top.
+  // Open parachute: canopy opposite the AIR-relative velocity.
   if (chuteCanopy) {
     if (sim.chuteOpen && sim.status !== "landed" && sim.status !== "crashed") {
-      const v = sim.craft.vel, vm = Math.hypot(v.x, v.y);
+      const rvx = sim.craft.vel.x - dom.vel.x, rvy = sim.craft.vel.y - dom.vel.y;
+      const vm = Math.hypot(rvx, rvy);
       let ux, uy;
-      if (vm > 3) { ux = -v.x / vm; uy = -v.y / vm; }
-      else { const rm = Math.hypot(px, py) || 1; ux = px / rm; uy = py / rm; }
-      chuteCanopy.position.set(px + ux * craftHeight * 0.5, py + uy * craftHeight * 0.5, 0);
+      if (vm > 3) { ux = -rvx / vm; uy = -rvy / vm; }
+      else { const rm = Math.hypot(dom.rel.x, dom.rel.y) || 1; ux = dom.rel.x / rm; uy = dom.rel.y / rm; }
+      chuteCanopy.position.set(ux * craftHeight * 0.5, uy * craftHeight * 0.5, 0);
       chuteCanopy.quaternion.setFromUnitVectors(_v1.set(0, 1, 0), _v2.set(ux, uy, 0).normalize());
       chuteCanopy.visible = true;
     } else {
@@ -721,20 +784,14 @@ function updateFlight(sim) {
     }
   }
 
-  // Landed EVA: the Connie comes out and stands beside the ship (the reward moment).
+  // Landed EVA: the Connie stands beside the ship on WHATEVER world she landed on.
   if (connieMesh) {
-    if (sim.status === "landed") {
-      // Local "up" = radial from whichever body she's standing on.
-      let bx = 0, by = 0;
-      if (sim.landed && sim.landed.body === "moon") {
-        const m = moonStateAt(sim.time || 0);
-        bx = m.pos.x; by = m.pos.y;
-      }
-      const rl = Math.hypot(px - bx, py - by) || 1;
-      const ux = (px - bx) / rl, uy = (py - by) / rl;
-      // Stand 3 m to the side of the craft (along the surface tangent), feet at craft's radius.
+    if (sim.status === "landed" && sim.landed && states[sim.landed.body]) {
+      const bs = states[sim.landed.body];
+      const rl = Math.hypot(sim.craft.pos.x - bs.pos.x, sim.craft.pos.y - bs.pos.y) || 1;
+      const ux = (sim.craft.pos.x - bs.pos.x) / rl, uy = (sim.craft.pos.y - bs.pos.y) / rl;
       placeConnie(
-        new THREE.Vector3(px + -uy * 3.0, py + ux * 3.0, 0),
+        _v1.set(-uy * 3.0, ux * 3.0, 0).clone(),
         new THREE.Vector3(ux, uy, 0)
       );
     } else {
@@ -743,145 +800,140 @@ function updateFlight(sim) {
   }
 
   if (flightView === "map") {
-    updateMapCamera(sim, px, py);          // sets mapFrame + marker
-    updateDirArrows(sim, px, py, angle, true);
+    updateMapCamera(sim, dom, states);
+    updateDirArrows(sim, dom, angle, true);
     return;
   }
   if (mapMarker) mapMarker.visible = false;
-  if (moonMapDot) { moonMapDot.visible = false; moonMapLabel.visible = false; }
-  updateDirArrows(sim, px, py, angle, false);
+  hideMapDots();
+  updateDirArrows(sim, dom, angle, false);
 
-  // Follow-cam: a little behind/above the craft, with the world below.
-  // "Up" = radial from whichever body owns the craft (Earth, or the Moon near it).
-  const cx = (sim.orbit && sim.orbit.center) ? sim.orbit.center.x : 0;
-  const cy = (sim.orbit && sim.orbit.center) ? sim.orbit.center.y : 0;
-  _v1.set(px - cx, py - cy, 0);
-  const radial = _v2.copy(_v1).normalize(); // points away from the dominant body's center
-  if (!isFinite(radial.x) || radial.lengthSq() < 0.5) radial.set(0, 1, 0);
+  // Follow-cam: a little behind/above the craft. "Up" = radial from the dominant body.
+  // The camera tips DOWN toward the local world so it stays in frame — from low orbit the
+  // planet fills the bottom anyway, but from high orbit (2-3 radii up) a straight-at-the-
+  // craft camera shows only stars while Saturn sits 70° below the view axis.
+  const rl = Math.hypot(dom.rel.x, dom.rel.y);
+  const radial = _v2.set(dom.rel.x, dom.rel.y, 0);
+  if (rl > 0.5) radial.multiplyScalar(1 / rl); else radial.set(0, 1, 0);
 
   const camDist = Math.max(20, craftHeight * 4 + 30);
-  // Offset: pull back along radial (above the craft) and out along +Z (behind, out of plane)
-  // so the curved Earth is visible below the craft.
-  camera.position.set(
-    px + radial.x * camDist * 0.35,
-    py + radial.y * camDist * 0.35,
-    camDist
-  );
-  camera.up.copy(radial); // keep planet-down orientation
-  camera.lookAt(px, py, 0);
+  camera.position.set(radial.x * camDist * 0.35, radial.y * camDist * 0.35, camDist);
+  camera.up.copy(radial);
+  const distSurface = Math.max(0, rl - dom.body.radius);
+  const L = Math.min(distSurface * 0.8, camDist * 2.2); // craft stays upper-frame, world in view
+  camera.lookAt(-radial.x * L, -radial.y * L, 0);
 }
 
-// Map view: top-down of the orbital (XY) plane — Earth centered, the orbit ellipse around it,
-// and a bright marker for the craft moving along it. This is where "you're in orbit" becomes
-// visible: the craft tracks around the planet.
-function updateMapCamera(sim, px, py) {
-  // Earth-relative apoapsis (only when Earth owns the orbit; a Moon orbit is tiny on this map).
-  // As the kid raises apoapsis toward the Moon, this grows the frame so the transfer path
-  // visibly stretches out — he can SEE where he's heading without touching zoom.
-  const apoR = (sim.orbit && sim.orbit.bodyName === "Earth" && isFinite(sim.orbit.apoapsis))
-    ? (R + sim.orbit.apoapsis) : 0;
-  const craftR = Math.hypot(px, py);
-  // Auto-fit base scale: keep Earth + ship + orbit in view. Grow-only so it doesn't jitter.
-  let base = Math.max(apoR, craftR, R * 2.5) * 1.15;
+// Map view: top-down of the orbital plane, centered on the DOMINANT body (Earth in LEO,
+// the Sun once you've escaped). Zoom out to see the whole solar system.
+function updateMapCamera(sim, dom, states) {
+  const bodyR = dom.body.radius;
+  const craftR = Math.hypot(dom.rel.x, dom.rel.y);
+  const apoR = (sim.orbit && sim.orbit.bodyKey === dom.body.key && isFinite(sim.orbit.apoapsis))
+    ? (bodyR + sim.orbit.apoapsis) : 0;
+  let base = Math.max(apoR, craftR, bodyR * 2.5) * 1.15;
   if (base < mapBase) base = mapBase;
   mapBase = base;
-  // Apply the user's zoom on top (scroll / +- keys). This is what lets him pull all the way
-  // back to the whole Earth-Moon system to aim the burn.
   mapFrame = base * mapZoom;
   const vHalf = ((camera.fov * Math.PI) / 180) / 2;
   const dist = mapFrame / Math.tan(vHalf);
-  camera.position.set(0, 0, dist); // fixed point out of the orbital plane, looking at Earth's center
+  // Center on the dominant body (scene coords = world - ORIGIN).
+  const cx = dom.center.x - ORIGIN.x;
+  const cy = dom.center.y - ORIGIN.y;
+  camera.position.set(cx, cy, dist);
   camera.up.set(0, 1, 0);
-  camera.lookAt(0, 0, 0);
+  camera.lookAt(cx, cy, 0);
+
   if (mapMarker) {
     mapMarker.visible = true;
-    mapMarker.position.set(px, py, mapFrame * 0.02); // sit above the orbit line
+    mapMarker.position.set(0, 0, mapFrame * 0.02); // the craft IS the origin
     mapMarker.scale.setScalar(mapFrame * 0.018);
   }
-  // Moon dot + label: the real Moon disappears at system zoom, so give it a marker like the
-  // ship's — but never SMALLER than the true Moon (zoomed in close, reality takes over).
-  ensureMoonMapDot();
-  const m = moonStateAt(sim.time || 0);
-  moonMapDot.visible = true;
-  moonMapDot.position.set(m.pos.x, m.pos.y, mapFrame * 0.015);
-  moonMapDot.scale.setScalar(Math.max(MOON.radius, mapFrame * 0.014));
-  moonMapLabel.visible = true;
-  const lblS = mapFrame * 0.05;
-  moonMapLabel.position.set(m.pos.x, m.pos.y + Math.max(MOON.radius, mapFrame * 0.014) + lblS * 0.7, mapFrame * 0.015);
-  moonMapLabel.scale.set(lblS, lblS, 1);
+
+  // Body dots + labels — never smaller than the true sphere (zoomed close, reality wins).
+  for (const key of ALL_KEYS) {
+    const b = BODIES[key];
+    const st = states[key];
+    const { dot, label } = mapDots[key];
+    const sx = st.pos.x - ORIGIN.x, sy = st.pos.y - ORIGIN.y;
+    const size = Math.max(b.radius, mapFrame * (key === "sun" ? 0.02 : 0.012));
+    dot.visible = true;
+    dot.position.set(sx, sy, mapFrame * 0.012);
+    dot.scale.setScalar(size);
+    const lblS = mapFrame * 0.045;
+    // Label only when the body is plausibly in frame (within ~3 half-widths of center).
+    const inView = Math.hypot(sx - cx, sy - cy) < mapFrame * 3;
+    label.visible = inView;
+    if (inView) {
+      label.position.set(sx, sy + size + lblS * 0.6, mapFrame * 0.012);
+      label.scale.set(lblS * 2.2, lblS * 0.8, 1);
+    }
+  }
 }
 
-function ensureMoonMapDot() {
-  if (moonMapDot) return;
-  moonMapDot = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 16, 12),
-    new THREE.MeshBasicMaterial({ color: 0xb8bec8 })
-  );
-  moonMapDot.frustumCulled = false;
-  moonMapDot.visible = false;
-  scene.add(moonMapDot);
-  moonMapLabel = makeLabelSprite("Moon", "#b8bec8", 34);
-  scene.add(moonMapLabel);
-}
-
-// User map zoom (scroll wheel or +/- keys). factor > 1 zooms out toward the Moon.
+// User map zoom (scroll wheel or +/- keys). factor > 1 zooms out toward the planets.
 function zoomMap(factor) {
-  mapZoom = Math.max(0.12, Math.min(80, mapZoom * factor));
+  mapZoom = Math.max(0.05, Math.min(2e6, mapZoom * factor));
 }
 
-// Place the prograde (green, velocity) and heading (cyan, nose) arrows at the ship, sized for
-// the current view. Lining them up — burning along prograde — is the gravity turn / circularize.
-function updateDirArrows(sim, px, py, angle, inMap) {
-  // Map: arrows are a fraction of the whole view. Follow: small markers ~1.6x the rocket,
-  // with slim heads, so they read as nose indicators instead of filling the screen.
+// Guide arrows, sized per view. Directions are measured RELATIVE TO THE DOMINANT BODY —
+// "prograde" next to the Moon means your motion vs the Moon, not vs the Sun.
+function updateDirArrows(sim, dom, angle, inMap) {
   const len = inMap ? mapFrame * 0.12 : Math.max(5, craftHeight * 1.6);
   const headLen = len * (inMap ? 0.28 : 0.3);
   const headW = len * (inMap ? 0.18 : 0.1);
   const z = inMap ? mapFrame * 0.02 : 0;
+  const rvx = sim.craft.vel.x - dom.vel.x;
+  const rvy = sim.craft.vel.y - dom.vel.y;
+  const rvm = Math.hypot(rvx, rvy);
+
   if (headingArrow) {
     if (showHeading) {
-      headingArrow.position.set(px, py, z);
-      headingArrow.setDirection(new THREE.Vector3(-Math.sin(angle), Math.cos(angle), 0));
+      headingArrow.position.set(0, 0, z);
+      headingArrow.setDirection(_v1.set(-Math.sin(angle), Math.cos(angle), 0));
       headingArrow.setLength(len, headLen, headW);
       headingArrow.visible = true;
     } else headingArrow.visible = false;
   }
   if (progradeArrow) {
-    const v = sim.craft.vel, vm = Math.hypot(v.x, v.y);
-    if (showPrograde && vm > 1) {
-      progradeArrow.position.set(px, py, z);
-      progradeArrow.setDirection(new THREE.Vector3(v.x / vm, v.y / vm, 0));
+    if (showPrograde && rvm > 1) {
+      progradeArrow.position.set(0, 0, z);
+      progradeArrow.setDirection(_v1.set(rvx / rvm, rvy / rvm, 0));
       progradeArrow.setLength(len, headLen, headW);
       progradeArrow.visible = true;
     } else progradeArrow.visible = false;
   }
-  // Gold "aim here" director. Two regimes:
-  //  1) TRANSFER WINDOW OPEN (sim.transfer.open): the ship is at the Moon-burn point, so
-  //     the gold arrow rides PROGRADE — "point at gold and burn" now means the translunar
-  //     injection burn, same muscle memory as the gravity turn.
-  //  2) Otherwise: the gravity-turn schedule — straight up low, lean to the horizon as you
-  //     climb (fully horizontal by ~60 km). Point the cyan nose at it.
-  if (targetArrow && showTarget && sim.transfer && sim.transfer.open) {
-    const v = sim.craft.vel, vm = Math.hypot(v.x, v.y);
-    if (vm > 1) {
-      targetArrow.position.set(px, py, z);
-      targetArrow.setDirection(new THREE.Vector3(v.x / vm, v.y / vm, 0));
-      targetArrow.setLength(len * 1.1, headLen, headW);
-      targetArrow.visible = true;
-      return;
-    }
+  // Gold "aim here" director:
+  //  1) TRANSFER WINDOW OPEN: gold rides prograde (outward trips) or retrograde (coming
+  //     home from beyond) — "point at gold and burn" starts the trip either way.
+  //  2) Otherwise: the gravity-turn schedule vs the local world.
+  if (targetArrow && showTarget && sim.transfer && sim.transfer.open && rvm > 1) {
+    const s = sim.transfer.dir === "retrograde" ? -1 : 1;
+    targetArrow.position.set(0, 0, z);
+    targetArrow.setDirection(_v1.set((s * rvx) / rvm, (s * rvy) / rvm, 0));
+    targetArrow.setLength(len * 1.1, headLen, headW);
+    targetArrow.visible = true;
+    return;
+  }
+  //  1b) MID-COURSE CORRECTION: cruising toward the target but predicted to miss — gold
+  //      points along the burn vector that shrinks the miss ("point at gold, gentle burn").
+  if (targetArrow && showTarget && sim.course && !sim.course.onTarget && sim.course.burnVec) {
+    targetArrow.position.set(0, 0, z);
+    targetArrow.setDirection(_v1.set(sim.course.burnVec.x, sim.course.burnVec.y, 0).normalize());
+    targetArrow.setLength(len * 1.1, headLen, headW);
+    targetArrow.visible = true;
+    return;
   }
   if (targetArrow && showTarget) {
-    const r = Math.hypot(px, py) || 1;
-    const rox = px / r, roy = py / r;             // radial out (up, away from Earth)
-    let tx = roy, ty = -rox;                       // horizontal tangent, default eastward (+x at the top)
-    const v = sim.craft.vel;
-    if (v.x * tx + v.y * ty < 0) { tx = -tx; ty = -ty; } // align with the way you're already turning
-    const f = Math.max(0, Math.min(1, ((sim.altitude || 0) - 3000) / 57000)); // up→horizon over 3–60km
+    const r = Math.hypot(dom.rel.x, dom.rel.y) || 1;
+    const rox = dom.rel.x / r, roy = dom.rel.y / r;      // radial out (local up)
+    let tx = roy, ty = -rox;                              // horizontal tangent
+    if (rvx * tx + rvy * ty < 0) { tx = -tx; ty = -ty; }  // align with your turn direction
+    const f = Math.max(0, Math.min(1, ((sim.altitude || 0) - 3000) / 57000)); // up→horizon 3–60 km
     let dx = rox * (1 - f) + tx * f, dy = roy * (1 - f) + ty * f;
     const dm = Math.hypot(dx, dy) || 1;
-    targetArrow.position.set(px, py, z);
-    targetArrow.setDirection(new THREE.Vector3(dx / dm, dy / dm, 0));
+    targetArrow.position.set(0, 0, z);
+    targetArrow.setDirection(_v1.set(dx / dm, dy / dm, 0));
     targetArrow.setLength(len * 1.1, headLen, headW);
     targetArrow.visible = true;
   } else if (targetArrow) {
@@ -890,7 +942,7 @@ function updateDirArrows(sim, px, py, angle, inMap) {
 }
 
 // =====================================================================
-// Predicted orbit ellipse in the XY plane from apo/peri.
+// Predicted orbit ellipse around the dominant body.
 // =====================================================================
 function ensureOrbitLine() {
   if (orbitLine) return;
@@ -907,46 +959,38 @@ function ensureOrbitLine() {
 function updateOrbitLine(sim) {
   ensureOrbitLine();
   const o = sim.orbit;
-  // Can't draw a closed ellipse for an escape/hyperbolic path — hide it (and the markers).
   if (!isFinite(o.apoapsis) || !isFinite(o.periapsis)) {
     orbitLine.visible = false;
     if (apMarker) apMarker.visible = false;
     if (peMarker) peMarker.visible = false;
     return;
   }
-  // The ellipse is drawn around whichever body owns the craft (Earth, or the Moon in its SOI).
   const bodyR = o.bodyRadius || R;
-  const fx = o.center ? o.center.x : 0;   // focus (body center) in Earth-centered world coords
-  const fy = o.center ? o.center.y : 0;
-  // apoapsis/periapsis are altitudes ABOVE THAT BODY'S SURFACE (meters).
-  const ra = bodyR + (o.apoapsis || 0);   // apoapsis radius from body center
-  const rp = bodyR + (o.periapsis || 0);  // periapsis radius from body center
-  const a = (ra + rp) / 2;            // semi-major axis
-  const c = (ra - rp) / 2;            // center offset (focus at body center)
-  const b = Math.sqrt(Math.max(0, a * a - c * c)); // semi-minor
+  // Focus (body center) in SCENE coords: world minus the floating origin.
+  const fx = (o.center ? o.center.x : 0) - ORIGIN.x;
+  const fy = (o.center ? o.center.y : 0) - ORIGIN.y;
+  const ra = bodyR + (o.apoapsis || 0);
+  const rp = bodyR + (o.periapsis || 0);
+  const a = (ra + rp) / 2;
+  const c = (ra - rp) / 2;
+  const b = Math.sqrt(Math.max(0, a * a - c * c));
 
-  // Orientation: physics now supplies the TRUE periapsis direction (eccentricity vector),
-  // so the ellipse sits still in space as the craft moves along it. Fall back to the old
-  // craft-radial approximation only if periAngle is missing (near-circular: doesn't matter).
   let rot = 0;
   if (typeof o.periAngle === "number" && isFinite(o.periAngle) && (o.eccentricity || 0) > 1e-4) {
     rot = o.periAngle;
-  } else if (sim.craft && sim.craft.pos) {
-    rot = Math.atan2(sim.craft.pos.y - fy, sim.craft.pos.x - fx);
+  } else {
+    rot = Math.atan2(-fy, -fx) + Math.PI; // craft (scene origin) direction from the focus
   }
-  // Focus at the body center (fx,fy); ellipse center sits at (-c) along the periapsis axis.
   const cosR = Math.cos(rot);
   const sinR = Math.sin(rot);
 
   const attr = orbitLine.geometry.getAttribute("position");
   const SEG = (attr.count) - 1;
-  const cx = -c; // center along local periapsis (+X) axis, focus at body center
+  const cx = -c;
   for (let i = 0; i <= SEG; i++) {
-    const t = (i / SEG) * Math.PI * 2;
-    // Local ellipse coords (periapsis along +X).
-    const lx = cx + a * Math.cos(t);
-    const ly = b * Math.sin(t);
-    // Rotate into world XY by rot, then translate so the focus lands on the body center.
+    const tt = (i / SEG) * Math.PI * 2;
+    const lx = cx + a * Math.cos(tt);
+    const ly = b * Math.sin(tt);
     const wx = lx * cosR - ly * sinR + fx;
     const wy = lx * sinR + ly * cosR + fy;
     attr.setXYZ(i, wx, wy, 0);
@@ -955,8 +999,6 @@ function updateOrbitLine(sim) {
   orbitLine.geometry.computeBoundingSphere();
   orbitLine.visible = true;
 
-  // Ap/Pe markers (map view only): dots + labels on the ellipse so "burn at Ap to raise Pe"
-  // becomes something you can SEE. Periapsis at local +X (t=0), apoapsis opposite.
   ensureApPeMarkers();
   const showMarks = flightView === "map" && mapFrame > 0;
   if (showMarks) {
@@ -975,10 +1017,9 @@ function updateOrbitLine(sim) {
   }
 }
 
-// Text sprite ("Ap"/"Pe"/"Burn") drawn onto a small canvas — the classic Three.js label
-// trick. fontPx shrinks for longer words so they still fit inside the dot.
+// Round label sprite ("Ap"/"Pe"/"Burn") — dot with text inside.
 let apMarker = null, peMarker = null;
-let burnMarker = null; // gold "Burn" dot: where on the orbit to start the Moon transfer burn
+let burnMarker = null;
 function makeLabelSprite(text, color, fontPx = 56) {
   const cv = document.createElement("canvas");
   cv.width = 128; cv.height = 128;
@@ -996,6 +1037,25 @@ function makeLabelSprite(text, color, fontPx = 56) {
   sprite.visible = false;
   return sprite;
 }
+
+// Plain floating name text (no dot) for map-view body labels.
+function makeTextSprite(text, color) {
+  const cv = document.createElement("canvas");
+  cv.width = 256; cv.height = 96;
+  const ctx = cv.getContext("2d");
+  ctx.font = "700 44px system-ui, sans-serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.lineWidth = 8; ctx.strokeStyle = "rgba(5,7,15,0.85)";
+  ctx.strokeText(text, 128, 48);
+  ctx.fillStyle = color;
+  ctx.fillText(text, 128, 48);
+  const tex = new THREE.CanvasTexture(cv);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  sprite.frustumCulled = false;
+  sprite.visible = false;
+  return sprite;
+}
+
 function ensureApPeMarkers() {
   if (apMarker) return;
   apMarker = makeLabelSprite("Ap", "#8fb7ff");
@@ -1004,8 +1064,7 @@ function ensureApPeMarkers() {
   scene.add(peMarker);
 }
 
-// Gold "Burn" marker on the current orbit at the transfer-burn start point (map view only).
-// Reads sim.transfer (set by main.js from Physics.transferWindow each frame).
+// Gold "Burn" marker at the transfer-burn start point (map view only).
 function updateBurnMarker(sim) {
   const tw = sim && sim.transfer;
   if (!(mode === "flight" && flightView === "map" && tw && tw.burnPos && mapFrame > 0)) {
@@ -1013,11 +1072,11 @@ function updateBurnMarker(sim) {
     return;
   }
   if (!burnMarker) {
-    burnMarker = makeLabelSprite("Burn", "#ffd24a", 36); // smaller font: 4 letters in the dot
+    burnMarker = makeLabelSprite("Burn", "#ffd24a", 36);
     scene.add(burnMarker);
   }
   const s = mapFrame * 0.05;
-  burnMarker.position.set(tw.burnPos.x, tw.burnPos.y, mapFrame * 0.02);
+  burnMarker.position.set(tw.burnPos.x - ORIGIN.x, tw.burnPos.y - ORIGIN.y, mapFrame * 0.02);
   burnMarker.scale.set(s, s, 1);
   burnMarker.visible = true;
 }
@@ -1042,7 +1101,6 @@ function highlightSnap(yes, atTop) {
     snapGhost.visible = false;
     return;
   }
-  // Position at top (or bottom) of the current stack, in the craftGroup's world frame.
   const half = craftHeight / 2;
   const yLocal = atTop === false ? -half - 0.2 : half + 0.2;
   if (craftGroup) {
@@ -1052,8 +1110,7 @@ function highlightSnap(yes, atTop) {
       craftGroup.position.z
     );
   } else {
-    // No craft yet: ghost sits on the launchpad surface.
-    snapGhost.position.set(0, R + 1.4, 0);
+    snapGhost.position.set(0, 1.4, 0);
   }
   snapGhost.visible = true;
 }
@@ -1078,7 +1135,7 @@ function setFlightView(v) {
   if (flightView === "map") { mapFrame = 0; mapBase = 0; } // recompute auto-fit; keep user zoom
   else {
     if (mapMarker) mapMarker.visible = false;
-    if (moonMapDot) { moonMapDot.visible = false; moonMapLabel.visible = false; }
+    hideMapDots();
   }
 }
 
@@ -1086,30 +1143,27 @@ function setFlightView(v) {
 function disposeGroup(group) {
   group.traverse((obj) => {
     if (obj.geometry) obj.geometry.dispose();
-    // Only dispose cloned/per-part materials, not the shared MAT.* set.
     if (obj.material && obj.material._isClone) obj.material.dispose();
   });
 }
 
-// ---- Debug snapshot (temporary, for diagnosing the build view) ----
+// ---- Debug snapshot ----
 function debug() {
   const rnd = (n) => Math.round(n * 10) / 10;
-  // Where does the rocket actually project on screen? NDC: (0,0)=center, edges at ±1.
   let ndc = "n/a";
   if (craftGroup && camera) {
     const p = craftGroup.position.clone().project(camera);
-    ndc = [rnd(p.x), rnd(p.y), rnd(p.z)]; // z>1 means behind camera / clipped
+    ndc = [rnd(p.x), rnd(p.y), rnd(p.z)];
   }
   return {
-    mode,
-    earthHidden: earthMesh ? !earthMesh.visible : null,
+    mode, flightView,
+    origin: [Math.round(ORIGIN.x), Math.round(ORIGIN.y)],
     craft: craftGroup ? [rnd(craftGroup.position.x), rnd(craftGroup.position.y), rnd(craftGroup.position.z)] : "NONE",
     craftHeight: rnd(craftHeight),
     cam: camera ? [rnd(camera.position.x), rnd(camera.position.y), rnd(camera.position.z)] : null,
-    target: [rnd(buildCam.target.x), rnd(buildCam.target.y), rnd(buildCam.target.z)],
+    mapFrame: Math.round(mapFrame), mapZoom: rnd(mapZoom),
     rocketOnScreen: ndc,
     canvas: renderer ? [renderer.domElement.width, renderer.domElement.height] : null,
-    aspect: camera ? rnd(camera.aspect) : null,
     sceneChildren: scene ? scene.children.length : 0,
   };
 }
