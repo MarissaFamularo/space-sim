@@ -1,5 +1,7 @@
 # Space Sim
 
+**▶ Play it now: https://marissafamularo.github.io/space-sim/**
+
 A KSP-inspired browser space game and coding on-ramp. Build a multi-stage rocket, launch it, reach orbit — then fly the **whole solar system**: the Moon, Mars, Saturn's rings, all of it, with real physics, transfer windows, and mid-course corrections. Vanilla JS ES modules + Three.js, no build step.
 
 ## Run it
