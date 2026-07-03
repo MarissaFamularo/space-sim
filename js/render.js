@@ -33,6 +33,10 @@ let mapBase = 0;           // auto-fit scale (grow-only)
 let mapZoom = 1;           // user zoom: >1 = zoomed OUT (toward the planets), <1 = in
 let followZoom = 1;        // follow-view zoom (scroll / +/-): pull back to see the planet
 let followDist = 60;       // current follow camera distance (arrows scale with it)
+// Drag-to-look in follow view (play-test bug #3: on Mars approach the planet sat exactly
+// behind the camera with no way to turn around). Angles are in the craft's LOCAL frame:
+// azimuth swings around local-up (the radial), elevation tips above/below the horizon.
+const followCam = { azimuth: 0, elevation: 0.34, dragging: false, lastX: 0, lastY: 0 };
 let headingArrow = null;   // cyan: where the nose points
 let progradeArrow = null;  // green: where the ship is actually moving (vs the local world)
 let targetArrow = null;    // gold: where to AIM
@@ -494,6 +498,7 @@ function onResize() {
   if (!renderer || !camera) return;
   const w = window.innerWidth;
   const h = window.innerHeight;
+  if (w < 2 || h < 2) return; // minimized/zero-size window: aspect 0 NaNs the projection
   renderer.setSize(w, h); // updateStyle=true (see HANDOFF gotchas)
   camera.aspect = w / Math.max(1, h);
   camera.updateProjectionMatrix();
@@ -505,22 +510,36 @@ function onResize() {
 function attachBuildControls() {
   if (!canvas) return;
   canvas.addEventListener("pointerdown", (e) => {
-    if (mode !== "build") return;
-    buildCam.dragging = true;
-    buildCam.lastX = e.clientX;
-    buildCam.lastY = e.clientY;
+    if (mode === "build") {
+      buildCam.dragging = true;
+      buildCam.lastX = e.clientX;
+      buildCam.lastY = e.clientY;
+    } else if (mode === "flight" && flightView === "follow") {
+      followCam.dragging = true;
+      followCam.lastX = e.clientX;
+      followCam.lastY = e.clientY;
+    }
   });
-  window.addEventListener("pointerup", () => { buildCam.dragging = false; });
+  window.addEventListener("pointerup", () => { buildCam.dragging = false; followCam.dragging = false; });
   window.addEventListener("pointermove", (e) => {
-    if (!buildCam.dragging || mode !== "build") return;
-    const dx = e.clientX - buildCam.lastX;
-    const dy = e.clientY - buildCam.lastY;
-    buildCam.lastX = e.clientX;
-    buildCam.lastY = e.clientY;
-    buildCam.azimuth -= dx * 0.01;
-    buildCam.elevation += dy * 0.01;
     const lim = Math.PI / 2 - 0.05;
-    buildCam.elevation = Math.max(-lim, Math.min(lim, buildCam.elevation));
+    if (buildCam.dragging && mode === "build") {
+      const dx = e.clientX - buildCam.lastX;
+      const dy = e.clientY - buildCam.lastY;
+      buildCam.lastX = e.clientX;
+      buildCam.lastY = e.clientY;
+      buildCam.azimuth -= dx * 0.01;
+      buildCam.elevation += dy * 0.01;
+      buildCam.elevation = Math.max(-lim, Math.min(lim, buildCam.elevation));
+    } else if (followCam.dragging && mode === "flight" && flightView === "follow") {
+      const dx = e.clientX - followCam.lastX;
+      const dy = e.clientY - followCam.lastY;
+      followCam.lastX = e.clientX;
+      followCam.lastY = e.clientY;
+      followCam.azimuth -= dx * 0.01;
+      followCam.elevation += dy * 0.01;
+      followCam.elevation = Math.max(-lim, Math.min(lim, followCam.elevation));
+    }
   });
   canvas.addEventListener("wheel", (e) => {
     if (mode === "build") {
@@ -681,7 +700,8 @@ function setMode(m) {
     if (connieMesh) connieMesh.visible = false;
     if (orbitLine) orbitLine.visible = true;
     flightView = "follow";
-    followZoom = 1; // every launch starts framed on the rocket
+    followZoom = 1; // every launch starts framed on the rocket...
+    followCam.azimuth = 0; followCam.elevation = 0.34; // ...from the standard angle
   }
 }
 
@@ -818,22 +838,28 @@ function updateFlight(sim) {
   hideMapDots();
   updateDirArrows(sim, dom, angle, false);
 
-  // Follow-cam: a little behind/above the craft. "Up" = radial from the dominant body.
-  // The camera tips gently toward the local world, but THE ROCKET MUST NEVER LEAVE THE
-  // FRAME (the first public play-test lost it seconds after launch): the tilt is capped
-  // at ~0.4x the camera distance, which keeps the craft within ~18° of the view axis.
-  // To see the whole planet from up high, scroll out — follow view zooms now too.
+  // Follow-cam: orbits the CRAFT, which is always dead-center (bug #1: it may never leave
+  // the frame). Drag to look around — swing the camera to put Mars in the background on
+  // approach (bug #3) — and scroll to zoom. Angles live in the craft's local frame so
+  // "up on screen" stays "away from the planet" no matter where you are:
+  //   up = radial from the dominant body; azimuth swings around it; elevation tips over it.
   const rl = Math.hypot(dom.rel.x, dom.rel.y);
   const radial = _v2.set(dom.rel.x, dom.rel.y, 0);
   if (rl > 0.5) radial.multiplyScalar(1 / rl); else radial.set(0, 1, 0);
 
   const camDist = Math.max(20, craftHeight * 4 + 30) * followZoom;
   followDist = camDist; // arrows scale with it so guides stay readable zoomed out
-  camera.position.set(radial.x * camDist * 0.35, radial.y * camDist * 0.35, camDist);
+  const se = Math.sin(followCam.elevation), ce = Math.cos(followCam.elevation);
+  const sa = Math.sin(followCam.azimuth), ca = Math.cos(followCam.azimuth);
+  // Basis: radial (local up), tangent (along-track, in-plane), and world +Z (out of plane).
+  const tx = -radial.y, ty = radial.x;
+  camera.position.set(
+    camDist * (se * radial.x + ce * sa * tx),
+    camDist * (se * radial.y + ce * sa * ty),
+    camDist * (ce * ca)
+  );
   camera.up.copy(radial);
-  const distSurface = Math.max(0, rl - dom.body.radius);
-  const L = Math.min(distSurface * 0.8, camDist * 0.4);
-  camera.lookAt(-radial.x * L, -radial.y * L, 0);
+  camera.lookAt(0, 0, 0);
 }
 
 // Map view: top-down of the orbital plane, centered on the DOMINANT body (Earth in LEO,
