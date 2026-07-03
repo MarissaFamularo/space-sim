@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Space Sim</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden;
+      font-family: system-ui, -apple-system, sans-serif; background: #05070f; color: #e8eefc; }
+    #app { position: relative; width: 100vw; height: 100vh; }
+    #scene { position: absolute; inset: 0; display: block; }
+    .panel { position: absolute; background: rgba(12,18,34,0.86); border: 1px solid #24304d;
+      border-radius: 10px; padding: 12px 14px; backdrop-filter: blur(6px); }
+    /* Left: parts palette (builder owns its contents) */
+    #palette { top: 12px; left: 12px; width: 210px; max-height: calc(100vh - 190px); overflow:auto; }
+    /* Right: live readouts (ui.js owns contents) */
+    #readouts { top: 12px; right: 12px; width: 230px; }
+    /* Bottom-left: mode + flight controls (ui.js) */
+    #controls { bottom: 12px; left: 12px; }
+    /* Bottom-right: copilot */
+    #copilot { bottom: 12px; right: 12px; width: 320px; max-height: 50vh; display: flex; flex-direction: column; }
+    #copilot-log { flex: 1; overflow-y: auto; font-size: 13px; line-height: 1.4; margin-bottom: 8px; }
+    #copilot-log .you { color: #7fc7ff; } #copilot-log .ai { color: #b9f5c0; }
+    #copilot-row { display: flex; gap: 6px; }
+    #copilot-input { flex: 1; background:#0a1020; border:1px solid #24304d; color:#e8eefc;
+      border-radius:6px; padding:6px 8px; }
+    button { background:#1b2a4a; color:#e8eefc; border:1px solid #2f4470; border-radius:6px;
+      padding:6px 10px; cursor:pointer; font-size:13px; }
+    button:hover { background:#243a64; }
+    h3 { margin: 0 0 8px; font-size: 13px; letter-spacing:.04em; text-transform:uppercase; color:#9fb3da; }
+    .stat { display:flex; justify-content:space-between; font-size:13px; padding:2px 0; }
+    .stat b { color:#fff; }
+  </style>
+  <!-- Three.js is vendored locally (vendor/three.module.js) so the game works with NO
+       internet — important for other devices on the LAN and school laptops. -->
+  <script type="importmap">
+  { "imports": { "three": "./vendor/three.module.js" } }
+  </script>
+  <!-- Boot-failure reporter: if the game's modules crash before wiring the buttons, show a
+       big readable error instead of a silently dead page. Plain script, runs before modules. -->
+  <script>
+    (function () {
+      let shown = false;
+      function showBootError(msg) {
+        if (shown) return; shown = true;
+        const d = document.createElement("div");
+        d.style.cssText = "position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:99;" +
+          "max-width:80vw;background:rgba(140,24,24,0.95);color:#ffd6d6;border-radius:10px;" +
+          "padding:12px 18px;font:600 14px system-ui,sans-serif;white-space:pre-wrap;";
+        d.textContent = "⚠️ The game hit an error and may not work:\n" + msg +
+          "\n\nTry a hard reload (Cmd-Shift-R). If it keeps happening, tell the developer (Mom's AI) this exact message.";
+        document.body.appendChild(d);
+      }
+      window.addEventListener("error", (e) => showBootError(e.message + (e.filename ? "\n" + e.filename.split("/").pop() + ":" + e.lineno : "")));
+      window.addEventListener("unhandledrejection", (e) => showBootError(String(e.reason && e.reason.message || e.reason)));
+    })();
+  </script>
+</head>
+<body>
+  <div id="app">
+    <canvas id="scene"></canvas>
+    <div id="palette" class="panel"><h3>Parts</h3><div id="palette-list"></div></div>
+    <div id="readouts" class="panel"><h3>Flight Data</h3><div id="readout-list"></div></div>
+    <div id="controls" class="panel"><h3>Mode</h3><div id="control-list"></div></div>
+    <div id="copilot" class="panel">
+      <h3>Navigator</h3>
+      <div id="copilot-log"></div>
+      <div id="copilot-row">
+        <input id="copilot-input" placeholder="Ask your navigator…" />
+        <button id="copilot-send">Ask</button>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
