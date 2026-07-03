@@ -241,6 +241,56 @@ export function resetMods() {
   applyMods();
 }
 
+// =====================================================================
+// Craft sharing (Phase 4 stretch): a rocket as a copy-pasteable code.
+// The code carries the stack (part ids bottom->top) AND full definitions of any custom
+// parts it uses, so a friend's game can rebuild it even without his mods. PURE + friendly
+// errors, same rules as everything else here.
+// =====================================================================
+export function exportCraft(craft, catalog) {
+  const myParts = [];
+  const seen = new Set();
+  for (const inst of craft.parts) {
+    const def = (catalog || PARTS).find((p) => p.id === inst.partId);
+    if (def && def.custom && !seen.has(def.id)) {
+      seen.add(def.id);
+      const c = { ...def };
+      delete c.custom;
+      delete c.modified;
+      myParts.push(c);
+    }
+  }
+  return JSON.stringify({ v: 1, name: craft.name || "My Rocket",
+    stack: craft.parts.map((i) => i.partId), myParts });
+}
+
+// -> { ok:true, name, stack:[partId], newParts:[defs to addCustom first] } | { ok:false, error }
+export function importCraft(text, catalog) {
+  let data;
+  try { data = JSON.parse(String(text)); }
+  catch (err) { return no("That doesn't look like a rocket code — paste the WHOLE thing, from { to }. (" + explainJsonError(text, err) + ")"); }
+  if (!data || typeof data !== "object" || !Array.isArray(data.stack))
+    return no('A rocket code has a "stack" list of part ids inside — this one doesn\'t. Is it the whole code?');
+  if (data.stack.length === 0) return no("This rocket code is an empty rocket!");
+  const cat = catalog || PARTS;
+  const known = new Set(cat.map((p) => p.id));
+  const newParts = [];
+  if (Array.isArray(data.myParts)) {
+    for (const def of data.myParts) {
+      const v = validatePartDef(def);
+      if (!v.ok) return no("A custom part inside this code has a problem: " + v.error);
+      if (!known.has(v.def.id)) { newParts.push(v.def); known.add(v.def.id); }
+      // If the id already exists we use the local part — same id, same part, no duplicates.
+    }
+  }
+  for (const id of data.stack) {
+    if (typeof id !== "string" || !known.has(id))
+      return no(`This rocket uses a part I don't know: ${JSON.stringify(id)}. The code may be from a newer game or missing its myParts section.`);
+  }
+  const name = (typeof data.name === "string" && data.name.trim()) ? data.name.trim().slice(0, 60) : "Shared Rocket";
+  return { ok: true, name, stack: data.stack.slice(), newParts };
+}
+
 // Short summary for the Navigator's snapshot: which parts he changed/made + key numbers,
 // so the coding-mentor can talk about HIS edits specifically.
 export function modsSummary() {

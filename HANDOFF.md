@@ -66,11 +66,14 @@ friendly errors, localStorage persistence).
   the engine's orbits are CCW-only).
 - **New stock parts:** Mega Fuel Tank (18 t) and Osprey Vacuum Engine (90 kN but ve 4400 —
   the real thrust-vs-efficiency trade). Without them the stock catalog barely escapes Earth.
+- **Craft sharing:** 📤 gives a copy-pasteable rocket code (embeds any custom parts it
+  uses); 📥 loads one — a friend's game rebuilds it, customs join the palette. Validated
+  with friendly errors; round-trip browser-tested.
 - **Per-part delete (🗑) for his custom parts** (stock still reset-only). QA fix from the
   session: speed/prograde/altitude readouts are now measured vs the dominant body (parked
   on the Moon reads 0 m/s, not the Moon's orbital speed).
 
-**Tests (`tests/`, all green, 89 total):** chute 5, mods 31, planets 31, reentry 8, transfer 14.
+**Tests (`tests/`, all green, 95 total):** chute 5, mods 37, planets 31, reentry 8, transfer 14.
 planets_test.mjs is the Phase-4 suite: hierarchy, SOI, moving-pad launch, warp stability,
 Mars window + full mission, sloppy-burn + course-correction rescue, sky-crane, Jupiter dive.
 
@@ -164,7 +167,7 @@ frame, in-place craft reset, e.repeat one-shots, input blur, palette rows are di
    his first attempts. The mod editor is the built-in pressure valve ("make a stronger
    engine" is a feature, not a cheat).
 3. **Modding rung 3** — one-line scripts (`if (fuel < 10) stage()`), safe interpreter, NO eval.
-4. **Craft export/import** (JSON codes) and staging separation animation.
+4. Staging separation animation.
 5. **Real-scale toggle** — still disabled; needs a part-tuning pass first (~9,400 m/s to LEO).
 6. Free-return trajectory guidance; takeoff-from-Moon UX polish (both carried over).
 

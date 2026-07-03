@@ -1,7 +1,7 @@
 // Mods (Phase 3 part editing) tests — pure merge/validate/parse logic, node-only.
 // Run: node mods_test.mjs   (mods.js guards localStorage, so importing in node is safe)
 import {
-  removeCustom,
+  removeCustom, exportCraft, importCraft,
   PARTS, mergeCatalog, validatePartDef, parsePartJSON, explainJsonError,
   makeCustomFrom, setOverride, addCustom, resetMods, getMods, modsSummary, hasMods,
 } from "../js/mods.js";
@@ -116,6 +116,35 @@ check("explainJsonError never throws on junk", typeof explainJsonError("", null)
   check("removeCustom deletes it", removeCustom(mine.id) === true && !PARTS.some((p) => p.id === mine.id));
   check("removeCustom on unknown id is a safe no-op", removeCustom("nope_never") === false);
   check("stock catalog untouched by delete", PARTS.length === STOCK.length);
+  resetMods();
+}
+
+
+// --- craft sharing: export/import codes ---
+{
+  resetMods();
+  const mine = makeCustomFrom(sparrow, PARTS.map((p) => p.id));
+  mine.thrust = 999;
+  addCustom(mine);
+  const craft = { name: "Snake One", parts: [
+    { instanceId: "p1", partId: "engine_hawk", stage: 0 },
+    { instanceId: "p2", partId: mine.id, stage: 0 },
+    { instanceId: "p3", partId: "command_pod", stage: 0 },
+  ]};
+  const code = exportCraft(craft, PARTS);
+  check("export embeds the custom part", code.includes('"' + mine.id + '"') && code.includes("999"));
+
+  resetMods(); // simulate the FRIEND's game: no custom parts at all
+  const v = importCraft(code, PARTS);
+  check("import accepts the code", v.ok === true, v.ok ? "" : v.error);
+  check("import returns the stack + the missing custom part",
+    v.ok && v.stack.length === 3 && v.newParts.length === 1 && v.newParts[0].thrust === 999);
+  check("import rejects garbage with a friendly error",
+    importCraft("not json at all", PARTS).ok === false);
+  check("import rejects unknown part ids",
+    importCraft(JSON.stringify({ v: 1, name: "x", stack: ["engine_warpdrive"] }), PARTS).ok === false);
+  check("import rejects an empty rocket",
+    importCraft(JSON.stringify({ v: 1, name: "x", stack: [] }), PARTS).ok === false);
   resetMods();
 }
 

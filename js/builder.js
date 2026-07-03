@@ -93,13 +93,21 @@ export const Builder = {
     stackTitle.style.margin = "0";
     stackHeader.appendChild(stackTitle);
 
-    const clearBtn = document.createElement("button");
-    clearBtn.textContent = "Clear";
-    clearBtn.title = "Remove every part";
-    clearBtn.style.padding = "3px 8px";
-    clearBtn.style.fontSize = "12px";
-    clearBtn.addEventListener("click", clearStack);
-    stackHeader.appendChild(clearBtn);
+    const headerBtns = document.createElement("span");
+    headerBtns.style.cssText = "display:flex;gap:4px;";
+    const mkSmall = (label, title, fn) => {
+      const b = document.createElement("button");
+      b.textContent = label; b.title = title;
+      b.style.cssText = "padding:3px 8px;font-size:12px;";
+      b.addEventListener("click", fn);
+      headerBtns.appendChild(b);
+      return b;
+    };
+    // Craft sharing: a rocket as a copy-pasteable code (send it to a friend!).
+    mkSmall("📤", "Get this rocket's share code", openShareExport);
+    mkSmall("📥", "Load a rocket from a code", openShareImport);
+    mkSmall("Clear", "Remove every part", clearStack);
+    stackHeader.appendChild(headerBtns);
 
     listHost.appendChild(stackHeader);
 
@@ -121,6 +129,7 @@ export const Builder = {
   hide() {
     if (_paletteEl) _paletteEl.style.display = "none";
     closeEditor(); // don't leave part code floating over the flight view
+    if (_shareEl) _shareEl.style.display = "none"; // nor a share code
   },
 };
 
@@ -366,6 +375,80 @@ function copyFromEditor() {
   const merged = findPart(_catalog, copy.id);
   openEditor(merged || copy);
   showEditorMsg(`You made "${copy.name}"! It's in the palette under My parts — click it to build with it.`, false);
+}
+
+// ----------------------------------------------------------------------------
+// Craft sharing panel: export shows the code to copy; import takes a pasted code.
+// ----------------------------------------------------------------------------
+let _shareEl = null, _shareTitle = null, _shareArea = null, _shareMsg = null, _shareLoadBtn = null;
+
+function ensureSharePanel() {
+  if (_shareEl) return;
+  _shareEl = document.createElement("div");
+  _shareEl.className = "panel";
+  _shareEl.style.cssText = "top:12px;left:234px;width:340px;z-index:9;display:none;";
+  _shareTitle = document.createElement("h3");
+  _shareEl.appendChild(_shareTitle);
+  _shareArea = document.createElement("textarea");
+  _shareArea.spellcheck = false;
+  _shareArea.style.cssText = "width:100%;height:120px;resize:vertical;background:#0a1020;" +
+    "color:#e8eefc;border:1px solid #24304d;border-radius:6px;padding:8px;" +
+    "font:12px/1.5 ui-monospace,Menlo,monospace;";
+  _shareEl.appendChild(_shareArea);
+  _shareMsg = document.createElement("div");
+  _shareMsg.style.cssText = "min-height:24px;font-size:12px;line-height:1.4;margin:6px 0;";
+  _shareEl.appendChild(_shareMsg);
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;";
+  _shareLoadBtn = document.createElement("button");
+  _shareLoadBtn.textContent = "📥 Load this rocket";
+  _shareLoadBtn.addEventListener("click", loadFromSharePanel);
+  btnRow.appendChild(_shareLoadBtn);
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "Close";
+  closeBtn.addEventListener("click", () => { _shareEl.style.display = "none"; });
+  btnRow.appendChild(closeBtn);
+  _shareEl.appendChild(btnRow);
+  document.body.appendChild(_shareEl);
+}
+
+function openShareExport() {
+  if (_craft.parts.length === 0) { showHint("Build something first — then share it!"); return; }
+  ensureSharePanel();
+  _shareTitle.textContent = "📤 " + (_craft.name || "My Rocket") + " — share code";
+  _shareArea.value = Mods.exportCraft(_craft, _catalog);
+  _shareMsg.textContent = "Copy this whole code and send it to a friend. They press 📥 and paste it.";
+  _shareMsg.style.color = "#9fb3da";
+  _shareLoadBtn.style.display = "none";
+  _shareEl.style.display = "";
+  _shareArea.select();
+}
+
+function openShareImport() {
+  ensureSharePanel();
+  _shareTitle.textContent = "📥 Load a rocket code";
+  _shareArea.value = "";
+  _shareMsg.textContent = "Paste a rocket code here, then press Load.";
+  _shareMsg.style.color = "#9fb3da";
+  _shareLoadBtn.style.display = "";
+  _shareEl.style.display = "";
+  _shareArea.focus();
+}
+
+function loadFromSharePanel() {
+  const v = Mods.importCraft(_shareArea.value, _catalog);
+  if (!v.ok) { _shareMsg.textContent = v.error; _shareMsg.style.color = "#ff9a8a"; return; }
+  // Any custom parts the code carries that we don't have yet become his parts too.
+  for (const def of v.newParts) Mods.addCustom(def);
+  _craft.parts.length = 0; // in place — main.js holds the reference
+  for (const id of v.stack) _craft.parts.push(makeInstance(id, 0));
+  _craft.name = v.name;
+  reflowStages();
+  renderPalette();
+  commit();
+  _shareMsg.textContent = `"${v.name}" is on the pad! ` +
+    (v.newParts.length ? `(${v.newParts.length} custom part${v.newParts.length > 1 ? "s" : ""} joined your palette.)` : "");
+  _shareMsg.style.color = "#8affa8";
 }
 
 // ----------------------------------------------------------------------------
