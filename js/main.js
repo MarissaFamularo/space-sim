@@ -35,6 +35,11 @@ const WORLD_FACTS = {
   Mars: "Mars is the only planet we've sent rovers to. Its air is so thin that real landers use a parachute AND rockets — the sky crane!",
   Jupiter: "Jupiter is so big that 1,300 Earths would fit inside it. NASA's Galileo probe dove into its clouds in 2003 and melted on the way down.",
   Saturn: "Saturn's rings are made of billions of chunks of ice, some as small as snowflakes, some as big as houses.",
+  Io: "Io is the most volcanic world in the solar system — hundreds of active volcanoes, because Jupiter's gravity kneads it like dough.",
+  Europa: "Under Europa's cracked ice shell hides a salty OCEAN with more water than all of Earth's seas — a top place to look for life.",
+  Ganymede: "Ganymede is the biggest moon in the solar system — bigger than the planet Mercury!",
+  Callisto: "Callisto has the most craters of any world — its surface is 4 billion years of bullseyes.",
+  Titan: "Titan's air is thicker than Earth's, with rain and lakes — but of liquid methane. The Huygens probe landed here by parachute in 2005.",
   Uranus: "Uranus rolls around the Sun on its side — its seasons last 21 Earth-years each.",
   Neptune: "Neptune has the fastest winds in the solar system — over 2,000 km/h. Only Voyager 2 has ever visited it.",
   Sun: "The Sun holds 99.8% of all the mass in the solar system.",
@@ -264,6 +269,11 @@ const LANDED_LINES = {
   mercury: "🪨 ON MERCURY",
   venus: "🌋 ON VENUS",
   mars: "🔴 ON MARS",
+  io: "🌋 ON IO",
+  europa: "🧊 ON EUROPA",
+  ganymede: "🪐 ON GANYMEDE",
+  callisto: "🎯 ON CALLISTO",
+  titan: "🟠 ON TITAN",
 };
 
 function updateBanner() {

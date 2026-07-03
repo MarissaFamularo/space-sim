@@ -260,6 +260,42 @@ const check = (name, ok, detail = "") => {
     `status=${b.sim.status} on=${b.sim.landed && b.sim.landed.body}`);
 }
 
+// --- 6b. Moons of other planets: hierarchy, SOI nesting, and the Titan chute lesson ---
+{
+  const IO = BODIES.io, TITAN = BODIES.titan;
+  let ok = true;
+  for (const k of ["io", "europa", "ganymede", "callisto", "titan"])
+    if (!(BODIES[k].soiRadius > BODIES[k].radius * 2)) ok = false;
+  check("every added moon's SOI comfortably clears its surface", ok);
+
+  const t = 5000;
+  const io = bodyStateAt("io", t), ju = bodyStateAt("jupiter", t);
+  check("Io circles the moving Jupiter", Math.abs(Math.hypot(io.pos.x - ju.pos.x, io.pos.y - ju.pos.y) - IO.orbitRadius) < 1);
+  check("low Io orbit belongs to Io", dominantBody({ x: io.pos.x + IO.radius + 5e4, y: io.pos.y }, t).body.key === "io");
+  const between = { x: ju.pos.x + IO.orbitRadius * 1.3, y: ju.pos.y }; // outside Io, inside Jupiter SOI
+  check("between the moons belongs to Jupiter", dominantBody(between, t).body.key === "jupiter");
+
+  // Titan: air thicker than Earth's — a parachute ALONE lands you (the Huygens lesson).
+  const ts = bodyStateAt("titan", 0);
+  const sim = newSimState(E);
+  sim.mode = "flight"; sim.status = "flying"; sim.target = "titan";
+  // 3 km up, not 30: under the chute Titan's descent is ~0.8 m/s (Huygens really did take
+  // 2.5 hours) and the test budget can't afford the full scenic route.
+  const r = TITAN.radius + 3000;
+  sim.craft.pos = { x: ts.pos.x + r, y: ts.pos.y };
+  sim.craft.vel = { x: ts.vel.x - 50, y: ts.vel.y };
+  sim.craft.mass = 1.5; sim.craft.throttle = 0;
+  sim.craft.chuteCount = 1; sim.craft.chuteDeployed = true;
+  let everOpen = false, steps = 0;
+  while (sim.status !== "landed" && sim.status !== "crashed" && steps++ < 400000) {
+    Physics.step(sim, 0.05);
+    if (sim.chuteOpen) everOpen = true;
+  }
+  check("Titan: parachute alone lands softly (Huygens 2005)",
+    sim.status === "landed" && sim.landed.body === "titan" && everOpen,
+    `status=${sim.status} on=${sim.landed && sim.landed.body} chute=${everOpen}`);
+}
+
 // --- 7. Gas giants have no surface ---
 {
   const js = bodyStateAt("jupiter", 0);

@@ -64,7 +64,12 @@ const BODY_STYLE = {
   moon:    { color: 0x9aa0a8 },
   mars:    { color: 0xc1552f, halo: 0xd98a5e },
   jupiter: { color: 0xc9a97a, stripes: ["#c9a97a", "#a8875d", "#e0c396", "#b5713f"], halo: 0xc9a97a },
+  io:       { color: 0xd8c35a },  // sulfur yellow (most volcanic world in the solar system)
+  europa:   { color: 0xd9e2e8 },  // cracked ice shell
+  ganymede: { color: 0x9a948a },
+  callisto: { color: 0x6f665c },  // the most cratered surface anywhere
   saturn:  { color: 0xd9c08a, stripes: ["#d9c08a", "#c2a86f", "#e8d5a8"], rings: true, halo: 0xd9c08a },
+  titan:    { color: 0xd8a04a, halo: 0xe0b060 }, // hazy orange — air thicker than Earth's
   uranus:  { color: 0x9ad4d6, halo: 0x9ad4d6 },
   neptune: { color: 0x3f66d4, halo: 0x5f86e4 },
 };

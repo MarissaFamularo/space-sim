@@ -58,13 +58,19 @@ friendly errors, localStorage persistence).
   Saturn rings, Sun glow), orbit rings, map dots + name labels for every world, map centered
   on whoever owns you, sunlight aimed from the Sun each frame, follow-cam tips toward the
   local world (Saturn stays in frame from high orbit).
+- **Major moons** (added later the same night): Io, Europa, Ganymede, Callisto at Jupiter,
+  Titan at Saturn — real data, target-picker entries (indented under their planet: capture
+  at the planet first, then hop), facts, banners. **Titan's air is thicker than Earth's, so
+  a parachute alone lands you softly — the Huygens lesson (node-tested).** Skipped:
+  Phobos/Deimos (SOI smaller than their radius — readouts would lie) and Triton (retrograde;
+  the engine's orbits are CCW-only).
 - **New stock parts:** Mega Fuel Tank (18 t) and Osprey Vacuum Engine (90 kN but ve 4400 —
   the real thrust-vs-efficiency trade). Without them the stock catalog barely escapes Earth.
 - **Per-part delete (🗑) for his custom parts** (stock still reset-only). QA fix from the
   session: speed/prograde/altitude readouts are now measured vs the dominant body (parked
   on the Moon reads 0 m/s, not the Moon's orbital speed).
 
-**Tests (`tests/`, all green):** chute 5, mods 31, planets 26, reentry 8, transfer 14.
+**Tests (`tests/`, all green, 89 total):** chute 5, mods 31, planets 31, reentry 8, transfer 14.
 planets_test.mjs is the Phase-4 suite: hierarchy, SOI, moving-pad launch, warp stability,
 Mars window + full mission, sloppy-burn + course-correction rescue, sky-crane, Jupiter dive.
 
@@ -157,12 +163,10 @@ frame, in-place craft reset, e.repeat one-shots, input blur, palette rows are di
 2. **Δv/fuel tuning pass** — a Mars round trip with stock parts is possible but tight; watch
    his first attempts. The mod editor is the built-in pressure valve ("make a stronger
    engine" is a feature, not a cheat).
-3. **Moons of other planets** (design doc: "major moons") — Phobos/Deimos, Io/Europa,
-   Titan. The machinery (parent chains) already supports them: add rows to `REAL` in state.js.
-4. **Modding rung 3** — one-line scripts (`if (fuel < 10) stage()`), safe interpreter, NO eval.
-5. **Craft export/import** (JSON codes) and staging separation animation.
-6. **Real-scale toggle** — still disabled; needs a part-tuning pass first (~9,400 m/s to LEO).
-7. Free-return trajectory guidance; takeoff-from-Moon UX polish (both carried over).
+3. **Modding rung 3** — one-line scripts (`if (fuel < 10) stage()`), safe interpreter, NO eval.
+4. **Craft export/import** (JSON codes) and staging separation animation.
+5. **Real-scale toggle** — still disabled; needs a part-tuning pass first (~9,400 m/s to LEO).
+6. Free-return trajectory guidance; takeoff-from-Moon UX polish (both carried over).
 
 ## Working style notes
 

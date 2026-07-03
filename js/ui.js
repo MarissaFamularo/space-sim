@@ -2,8 +2,12 @@
 
 import { BODIES } from "./state.js";
 
-// Destinations for the target picker, in trip-difficulty order.
-const TARGETS = ["moon", "mercury", "venus", "mars", "jupiter", "saturn", "uranus", "neptune", "earth"];
+// Destinations for the target picker, in trip-difficulty order. Moons of other planets
+// show indented under their planet (capture at the planet first, then hop to the moon).
+const TARGETS = ["moon", "mercury", "venus", "mars",
+  "jupiter", "io", "europa", "ganymede", "callisto",
+  "saturn", "titan", "uranus", "neptune", "earth"];
+const MOON_OF = { io: "jupiter", europa: "jupiter", ganymede: "jupiter", callisto: "jupiter", titan: "saturn" };
 
 // Distances read better in the right unit: km up close, million-km across the system.
 function fmtDist(m) {
@@ -62,7 +66,7 @@ export const UI = {
     for (const key of TARGETS) {
       const opt = document.createElement("option");
       opt.value = key;
-      opt.textContent = BODIES[key].name + (key === "earth" ? " (home)" : "");
+      opt.textContent = (MOON_OF[key] ? "  · " : "") + BODIES[key].name + (key === "earth" ? " (home)" : "");
       sel.appendChild(opt);
     }
     sel.value = "moon";

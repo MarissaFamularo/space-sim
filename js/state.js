@@ -26,7 +26,16 @@ const REAL = {
   moon:    { radius: 1.737e6,  g0: 1.62,  parent: "earth", a: 3.844e8,   solid: true,  atmo: null, phase0: 0 },
   mars:    { radius: 3.3895e6, g0: 3.71,  parent: "sun",   a: 2.2794e11, solid: true,  atmo: { height: 125000, seaLevelDensity: 0.020 }, phase0: 5.2 },
   jupiter: { radius: 6.9911e7, g0: 24.79, parent: "sun",   a: 7.7857e11, solid: false, atmo: { height: 1000000, seaLevelDensity: 0.16 }, phase0: 1.7 },
+  // Jupiter's Galilean moons (Phobos/Deimos skipped: so tiny their SOI is smaller than
+  // their radius; Triton skipped: retrograde, and this engine's orbits are CCW-only).
+  io:       { radius: 1.8216e6, g0: 1.796, parent: "jupiter", a: 4.217e8,   solid: true, atmo: null, phase0: 0.3 },
+  europa:   { radius: 1.5608e6, g0: 1.314, parent: "jupiter", a: 6.711e8,   solid: true, atmo: null, phase0: 2.1 },
+  ganymede: { radius: 2.6341e6, g0: 1.428, parent: "jupiter", a: 1.0704e9,  solid: true, atmo: null, phase0: 4.4 },
+  callisto: { radius: 2.4103e6, g0: 1.235, parent: "jupiter", a: 1.8827e9,  solid: true, atmo: null, phase0: 5.6 },
   saturn:  { radius: 5.8232e7, g0: 10.44, parent: "sun",   a: 1.4335e12, solid: false, atmo: { height: 1000000, seaLevelDensity: 0.19 }, phase0: 3.9 },
+  // Titan: air THICKER than Earth's — the one world where a parachute alone lands you
+  // softly (that's exactly how the real Huygens probe did it in 2005).
+  titan:    { radius: 2.5747e6, g0: 1.352, parent: "saturn", a: 1.22187e9, solid: true, atmo: { height: 600000, seaLevelDensity: 5.3 }, phase0: 1.2 },
   uranus:  { radius: 2.5362e7, g0: 8.87,  parent: "sun",   a: 2.8725e12, solid: false, atmo: { height: 900000, seaLevelDensity: 0.42 }, phase0: 5.8 },
   neptune: { radius: 2.4622e7, g0: 11.15, parent: "sun",   a: 4.4951e12, solid: false, atmo: { height: 900000, seaLevelDensity: 0.45 }, phase0: 0.5 },
 };
@@ -35,7 +44,9 @@ const REAL = {
 // so omega and SOI can read the parent's mu.
 function buildBodies(scale) {
   const out = {};
-  const order = ["sun", "mercury", "venus", "earth", "moon", "mars", "jupiter", "saturn", "uranus", "neptune"];
+  const order = ["sun", "mercury", "venus", "earth", "moon", "mars",
+                 "jupiter", "io", "europa", "ganymede", "callisto",
+                 "saturn", "titan", "uranus", "neptune"];
   for (const key of order) {
     const d = REAL[key];
     const radius = d.radius * scale;
@@ -65,7 +76,8 @@ function buildBodies(scale) {
 export const BODIES = buildBodies(SCALE);
 
 // Every body except the Sun, ordered for target pickers / map labels.
-export const PLANET_KEYS = ["mercury", "venus", "earth", "moon", "mars", "jupiter", "saturn", "uranus", "neptune"];
+export const PLANET_KEYS = ["mercury", "venus", "earth", "moon", "mars",
+  "jupiter", "io", "europa", "ganymede", "callisto", "saturn", "titan", "uranus", "neptune"];
 
 // World (Sun-centered) position/velocity of a body's CENTER at sim time t (seconds).
 // Recursive through the parent chain: Moon = Earth's state + Moon's circle around Earth.
