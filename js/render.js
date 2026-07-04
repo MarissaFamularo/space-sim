@@ -109,6 +109,13 @@ let rockField = null;
 const ROCK_COUNT = 240;
 const ROCK_ARC = 130; // meters of ground between rock slots
 let reticle = null;
+// High-res ground patch under the craft when low. The body spheres are coarse (48x32
+// segments), so between vertices the DRAWN surface sags up to ~R/470 below the true
+// radius (~560 m on Ganymede!) — physics, rocks, and the Connie all sit at the true
+// radius and appeared to FLOAT (his Ganymede bug report). This cap is tessellated
+// finely enough (~1-3 m sag) that the ground under you is where physics says it is.
+let groundPatch = null, groundPatchKey = null;
+const _groundTexCache = {};
 let surfaceRover = null;
 let roverTrackL = null, roverTrackR = null;
 const TRACK_N = 48;
@@ -1069,6 +1076,7 @@ function setMode(m) {
     if (targetArrow) targetArrow.visible = false;
     if (rockField) rockField.visible = false;
     if (reticle) reticle.visible = false;
+    if (groundPatch) groundPatch.visible = false;
     if (surfaceRover) surfaceRover.visible = false;
     if (roverTrackL) roverTrackL.visible = false;
     if (roverTrackR) roverTrackR.visible = false;
@@ -1158,8 +1166,14 @@ function updateFlight(sim) {
   }
   sunLight.position.copy(bodyGroups.sun.position);
 
+  // The physics point is the craft's BASE (that's what touches the ground), so the
+  // mesh — which is built centered — shifts half a length up its own axis. Centered
+  // rendering buried the rocket to its waist once the ground patch made the surface
+  // accurate (and made it hover before that).
+  const oxC = -Math.sin(angle) * craftHeight * 0.5;
+  const oyC = Math.cos(angle) * craftHeight * 0.5;
   if (craftGroup) {
-    craftGroup.position.set(0, 0, 0);
+    craftGroup.position.set(oxC, oyC, 0);
     craftGroup.rotation.set(0, 0, angle);
   }
 
@@ -1168,7 +1182,7 @@ function updateFlight(sim) {
     const heat = sim.heat || 0;
     if (heat > 0.06 && sim.status !== "landed" && sim.status !== "crashed") {
       const size = Math.max(2.5, craftHeight * (0.8 + heat * 1.2));
-      heatGlow.position.set(0, 0, 0);
+      heatGlow.position.set(oxC, oyC, 0); // wrap the visible rocket, not its base point
       heatGlow.scale.set(size, size * 1.35, size);
       heatGlow.rotation.z = angle;
       heatGlow.material.opacity = Math.min(0.85, heat * 1.1);
@@ -1187,7 +1201,7 @@ function updateFlight(sim) {
       let ux, uy;
       if (vm > 3) { ux = -rvx / vm; uy = -rvy / vm; }
       else { const rm = Math.hypot(dom.rel.x, dom.rel.y) || 1; ux = dom.rel.x / rm; uy = dom.rel.y / rm; }
-      chuteCanopy.position.set(ux * craftHeight * 0.5, uy * craftHeight * 0.5, 0);
+      chuteCanopy.position.set(oxC + ux * craftHeight * 0.5, oyC + uy * craftHeight * 0.5, 0);
       chuteCanopy.quaternion.setFromUnitVectors(_v1.set(0, 1, 0), _v2.set(ux, uy, 0).normalize());
       chuteCanopy.visible = true;
     } else {
@@ -1249,6 +1263,61 @@ function updateFlight(sim) {
   camera.lookAt(0, 0, 0);
 }
 
+// Local dirt texture for the ground patch: the body's color with dusty speckle. Up
+// close, ground looks like ground — the map-scale continents live on the big sphere.
+function groundTexture(key) {
+  if (_groundTexCache[key]) return _groundTexCache[key];
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 256;
+  const ctx = cv.getContext("2d");
+  const rng = mulberry32(hashStr(key + "-ground"));
+  const style = BODY_STYLE[key] || { color: 0x888888 };
+  const base = new THREE.Color(style.color).multiplyScalar(0.82);
+  ctx.fillStyle = "#" + base.getHexString();
+  ctx.fillRect(0, 0, 256, 256);
+  const tint = new THREE.Color();
+  for (let i = 0; i < 700; i++) {
+    ctx.globalAlpha = 0.05 + rng() * 0.1;
+    tint.set(style.color).multiplyScalar(rng() > 0.5 ? 0.95 : 0.6);
+    ctx.fillStyle = "#" + tint.getHexString();
+    ctx.beginPath();
+    ctx.arc(rng() * 256, rng() * 256, 1 + rng() * 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(28, 14);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _groundTexCache[key] = tex;
+  return tex;
+}
+
+function ensureGroundPatch(body) {
+  if (groundPatchKey === body.key) return;
+  if (groundPatch) {
+    scene.remove(groundPatch);
+    groundPatch.geometry.dispose();
+    groundPatch.material.dispose();
+  }
+  // Spherical cap around the +Y pole, re-aimed at the sub-craft point each frame.
+  // 0.28 rad covers the horizon from any altitude the patch shows at; 48 radial
+  // divisions keep the near-field sag to ~1-3 m (vs ~R/470 on the coarse sphere).
+  const tex = groundTexture(body.key);
+  groundPatch = new THREE.Mesh(
+    new THREE.SphereGeometry(body.radius, 96, 48, 0, Math.PI * 2, 0, 0.28),
+    new THREE.MeshStandardMaterial({
+      map: tex, roughness: 1, metalness: 0,
+      emissive: 0xffffff, emissiveIntensity: 0.12, emissiveMap: tex,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    })
+  );
+  groundPatch.frustumCulled = false;
+  groundPatch.visible = false;
+  scene.add(groundPatch);
+  groundPatchKey = body.key;
+}
+
 // =====================================================================
 // Phase 5: near-surface rocks + landing reticle (the "how close am I" cues),
 // the deployed rover with wheel tracks, and satellites.
@@ -1258,6 +1327,19 @@ function updateSurfaceExtras(sim, dom) {
   const alt = sim.altitude || 0;
   const near = mode === "flight" && flightView === "follow" && solid &&
                alt < 6000 && sim.status !== "crashed";
+  // Accurate ground under you (appears well before the rocks so there's no pop).
+  const showPatch = mode === "flight" && flightView === "follow" && solid &&
+                    alt < 25000 && sim.status !== "crashed";
+  if (showPatch) {
+    ensureGroundPatch(dom.body);
+    const rm0 = Math.hypot(dom.rel.x, dom.rel.y) || 1;
+    groundPatch.position.set(dom.center.x - ORIGIN.x, dom.center.y - ORIGIN.y, 0);
+    groundPatch.quaternion.setFromUnitVectors(_v1.set(0, 1, 0),
+      _v2.set(dom.rel.x / rm0, dom.rel.y / rm0, 0));
+    groundPatch.visible = true;
+  } else if (groundPatch) {
+    groundPatch.visible = false;
+  }
   // Rocks: deterministic per ground "slot" so they hold still while you descend past them.
   if (rockField) {
     if (near) {

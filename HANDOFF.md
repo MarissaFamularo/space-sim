@@ -191,6 +191,14 @@ python3 -m http.server 8011      # any free port; 8000 was often busy on this ma
 All the Phase 1–3 gotchas still apply (renderer.setSize CSS, emissive materials, fixed map
 frame, in-place craft reset, e.repeat one-shots, input blur, palette rows are divs). New:
 
+- **Landed things "floated" above the ground (his Ganymede bug report).** Two stacked
+  causes: (1) body spheres are 48x32-segment — the drawn surface sags up to ~R/470 below
+  the true radius between vertices (~560 m on Ganymede) while physics/rocks/Connie sit AT
+  the true radius; (2) the craft mesh was rendered CENTERED on the physics point, which
+  is really the craft's base. Fix: a finely-tessellated ground-patch cap (render.js
+  `ensureGroundPatch`, shown < 25 km over solid ground, own dusty local texture) + the
+  craft mesh now renders base-at-point. Don't "fix" this by cranking sphere segments —
+  1000+ segments per body is what it would take.
 - **PointLight at astronomical distance renders planets BLACK** (three r160 physical
   falloff). Sunlight is a DirectionalLight re-aimed from the Sun's scene position every
   frame. If a body ever renders black-on-black, check the light, not the mesh.
