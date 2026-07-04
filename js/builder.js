@@ -540,14 +540,21 @@ function clearStack() {
 
 // Recompute every part's `stage` by walking bottom->top. See STAGING RULE at top.
 // Lowest part = stage 0. Each decoupler we pass increments the stage for parts above it.
+// EXCEPTION: rover(s) at the very BOTTOM are cargo, and a decoupler right above them is
+// the rover's release latch, not a stage split — otherwise "stage 0" is an engineless,
+// fuel-less rover and launch dies with a confusing NO ENGINE (his sky-crane bug report).
 function reflowStages() {
   let stage = 0;
+  let bottomCargo = true; // still walking the leading rover-cargo section?
   for (const inst of _craft.parts) {
     inst.stage = stage;
     const def = findPart(_catalog, inst.partId);
-    if (def && def.type === "decoupler") {
-      // Decoupler belongs to the stage below it; parts above start the next stage.
-      stage += 1;
+    if (!def) continue;
+    if (def.type === "decoupler") {
+      if (bottomCargo) bottomCargo = false; // the latch — same stage, no split
+      else stage += 1; // normal decoupler: parts above start the next stage
+    } else if (def.type !== "rover") {
+      bottomCargo = false;
     }
   }
 }

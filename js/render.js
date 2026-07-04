@@ -135,6 +135,7 @@ function makeMaterials() {
     fin: m(0xc24b3a, 0.1, 0.7),
     chute: m(0xe8564a, 0.05, 0.8),
     legs: m(0x5a6068, 0.4, 0.5),
+    rope: m(0x4a4238, 0.1, 0.9),
     solar: m(0x2456c8, 0.6, 0.3),
     probe: m(0xc8a03a, 0.6, 0.4),   // gold foil, like real spacecraft
     rover: m(0xd8dde8, 0.2, 0.6),
@@ -881,16 +882,44 @@ function buildCraftMesh(craft) {
   const defs = resolveDefs(craft);
   if (defs.length === 0) return;
 
+  // Sky-crane bridle: a crane above a rover (directly, or across the release-latch
+  // decoupler) leaves an air gap spanned by ropes — the rover HANGS, like the real
+  // MSL landing ("no rope" bug report).
+  const ROPE_GAP = 2.2;
+  const gapBefore = (i) => i > 0 && defs[i - 1].type === "rover" &&
+    (defs[i].shape === "crane" ||
+     (defs[i].type === "decoupler" && defs[i + 1] && defs[i + 1].shape === "crane"));
+
   let total = 0;
-  for (const d of defs) total += (d.height || 0);
+  for (let i = 0; i < defs.length; i++) {
+    total += (defs[i].height || 0);
+    if (gapBefore(i)) total += ROPE_GAP;
+  }
   craftHeight = total;
 
   const group = new THREE.Group();
+  if (!MAT) makeMaterials();
 
   let cursor = -total / 2;
-  for (const def of defs) {
+  for (let i = 0; i < defs.length; i++) {
+    const def = defs[i];
     const h = def.height || 1;
     const r = def.radius || 0.5;
+    if (gapBefore(i)) {
+      const roverTop = cursor;
+      cursor += ROPE_GAP;
+      for (let k = 0; k < 3; k++) {
+        const a = (k / 3) * Math.PI * 2 + 0.5;
+        const from = _v1.set(0, roverTop - 0.15, 0);
+        const to = _v2.set(Math.cos(a) * r * 0.7, cursor + 0.1, Math.sin(a) * r * 0.7);
+        const dir = _v3.copy(to).sub(from);
+        const len = dir.length();
+        const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, len, 6), MAT.rope);
+        rope.position.copy(from).add(to).multiplyScalar(0.5);
+        rope.quaternion.setFromUnitVectors(_v1.set(0, 1, 0), dir.normalize());
+        group.add(rope);
+      }
+    }
     const cy = cursor + h / 2;
     const partObj = makePartObject(def, h, r);
     partObj.position.y = cy;

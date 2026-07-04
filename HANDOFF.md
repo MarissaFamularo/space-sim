@@ -191,6 +191,13 @@ python3 -m http.server 8011      # any free port; 8000 was often busy on this ma
 All the Phase 1–3 gotchas still apply (renderer.setSize CSS, emissive materials, fixed map
 frame, in-place craft reset, e.repeat one-shots, input blur, palette rows are divs). New:
 
+- **Sky crane "had no engine and no rope" (his bug report).** The natural kid build is
+  rover / DECOUPLER / crane / tank / pod — and the old staging rule made the bottom rover
+  its own engineless, fuel-less stage 0, so launch died with NO ENGINE. Rule now
+  (builder.js reflowStages): rover(s) at the very bottom are CARGO and a decoupler right
+  above them is the release latch, NOT a stage split. And the rover now visibly HANGS on
+  three bridle ropes below the crane (render.js gapBefore/ROPE_GAP in buildCraftMesh),
+  with or without the latch decoupler — like the real MSL landing.
 - **Landed things "floated" above the ground (his Ganymede bug report).** Two stacked
   causes: (1) body spheres are 48x32-segment — the drawn surface sags up to ~R/470 below
   the true radius between vertices (~560 m on Ganymede) while physics/rocks/Connie sit AT
