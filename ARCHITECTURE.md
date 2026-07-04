@@ -37,7 +37,8 @@ atmosphere|null, parent, orbitRadius, omega, phase0, soiRadius`. Gas giants + th
 ```js
 {
   id: "engine_sparrow",          // unique
-  type: "command"|"tank"|"engine"|"decoupler"|"fin",
+  type: "command"|"tank"|"engine"|"decoupler"|"fin"|"chute"|"legs"|"solar"|"rover",
+  uncrewed: true,                // command parts only: a probe core (no Connie flies)
   name: "Sparrow Engine",
   dryMass: 0.5,                  // t
   // type-specific:
@@ -95,7 +96,14 @@ position; explicit coordinates are not needed in Phase 1 (render derives them by
   transfer: TransferWindow | null,  // burn-window phasing toward sim.target
   course: CourseCheck | null,       // mid-course closest-pass prediction (when transfer is null)
   teleported: bodyName | undefined, // set when he ✨-teleported here (Navigator sees the shortcut)
+  crew: Connie | null,              // null = uncrewed probe mission (no crew pod aboard)
+  rover: { body, t0, offset } | undefined, // rover released on a surface (render draws it + tracks)
+  satellites: [SatRec, ...],        // deployed satellites (main.js owns the array + localStorage)
 }
+// SatRec: { name, hasPower, bodyKey, epoch, a, e, periAngle, M0, n } — a conic frozen at
+// release (Physics.makeSatellite); Physics.satellitePos propagates it for display.
+// craft also carries per-stage part counts set by main.js loadStage: chuteCount, legCount
+// (physics: legs raise touchdown limits 5→12 m/s descent, 12→18 total), solarCount, roverCount.
 ```
 
 ### CourseCheck (from `Physics.courseCorrection(sim)` — the Apollo 13 move)
@@ -170,6 +178,12 @@ Physics.courseCorrection(sim, key?) // -> CourseCheck | null (see shape above). 
 Physics.parkingOrbit(key, t?)       // -> {pos, vel, angle, radius, altitude, speed} | null: a circular
                                     //   CCW orbit just above body `key` at time t, entered on the sunlit
                                     //   side. Backs the ✨ Teleport button; null for the Sun. Pure.
+                                    //   tinyMoon bodies (Phobos/Deimos) instead return a FORMATION point
+                                    //   (matching parent orbit, 5 radii off, coOrbit:true) — you can't
+                                    //   orbit a moon whose true SOI is smaller than its radius.
+Physics.makeSatellite(sim)          // -> {bodyKey, epoch, a, e, periAngle, M0, n} | null: freeze the
+                                    //   craft's current conic about its dominant body (satellite deploy).
+Physics.satellitePos(sat, t)        // -> world {x,y} of that frozen conic at time t. Both pure.
 ```
 Provide a tiny self-check at bottom under `if (import.meta.url === ... )`-style guard OR an
 exported `Physics._selfTest()` that logs a known circular-orbit check. Keep it deterministic.

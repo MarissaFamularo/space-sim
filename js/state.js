@@ -25,6 +25,12 @@ const REAL = {
   earth:   { radius: 6.371e6,  g0: 9.81,  parent: "sun",   a: 1.4960e11, solid: true,  atmo: { height: 70000, seaLevelDensity: 1.225 }, phase0: 0 },
   moon:    { radius: 1.737e6,  g0: 1.62,  parent: "earth", a: 3.844e8,   solid: true,  atmo: null, phase0: 0 },
   mars:    { radius: 3.3895e6, g0: 3.71,  parent: "sun",   a: 2.2794e11, solid: true,  atmo: { height: 125000, seaLevelDensity: 0.020 }, phase0: 5.2 },
+  // Mars's moons: so tiny their TRUE sphere of influence is smaller than their own radius
+  // (you can't really orbit them — real probes orbit MARS and fly alongside). buildBodies
+  // clamps their SOI to 2x radius purely so readouts measure from them up close/landed;
+  // it marks them tinyMoon so guidance knows orbits here aren't a thing.
+  phobos:  { radius: 1.1267e4, g0: 0.0057, parent: "mars", a: 9.376e6,   solid: true,  atmo: null, phase0: 1.5 },
+  deimos:  { radius: 6.2e3,    g0: 0.003,  parent: "mars", a: 2.3463e7,  solid: true,  atmo: null, phase0: 4.7 },
   jupiter: { radius: 6.9911e7, g0: 24.79, parent: "sun",   a: 7.7857e11, solid: false, atmo: { height: 1000000, seaLevelDensity: 0.16 }, phase0: 1.7 },
   // Jupiter's Galilean moons (Phobos/Deimos skipped: so tiny their SOI is smaller than
   // their radius; Triton skipped: retrograde, and this engine's orbits are CCW-only).
@@ -48,7 +54,7 @@ const REAL = {
 // so omega and SOI can read the parent's mu.
 function buildBodies(scale) {
   const out = {};
-  const order = ["sun", "mercury", "venus", "earth", "moon", "mars",
+  const order = ["sun", "mercury", "venus", "earth", "moon", "mars", "phobos", "deimos",
                  "jupiter", "io", "europa", "ganymede", "callisto",
                  "saturn", "titan", "uranus", "neptune", "pluto"];
   for (const key of order) {
@@ -71,6 +77,13 @@ function buildBodies(scale) {
       body.omega = Math.sqrt(p.mu / (body.orbitRadius ** 3)); // circular two-body rate, CCW
       // Sphere of influence (patched conics): r_soi = a * (mu/mu_parent)^(2/5).
       body.soiRadius = body.orbitRadius * Math.pow(body.mu / p.mu, 0.4);
+      // Tiny moons (Phobos, Deimos): true SOI < their own radius — no orbit is possible
+      // around them (real!). Clamp the DISPLAY SOI to 2x radius so standing on / hovering
+      // beside one reads distances and speeds from IT, and flag it for guidance.
+      if (body.soiRadius < radius * 2) {
+        body.soiRadius = radius * 2;
+        body.tinyMoon = true;
+      }
     }
     out[key] = body;
   }
@@ -80,7 +93,7 @@ function buildBodies(scale) {
 export const BODIES = buildBodies(SCALE);
 
 // Every body except the Sun, ordered for target pickers / map labels.
-export const PLANET_KEYS = ["mercury", "venus", "earth", "moon", "mars",
+export const PLANET_KEYS = ["mercury", "venus", "earth", "moon", "mars", "phobos", "deimos",
   "jupiter", "io", "europa", "ganymede", "callisto", "saturn", "titan", "uranus", "neptune", "pluto"];
 
 // World (Sun-centered) position/velocity of a body's CENTER at sim time t (seconds).

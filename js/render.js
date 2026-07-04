@@ -12,6 +12,7 @@
 import * as THREE from "three";
 import { BODIES, PLANET_KEYS, bodyStateAt, dominantBody } from "./state.js";
 import { PARTS } from "./mods.js"; // merged catalog: stock + the kid's mods
+import { Physics } from "./physics.js"; // pure math only (satellite propagation)
 
 // ---- Module-private Three.js state (no other module touches three) ----
 let renderer = null;
@@ -69,6 +70,8 @@ const BODY_STYLE = {
   earth:   { color: 0x2a6cc4, halo: 0x6fb4ff },
   moon:    { color: 0x9aa0a8 },
   mars:    { color: 0xc1552f, halo: 0xd98a5e },
+  phobos:  { color: 0x8a7f74 },
+  deimos:  { color: 0x9d9186 },
   jupiter: { color: 0xc9a97a, stripes: ["#c9a97a", "#a8875d", "#e0c396", "#b5713f"], halo: 0xc9a97a },
   io:       { color: 0xd8c35a },  // sulfur yellow (most volcanic world in the solar system)
   europa:   { color: 0xd9e2e8 },  // cracked ice shell
@@ -95,6 +98,21 @@ const buildCam = {
 // ---- Reusable scratch objects (avoid per-frame allocation) ----
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
+const _v3 = new THREE.Vector3();
+const _s3 = new THREE.Vector3();
+const _q1 = new THREE.Quaternion();
+const _e1 = new THREE.Euler();
+const _m4 = new THREE.Matrix4();
+
+// Phase 5 scene objects: near-surface rocks, landing reticle, deployed rover, satellites.
+let rockField = null;
+const ROCK_COUNT = 240;
+const ROCK_ARC = 130; // meters of ground between rock slots
+let reticle = null;
+let surfaceRover = null;
+let roverTrackL = null, roverTrackR = null;
+const TRACK_N = 48;
+let satPool = []; // [{ group, dot, label, name }]
 
 // ---- Materials (created once in init) ----
 let MAT = null;
@@ -109,6 +127,10 @@ function makeMaterials() {
     decoupler: m(0x8a8f99, 0.3, 0.5),
     fin: m(0xc24b3a, 0.1, 0.7),
     chute: m(0xe8564a, 0.05, 0.8),
+    legs: m(0x5a6068, 0.4, 0.5),
+    solar: m(0x2456c8, 0.6, 0.3),
+    probe: m(0xc8a03a, 0.6, 0.4),   // gold foil, like real spacecraft
+    rover: m(0xd8dde8, 0.2, 0.6),
     generic: m(0xb6c0d0, 0.2, 0.6),
   };
 }
@@ -118,26 +140,234 @@ function materialForPart(def) {
   switch (def.type) {
     case "engine": return MAT.engine;
     case "tank": return MAT.tank;
-    case "command": return MAT.pod;
+    case "command": return def.uncrewed ? MAT.probe : MAT.pod;
     case "decoupler": return MAT.decoupler;
     case "fin": return MAT.fin;
     case "chute": return MAT.chute;
+    case "legs": return MAT.legs;
+    case "solar": return MAT.solar;
+    case "rover": return MAT.rover;
     default: return MAT.generic;
   }
 }
 
-// Horizontal-band canvas texture for gas giants (latitude stripes on the sphere's V axis).
-function stripeTexture(colors) {
+// =====================================================================
+// Procedural planet faces (Phase 5, "he'd like the planets to look better").
+// Each world gets a 512x256 equirect canvas painted ONCE at init with a
+// per-body seeded RNG, so its continents/craters are the same every boot.
+// =====================================================================
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hashStr(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+function makePlanetCanvas(key) {
+  const W = 512, H = 256;
   const cv = document.createElement("canvas");
-  cv.width = 8; cv.height = 128;
+  cv.width = W; cv.height = H;
   const ctx = cv.getContext("2d");
-  const bandCount = 9;
-  for (let i = 0; i < bandCount; i++) {
-    ctx.fillStyle = colors[i % colors.length];
-    ctx.fillRect(0, Math.floor((i / bandCount) * 128), 8, Math.ceil(128 / bandCount));
+  const rng = mulberry32(hashStr(key));
+  const fill = (c) => { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); };
+  // Blobby landmass / patch: a random walk of overlapping circles (wraps horizontally).
+  const blob = (cx, cy, r, color, n = 26, alpha = 1) => {
+    ctx.globalAlpha = alpha; ctx.fillStyle = color;
+    let x = cx, y = cy;
+    for (let i = 0; i < n; i++) {
+      const rr = r * (0.35 + rng() * 0.5);
+      const xw = ((x % W) + W) % W;
+      ctx.beginPath(); ctx.arc(xw, y, rr, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(xw - W, y, rr, 0, Math.PI * 2); ctx.fill(); // wrap seam
+      x += (rng() - 0.5) * r * 1.7; y += (rng() - 0.5) * r * 1.1;
+    }
+    ctx.globalAlpha = 1;
+  };
+  const craters = (n, dark, light, rMax = 9) => {
+    for (let i = 0; i < n; i++) {
+      const x = rng() * W, y = H * (0.06 + rng() * 0.88), r = 1.5 + rng() * rng() * rMax;
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = dark; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = light; ctx.lineWidth = Math.max(1, r * 0.28);
+      ctx.beginPath(); ctx.arc(x, y, r, -2.4, -0.6); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  };
+  const caps = (color, frac = 0.09) => { // fuzzy polar ice
+    ctx.fillStyle = color;
+    for (const top of [true, false]) {
+      for (let x = 0; x < W; x += 5) {
+        const h = H * frac * (0.55 + rng() * 0.9);
+        ctx.fillRect(x, top ? 0 : H - h, 5, h);
+      }
+    }
+  };
+  const streaks = (colors, n, len, thick, wobble = 16) => { // wind-blown horizontal wisps
+    for (let i = 0; i < n; i++) {
+      const y0 = H * (0.06 + rng() * 0.88), x0 = rng() * W;
+      ctx.strokeStyle = colors[Math.floor(rng() * colors.length)];
+      ctx.globalAlpha = 0.14 + rng() * 0.22;
+      ctx.lineWidth = thick * (0.5 + rng());
+      ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(x0, y0);
+      ctx.bezierCurveTo(x0 + len * 0.33, y0 + (rng() - 0.5) * wobble,
+                        x0 + len * 0.66, y0 + (rng() - 0.5) * wobble,
+                        x0 + len, y0 + (rng() - 0.5) * wobble * 0.5);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  };
+  const bands = (colors, wiggle = 5) => { // gas-giant latitude bands with a lazy wave
+    const n = colors.length * 3;
+    const bh = H / n;
+    for (let i = 0; i < n; i++) {
+      ctx.fillStyle = colors[i % colors.length];
+      const y = i * bh;
+      ctx.beginPath(); ctx.moveTo(0, y + Math.sin(i * 2.1) * wiggle);
+      for (let x = 0; x <= W; x += 16) ctx.lineTo(x, y + Math.sin(x / 43 + i * 2.1) * wiggle);
+      ctx.lineTo(W, y + bh * 1.6); ctx.lineTo(0, y + bh * 1.6); ctx.closePath(); ctx.fill();
+    }
+  };
+
+  switch (key) {
+    case "earth": { // blue marble: oceans, continents, deserts, ice caps, wispy clouds
+      fill("#1b5ec2");
+      for (let i = 0; i < 6; i++) blob(rng() * W, H * (0.18 + rng() * 0.6), 24 + rng() * 14, "#3e8a3a", 30);
+      for (let i = 0; i < 4; i++) blob(rng() * W, H * (0.3 + rng() * 0.4), 12, "#a8935a", 14, 0.8);
+      caps("#eef4ff", 0.1);
+      streaks(["#ffffff"], 30, 160, 8);
+      break;
+    }
+    case "mars": {
+      fill("#c1552f");
+      for (let i = 0; i < 5; i++) blob(rng() * W, H * (0.25 + rng() * 0.5), 20, "#7d3018", 22, 0.7);
+      craters(45, "#8a3a20", "#d98a5e", 6);
+      caps("#f0e8e0", 0.07);
+      break;
+    }
+    case "moon": {
+      fill("#9aa0a8");
+      for (let i = 0; i < 5; i++) blob(rng() * W, H * (0.2 + rng() * 0.6), 22, "#7c828c", 20, 0.75);
+      craters(95, "#6d737d", "#c3c9d4", 9);
+      break;
+    }
+    case "mercury": { fill("#9c8e82"); craters(120, "#6f6358", "#c4b8aa", 8); break; }
+    case "venus": { fill("#e8c98e"); streaks(["#f2dcab", "#d9b273", "#f7e7c3"], 46, 260, 12, 9); break; }
+    case "io": {
+      fill("#d8c35a");
+      for (let i = 0; i < 4; i++) blob(rng() * W, H * (0.2 + rng() * 0.6), 18, "#e8e2b8", 16, 0.7);
+      for (let i = 0; i < 22; i++) { // volcanoes: dark heart, orange splash ring
+        const x = rng() * W, y = H * (0.1 + rng() * 0.8), r = 2 + rng() * 6;
+        ctx.fillStyle = "#c1552f"; ctx.globalAlpha = 0.8;
+        ctx.beginPath(); ctx.arc(x, y, r * 1.8, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#54341c";
+        ctx.beginPath(); ctx.arc(x, y, r * 0.7, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      break;
+    }
+    case "europa": {
+      fill("#dde6ec");
+      for (let i = 0; i < 30; i++) { // the famous rusty cracks
+        ctx.strokeStyle = "#b06a4a"; ctx.globalAlpha = 0.35 + rng() * 0.3;
+        ctx.lineWidth = 0.8 + rng() * 1.6;
+        const x0 = rng() * W, y0 = rng() * H;
+        ctx.beginPath(); ctx.moveTo(x0, y0);
+        ctx.bezierCurveTo(x0 + (rng() - 0.5) * 300, y0 + (rng() - 0.5) * 120,
+                          x0 + (rng() - 0.5) * 300, y0 + (rng() - 0.5) * 120,
+                          x0 + (rng() - 0.5) * 420, y0 + (rng() - 0.5) * 160);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      break;
+    }
+    case "ganymede": {
+      fill("#9a948a");
+      for (let i = 0; i < 6; i++) blob(rng() * W, H * (0.15 + rng() * 0.7), 24, "#77706a", 22, 0.8);
+      craters(35, "#5f5952", "#c8c0b4", 6);
+      break;
+    }
+    case "callisto": { fill("#6f665c"); craters(150, "#524a42", "#a89c8c", 6); break; }
+    case "titan": {
+      fill("#d8a04a");
+      streaks(["#e6b45e", "#c8903e"], 26, 220, 14, 8);
+      blob(W * 0.5, H * 0.5, 30, "#a87830", 26, 0.3); // dark equatorial dunes
+      break;
+    }
+    case "pluto": {
+      fill("#d8c0ae");
+      for (let i = 0; i < 3; i++) blob(rng() * W, H * (0.15 + rng() * 0.5), 22, "#8a6a52", 20, 0.7);
+      craters(25, "#a3856c", "#eadbc8", 5);
+      { // Tombaugh Regio: the heart ♥ (two lobes + a soft point)
+        const hx = W * 0.58, hy = H * 0.55, s = 26;
+        ctx.fillStyle = "#f4ece0"; ctx.globalAlpha = 0.95;
+        ctx.beginPath(); ctx.arc(hx - s * 0.55, hy - s * 0.3, s * 0.62, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(hx + s * 0.55, hy - s * 0.3, s * 0.62, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(hx - s * 1.12, hy - s * 0.12);
+        ctx.lineTo(hx, hy + s * 1.05); ctx.lineTo(hx + s * 1.12, hy - s * 0.12); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      break;
+    }
+    case "jupiter": {
+      bands(["#c9a97a", "#a8875d", "#e0c396", "#b5713f"], 5);
+      streaks(["#e8d5ae", "#96703f"], 30, 300, 8, 6);
+      { // the Great Red Spot
+        const x = W * 0.31, y = H * 0.62;
+        ctx.fillStyle = "#b34a28"; ctx.globalAlpha = 0.9;
+        ctx.beginPath(); ctx.ellipse(x, y, 26, 13, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "#e0c396"; ctx.lineWidth = 3; ctx.globalAlpha = 0.7;
+        ctx.beginPath(); ctx.ellipse(x, y, 30, 16, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      break;
+    }
+    case "saturn": {
+      bands(["#d9c08a", "#c2a86f", "#e8d5a8"], 3);
+      streaks(["#efe0b8", "#b89d68"], 20, 320, 10, 5);
+      break;
+    }
+    case "uranus": { fill("#9ad4d6"); streaks(["#8ac8cc", "#b0e0e2"], 14, 320, 20, 6); break; }
+    case "neptune": {
+      fill("#3f66d4");
+      streaks(["#2f52b8", "#6086e8", "#d8e4ff"], 18, 300, 12, 8);
+      ctx.fillStyle = "#24418f"; ctx.globalAlpha = 0.85; // the Great Dark Spot
+      ctx.beginPath(); ctx.ellipse(W * 0.62, H * 0.42, 20, 11, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      break;
+    }
+    case "phobos": {
+      fill("#8a7f74");
+      craters(70, "#655c52", "#b3a89a", 7);
+      ctx.fillStyle = "#5d554c"; ctx.globalAlpha = 0.8; // Stickney, the giant crater
+      ctx.beginPath(); ctx.arc(W * 0.3, H * 0.5, 34, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      break;
+    }
+    case "deimos": { fill("#9d9186"); craters(50, "#756b60", "#c2b6a8", 6); break; }
+    default: return null;
   }
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
+  return cv;
+}
+
+const _texCache = {};
+function planetTexture(key) {
+  if (key in _texCache) return _texCache[key];
+  const cv = makePlanetCanvas(key);
+  let tex = null;
+  if (cv) {
+    tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+  }
+  _texCache[key] = tex;
   return tex;
 }
 
@@ -203,6 +433,46 @@ function init(canvasEl) {
   chuteCanopy.visible = false;
   scene.add(chuteCanopy);
 
+  // Near-surface rock field: the "how close is the ground?" depth cue. One instanced
+  // mesh, repositioned deterministically around the sub-craft point every frame.
+  rockField = new THREE.InstancedMesh(
+    new THREE.DodecahedronGeometry(1, 0),
+    new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 1, metalness: 0,
+      emissive: 0x808080, emissiveIntensity: 0.12 }),
+    ROCK_COUNT
+  );
+  rockField.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  rockField.frustumCulled = false;
+  rockField.visible = false;
+  scene.add(rockField);
+
+  // Landing reticle: a ring on the ground under the ship — green means "this descent
+  // speed survives", amber "close", red "you'd crater".
+  reticle = new THREE.Mesh(
+    new THREE.RingGeometry(0.78, 1, 40),
+    new THREE.MeshBasicMaterial({ color: 0x6effa0, transparent: true, opacity: 0.8,
+      side: THREE.DoubleSide, depthWrite: false })
+  );
+  reticle.frustumCulled = false;
+  reticle.visible = false;
+  scene.add(reticle);
+
+  // The deployed rover + its wheel tracks (visible after he stages a Rover while landed).
+  surfaceRover = makeRoverMesh(1);
+  surfaceRover.visible = false;
+  scene.add(surfaceRover);
+  const mkTrack = () => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(TRACK_N * 3), 3));
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x2e2620, transparent: true, opacity: 0.85 }));
+    line.frustumCulled = false;
+    line.visible = false;
+    scene.add(line);
+    return line;
+  };
+  roverTrackL = mkTrack();
+  roverTrackR = mkTrack();
+
   // Build-mode ground disc.
   const groundGeo = new THREE.CircleGeometry(2000, 64);
   const groundMat = new THREE.MeshStandardMaterial({
@@ -262,13 +532,16 @@ function makeBodyGroup(key) {
 
   const detail = key === "earth" ? [96, 64] : [48, 32];
   let mat;
+  const tex = style.star ? null : planetTexture(key);
   if (style.star) {
     // The Sun glows by itself — it IS the light source.
     mat = new THREE.MeshBasicMaterial({ color: style.color });
-  } else if (style.stripes) {
+  } else if (tex) {
+    // Painted face; emissiveMap = same texture so the night side shows it dimly
+    // (flat-color emissive would wash the detail out).
     mat = new THREE.MeshStandardMaterial({
-      map: stripeTexture(style.stripes), roughness: 0.9, metalness: 0,
-      emissive: style.color, emissiveIntensity: 0.22,
+      map: tex, roughness: 0.95, metalness: 0,
+      emissive: 0xffffff, emissiveIntensity: 0.16, emissiveMap: tex,
     });
   } else {
     mat = new THREE.MeshStandardMaterial({
@@ -438,6 +711,35 @@ function makeConnie() {
   pack.position.set(0, 0.86, -0.18);
   g.add(pack);
 
+  return g;
+}
+
+// A little six-wheeled rover (Curiosity-ish): body, wheels, camera mast, solar deck.
+// Used both as the buildable part and as the deployed explorer on the surface.
+function makeRoverMesh(s = 1) {
+  if (!MAT) makeMaterials();
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.9 * s, 0.35 * s, 0.6 * s), MAT.rover);
+  body.position.y = 0.42 * s;
+  g.add(body);
+  const wheelGeo = new THREE.CylinderGeometry(0.16 * s, 0.16 * s, 0.1 * s, 12);
+  for (const wx of [-0.36, 0, 0.36]) {
+    for (const wz of [-1, 1]) {
+      const w = new THREE.Mesh(wheelGeo, MAT.engine);
+      w.rotation.x = Math.PI / 2;
+      w.position.set(wx * s, 0.16 * s, wz * 0.38 * s);
+      g.add(w);
+    }
+  }
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.03 * s, 0.03 * s, 0.5 * s, 8), MAT.decoupler);
+  mast.position.set(0.3 * s, 0.85 * s, 0);
+  g.add(mast);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.16 * s, 0.1 * s, 0.1 * s), MAT.rover);
+  head.position.set(0.3 * s, 1.12 * s, 0);
+  g.add(head);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(0.5 * s, 0.03 * s, 0.5 * s), MAT.solar);
+  deck.position.set(-0.15 * s, 0.62 * s, 0);
+  g.add(deck);
   return g;
 }
 
@@ -647,6 +949,77 @@ function makePartObject(def, h, r) {
       grp.add(fin2);
       return grp;
     }
+    case "legs": {
+      // Four splayed struts with footpads, reaching down past the part below (they
+      // visually wrap the engine, like a real lander).
+      const grp = new THREE.Group();
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+        const tangent = new THREE.Vector3(-Math.sin(a), 0, Math.cos(a));
+        const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, h * 2.6, 8), mat);
+        strut.position.set(Math.cos(a) * r * 0.95, -h * 0.55, Math.sin(a) * r * 0.95);
+        strut.quaternion.setFromAxisAngle(tangent, 0.5);
+        grp.add(strut);
+        const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.08, 10), mat);
+        pad.position.set(Math.cos(a) * r * 1.5, -h * 1.55, Math.sin(a) * r * 1.5);
+        grp.add(pad);
+      }
+      const collar = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.85, r * 0.85, h * 0.5, 16), mat);
+      grp.add(collar);
+      return grp;
+    }
+    case "probe": {
+      const grp = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(r * 1.3, h * 0.85, r * 1.3), mat);
+      grp.add(body);
+      const dish = new THREE.Mesh(
+        new THREE.SphereGeometry(r * 0.45, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        MAT ? MAT.tank : mat);
+      dish.rotation.x = -Math.PI / 2;
+      dish.position.set(0, h * 0.1, r * 0.85);
+      grp.add(dish);
+      const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, h * 1.5, 6), MAT ? MAT.decoupler : mat);
+      ant.position.y = h * 0.8;
+      grp.add(ant);
+      return grp;
+    }
+    case "panels": {
+      const grp = new THREE.Group();
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.5, r * 0.5, h * 0.8, 12), MAT ? MAT.decoupler : mat);
+      grp.add(hub);
+      for (const s of [-1, 1]) {
+        const wing = new THREE.Mesh(new THREE.BoxGeometry(r * 3.2, h * 0.8, 0.06), mat);
+        wing.position.x = s * (r * 0.5 + r * 1.65);
+        grp.add(wing);
+        // panel grid lines: thin dark strips for the classic solar-cell look
+        for (let i = -1; i <= 1; i++) {
+          const strip = new THREE.Mesh(new THREE.BoxGeometry(0.03, h * 0.82, 0.07), MAT ? MAT.engine : mat);
+          strip.position.set(s * (r * 0.5 + r * 1.65) + i * r * 0.9, 0, 0);
+          grp.add(strip);
+        }
+      }
+      return grp;
+    }
+    case "crane": {
+      // A flat frame ringed by four outward-splayed thrusters — cargo hangs BELOW.
+      const grp = new THREE.Group();
+      const frame = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.9, h * 0.5, 16), mat);
+      grp.add(frame);
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2;
+        const tangent = new THREE.Vector3(-Math.sin(a), 0, Math.cos(a));
+        const noz = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.17, h * 0.7, 10), MAT ? MAT.engine : mat);
+        noz.position.set(Math.cos(a) * r * 1.0, -h * 0.1, Math.sin(a) * r * 1.0);
+        noz.quaternion.setFromAxisAngle(tangent, -0.45); // canted out so the plume misses the cargo
+        grp.add(noz);
+      }
+      return grp;
+    }
+    case "rover": {
+      const grp = makeRoverMesh(0.9);
+      grp.scale.setScalar(Math.max(0.6, r));
+      return grp;
+    }
     default: {
       const geo = new THREE.CylinderGeometry(r, r, h, 24);
       return new THREE.Mesh(geo, mat);
@@ -694,6 +1067,14 @@ function setMode(m) {
     if (progradeArrow) progradeArrow.visible = false;
     if (headingArrow) headingArrow.visible = false;
     if (targetArrow) targetArrow.visible = false;
+    if (rockField) rockField.visible = false;
+    if (reticle) reticle.visible = false;
+    if (surfaceRover) surfaceRover.visible = false;
+    if (roverTrackL) roverTrackL.visible = false;
+    if (roverTrackR) roverTrackR.visible = false;
+    for (const e of satPool) {
+      if (e) { e.group.visible = false; e.dot.visible = false; if (e.label) e.label.visible = false; }
+    }
   } else {
     if (launchpad) launchpad.visible = false;
     if (ground) ground.visible = false;
@@ -814,9 +1195,15 @@ function updateFlight(sim) {
     }
   }
 
-  // Landed EVA: the Connie stands beside the ship on WHATEVER world she landed on.
+  // Phase 5: surface detail + deployed rover + satellites.
+  updateSurfaceExtras(sim, dom);
+  updateRover(sim, states);
+  updateSatellites(sim);
+
+  // Landed EVA: the Connie stands beside the ship on WHATEVER world she landed on
+  // (only when someone's actually aboard — probes carry no Connie).
   if (connieMesh) {
-    if (sim.status === "landed" && sim.landed && states[sim.landed.body]) {
+    if (sim.status === "landed" && sim.landed && sim.crew && states[sim.landed.body]) {
       const bs = states[sim.landed.body];
       const rl = Math.hypot(sim.craft.pos.x - bs.pos.x, sim.craft.pos.y - bs.pos.y) || 1;
       const ux = (sim.craft.pos.x - bs.pos.x) / rl, uy = (sim.craft.pos.y - bs.pos.y) / rl;
@@ -862,6 +1249,172 @@ function updateFlight(sim) {
   camera.lookAt(0, 0, 0);
 }
 
+// =====================================================================
+// Phase 5: near-surface rocks + landing reticle (the "how close am I" cues),
+// the deployed rover with wheel tracks, and satellites.
+// =====================================================================
+function updateSurfaceExtras(sim, dom) {
+  const solid = dom.body.solid;
+  const alt = sim.altitude || 0;
+  const near = mode === "flight" && flightView === "follow" && solid &&
+               alt < 6000 && sim.status !== "crashed";
+  // Rocks: deterministic per ground "slot" so they hold still while you descend past them.
+  if (rockField) {
+    if (near) {
+      const Rb = dom.body.radius;
+      const cx = dom.center.x - ORIGIN.x, cy = dom.center.y - ORIGIN.y;
+      const phi = Math.atan2(dom.rel.y, dom.rel.x);
+      const style = BODY_STYLE[dom.body.key];
+      if (style) rockField.material.color.set(style.color).multiplyScalar(0.55);
+      rockField.material.emissive.copy(rockField.material.color);
+      const bodySeed = hashStr(dom.body.key);
+      // Two tiers: a DENSE strip right along the ground track (the ground-rush cue as
+      // you come down) plus sparse far boulders for horizon depth.
+      const NEAR = 170;
+      for (let i = 0; i < ROCK_COUNT; i++) {
+        const nearTier = i < NEAR;
+        const arc = nearTier ? 24 : ROCK_ARC;   // meters of ground per rock slot
+        const spread = nearTier ? 240 : 2600;   // out-of-plane scatter (m)
+        const j = nearTier ? i : i - NEAR;
+        const count = nearTier ? NEAR : ROCK_COUNT - NEAR;
+        const slot = Math.round((phi * Rb) / arc) - count / 2 + j;
+        const rr = mulberry32(((slot * 2654435761) ^ bodySeed ^ (nearTier ? 0 : 0x9e37)) >>> 0);
+        const phiK = (slot * arc) / Rb + ((rr() - 0.5) * arc * 0.8) / Rb;
+        const psi = ((rr() - 0.5) * spread) / Rb;
+        const size = (nearTier ? 0.7 : 1.2) + rr() * rr() * 7; // pebbles + the odd boulder
+        const cpk = Math.cos(phiK), spk = Math.sin(phiK);
+        const cps = Math.cos(psi), sps = Math.sin(psi);
+        _v3.set(cx + Rb * cpk * cps, cy + Rb * spk * cps, Rb * sps);
+        _q1.setFromEuler(_e1.set(rr() * 3.14, rr() * 3.14, rr() * 3.14));
+        _s3.set(size, size * (0.6 + rr() * 0.6), size);
+        _m4.compose(_v3, _q1, _s3);
+        rockField.setMatrixAt(i, _m4);
+      }
+      rockField.instanceMatrix.needsUpdate = true;
+      rockField.visible = true;
+    } else rockField.visible = false;
+  }
+  // Reticle: where you'll touch down, colored by whether this fall speed survives.
+  if (reticle) {
+    const showR = near && alt < 3000 && alt > 2 && sim.status !== "landed";
+    if (showR) {
+      const rm = Math.hypot(dom.rel.x, dom.rel.y) || 1;
+      const ux = dom.rel.x / rm, uy = dom.rel.y / rm;
+      const Rb = dom.body.radius;
+      reticle.position.set(dom.center.x - ORIGIN.x + ux * Rb, dom.center.y - ORIGIN.y + uy * Rb, 0);
+      reticle.quaternion.setFromUnitVectors(_v1.set(0, 0, 1), _v2.set(ux, uy, 0));
+      const s = Math.max(4, alt * 0.12);
+      reticle.scale.set(s, s, 1);
+      const vr = (sim.craft.vel.x - dom.vel.x) * ux + (sim.craft.vel.y - dom.vel.y) * uy;
+      const down = Math.max(0, -vr);
+      const safe = (sim.craft.legCount || 0) > 0 ? 12 : 5;
+      reticle.material.color.set(down <= safe ? 0x6effa0 : down <= safe * 1.8 ? 0xffc24a : 0xff5a4a);
+      reticle.visible = true;
+    } else reticle.visible = false;
+  }
+}
+
+// The freed rover creeps along the surface leaving wheel tracks. Faster than a real
+// rover (0.35 m/s vs Curiosity's 0.04) purely so he can SEE it move; it parks at 900 m.
+function updateRover(sim, states) {
+  const active = surfaceRover && sim.rover && BODIES[sim.rover.body] && states[sim.rover.body];
+  if (!active) {
+    if (surfaceRover) surfaceRover.visible = false;
+    if (roverTrackL) roverTrackL.visible = false;
+    if (roverTrackR) roverTrackR.visible = false;
+    return;
+  }
+  const b = BODIES[sim.rover.body];
+  const bs = states[sim.rover.body];
+  const Rb = b.radius;
+  const cx = bs.pos.x - ORIGIN.x, cy = bs.pos.y - ORIGIN.y;
+  const phi0 = Math.atan2(sim.rover.offset.y, sim.rover.offset.x);
+  const driven = Math.min(900, 0.35 * Math.max(0, (sim.time || 0) - sim.rover.t0));
+  const phiR = phi0 + driven / Rb;
+  surfaceRover.position.set(cx + Rb * Math.cos(phiR), cy + Rb * Math.sin(phiR), 0);
+  surfaceRover.quaternion.setFromUnitVectors(_v1.set(0, 1, 0), _v2.set(Math.cos(phiR), Math.sin(phiR), 0));
+  surfaceRover.visible = true;
+  const showTracks = driven > 1;
+  for (const [line, zOff] of [[roverTrackL, 0.28], [roverTrackR, -0.28]]) {
+    if (!showTracks) { line.visible = false; continue; }
+    const attr = line.geometry.getAttribute("position");
+    for (let i = 0; i < TRACK_N; i++) {
+      const p = phi0 + ((driven * i) / (TRACK_N - 1)) / Rb;
+      attr.setXYZ(i, cx + (Rb + 0.05) * Math.cos(p), cy + (Rb + 0.05) * Math.sin(p), zOff);
+    }
+    attr.needsUpdate = true;
+    line.geometry.computeBoundingSphere();
+    line.visible = true;
+  }
+}
+
+// Satellites: the real little spacecraft up close in follow view; dot + name in map view.
+function ensureSatEntry(i) {
+  if (satPool[i]) return satPool[i];
+  if (!MAT) makeMaterials();
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.OctahedronGeometry(0.8), MAT.probe));
+  for (const s of [-1, 1]) {
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.8, 0.05), MAT.solar);
+    wing.position.x = s * 1.8;
+    g.add(wing);
+  }
+  g.visible = false;
+  scene.add(g);
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6),
+    new THREE.MeshBasicMaterial({ color: 0x7fe8ff }));
+  dot.frustumCulled = false;
+  dot.visible = false;
+  scene.add(dot);
+  satPool[i] = { group: g, dot, label: null, name: null };
+  return satPool[i];
+}
+function updateSatellites(sim) {
+  const sats = (sim && sim.satellites) || [];
+  const n = Math.max(satPool.length, sats.length);
+  for (let i = 0; i < n; i++) {
+    if (i >= sats.length) {
+      const e = satPool[i];
+      if (e) { e.group.visible = false; e.dot.visible = false; if (e.label) e.label.visible = false; }
+      continue;
+    }
+    const sat = sats[i];
+    const e = ensureSatEntry(i);
+    if (e.name !== sat.name) { // (re)bake the name label
+      if (e.label) { scene.remove(e.label); if (e.label.material.map) e.label.material.map.dispose(); e.label.material.dispose(); }
+      e.label = makeTextSprite(sat.name || "Sat", sat.hasPower ? "#7fe8ff" : "#8a93a8");
+      scene.add(e.label);
+      e.name = sat.name;
+    }
+    const w = Physics.satellitePos(sat, sim.time || 0);
+    const sx = w.x - ORIGIN.x, sy = w.y - ORIGIN.y;
+    if (flightView === "map") {
+      e.group.visible = false;
+      const soi = BODIES[sat.bodyKey] ? BODIES[sat.bodyKey].soiRadius : 0;
+      const inFrame = mapFrame > 0 && Math.hypot(sx, sy) < mapFrame * 6;
+      const show = inFrame && mapFrame < soi * 12; // declutter: only when zoomed near its world
+      e.dot.visible = show;
+      e.label.visible = show;
+      if (show) {
+        e.dot.position.set(sx, sy, mapFrame * 0.015);
+        e.dot.scale.setScalar(mapFrame * 0.006);
+        const lblS = mapFrame * 0.03;
+        e.label.position.set(sx, sy + mapFrame * 0.022, mapFrame * 0.015);
+        e.label.scale.set(lblS * 2.2, lblS * 0.8, 1);
+      }
+    } else {
+      e.dot.visible = false;
+      e.label.visible = false;
+      const d = Math.hypot(sx, sy);
+      e.group.visible = d < 60000; // close enough to see the actual spacecraft
+      if (e.group.visible) {
+        e.group.position.set(sx, sy, 0);
+        e.group.rotation.z = ((sim.time || 0) * 0.08) % (Math.PI * 2); // lazy tumble
+      }
+    }
+  }
+}
+
 // Map view: top-down of the orbital plane, centered on the DOMINANT body (Earth in LEO,
 // the Sun once you've escaped). Zoom out to see the whole solar system.
 function updateMapCamera(sim, dom, states) {
@@ -899,10 +1452,16 @@ function updateMapCamera(sim, dom, states) {
     const separated = key === "sun" || b.orbitRadius > mapFrame * 0.045;
     if (!separated) { dot.visible = false; label.visible = false; continue; }
     const sx = st.pos.x - ORIGIN.x, sy = st.pos.y - ORIGIN.y;
-    const size = Math.max(b.radius, mapFrame * (key === "sun" ? 0.02 : 0.012));
-    dot.visible = true;
-    dot.position.set(sx, sy, mapFrame * 0.012);
-    dot.scale.setScalar(size);
+    const dotSize = mapFrame * (key === "sun" ? 0.02 : 0.012);
+    const size = Math.max(b.radius, dotSize);
+    // Zoomed close, reality wins: once the TRUE sphere is bigger than the dot would be,
+    // hide the dot — a flat-color stand-in intersecting the textured planet reads as
+    // shattered-glass z-fighting (showed up the moment planets got real faces).
+    dot.visible = b.radius < dotSize;
+    if (dot.visible) {
+      dot.position.set(sx, sy, mapFrame * 0.012);
+      dot.scale.setScalar(dotSize);
+    }
     const lblS = mapFrame * 0.045;
     // Label only when the body is plausibly in frame (within ~3 half-widths of center).
     const inView = Math.hypot(sx - cx, sy - cy) < mapFrame * 3;

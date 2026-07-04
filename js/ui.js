@@ -4,10 +4,11 @@ import { BODIES } from "./state.js";
 
 // Destinations for the target picker, in trip-difficulty order. Moons of other planets
 // show indented under their planet (capture at the planet first, then hop to the moon).
-const TARGETS = ["moon", "mercury", "venus", "mars",
+const TARGETS = ["moon", "mercury", "venus", "mars", "phobos", "deimos",
   "jupiter", "io", "europa", "ganymede", "callisto",
   "saturn", "titan", "uranus", "neptune", "pluto", "earth"];
-const MOON_OF = { io: "jupiter", europa: "jupiter", ganymede: "jupiter", callisto: "jupiter", titan: "saturn" };
+const MOON_OF = { phobos: "mars", deimos: "mars",
+  io: "jupiter", europa: "jupiter", ganymede: "jupiter", callisto: "jupiter", titan: "saturn" };
 
 // Distances read better in the right unit: km up close, million-km across the system.
 function fmtDist(m) {
@@ -146,6 +147,8 @@ export const UI = {
       if ((sim.craft.chuteCount || 0) > 0) {
         html += row("Parachute", sim.chuteOpen ? "☂ open" : (sim.craft.chuteDeployed ? "armed…" : "packed (P)"));
       }
+      if ((sim.craft.legCount || 0) > 0) html += row("Landing legs", "🦵 ok under 12 m/s");
+      if (sim.satellites && sim.satellites.length) html += row("Satellites", "🛰 " + sim.satellites.length + " in orbit");
       if (sim.orbit) {
         html += row("Apoapsis", isFinite(sim.orbit.apoapsis) ? fmtDist(sim.orbit.apoapsis) : "∞ (escaping)");
         html += row("Periapsis", fmtDist(sim.orbit.periapsis));

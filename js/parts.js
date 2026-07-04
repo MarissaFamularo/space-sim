@@ -69,11 +69,58 @@ export const PARTS = [
     attachTop: true, attachBottom: false,
   },
   {
+    // Side-mounted thrusters that can fire with cargo hanging BELOW them — the trick
+    // NASA used to lower the Curiosity and Perseverance rovers onto Mars on cables.
+    id: "engine_crane",
+    type: "engine",
+    name: "Sky-Crane Thrusters",
+    dryMass: 0.35, thrust: 45, exhaustVelocity: 2600,
+    height: 0.6, radius: 0.8, shape: "crane",
+    attachTop: true, attachBottom: true, // unlike other engines, things CAN hang below
+  },
+  {
     id: "decoupler",
     type: "decoupler",
     name: "Stage Decoupler",
     dryMass: 0.05,
     height: 0.3, radius: 0.6, shape: "cylinder",
+    attachTop: true, attachBottom: true,
+  },
+  {
+    id: "landing_legs",
+    type: "legs",
+    name: "Landing Legs",
+    dryMass: 0.15,
+    height: 0.5, radius: 0.7, shape: "legs",
+    attachTop: true, attachBottom: true,
+  },
+  {
+    // Uncrewed brain: a rocket with this (and no crew pod) flies as a PROBE — no Connie
+    // aboard. Jettison a stage carrying one while in a stable orbit and it stays up
+    // there as a SATELLITE.
+    id: "probe_core",
+    type: "command",
+    name: "Probe Core",
+    uncrewed: true,
+    dryMass: 0.3,
+    height: 0.6, radius: 0.5, shape: "probe",
+    attachTop: true, attachBottom: true,
+  },
+  {
+    id: "solar_panel",
+    type: "solar",
+    name: "Solar Panels",
+    dryMass: 0.08,
+    height: 0.4, radius: 0.5, shape: "panels",
+    attachTop: true, attachBottom: true,
+  },
+  {
+    // Cargo: land it somewhere solid, hit Stage, and it drives off to explore.
+    id: "rover",
+    type: "rover",
+    name: "Rover",
+    dryMass: 0.5,
+    height: 0.7, radius: 0.6, shape: "rover",
     attachTop: true, attachBottom: true,
   },
   {

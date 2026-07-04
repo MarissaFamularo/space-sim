@@ -22,7 +22,10 @@ import { BODIES, PLANET_KEYS, bodyStateAt, dominantBody } from "./state.js";
 // --- small vector helpers (plain {x,y}) ---
 function mag(v) { return Math.hypot(v.x, v.y); }
 
-const LAND_SPEED = 5; // m/s descent-rate threshold for a soft landing (vs the surface)
+const LAND_SPEED = 5;        // m/s descent-rate threshold for a soft landing (vs the surface)
+const LAND_TOTAL = 12;       // m/s total surface-relative speed bound (sideways skids count)
+const LEGS_LAND_SPEED = 12;  // with landing legs aboard: struts soak up a harder hit
+const LEGS_LAND_TOTAL = 18;
 
 // --- Reentry heating ---
 // Hull heat (sim.heat, 0..1; 1 = burned up) RELAXES toward an equilibrium set by the
@@ -187,8 +190,12 @@ export const Physics = {
 
     let crashed = false, landed = false, landedInfo = null;
     let airInfo = null; // last substep's air contact (for heat + chute readouts)
+    // Body states refresh at the END of each substep (post-integration) so the collision
+    // sweep compares the craft's NEW position against where each body actually IS.
+    // Checking against start-of-substep positions made touchdown trigger up to
+    // ~|v_body|*h ≈ 500 m early or late depending on which side of the world you landed.
+    let states = allBodyStates(tNow);
     for (let i = 0; i < steps; i++) {
-      const states = allBodyStates(tNow);
 
       // Gravity from EVERYONE (restricted n-body superposition).
       const acc = { x: 0, y: 0 };
@@ -236,6 +243,7 @@ export const Physics = {
       pos.x += vel.x * h;
       pos.y += vel.y * h;
       tNow += h;
+      states = allBodyStates(tNow); // fresh positions: collision now + gravity next substep
 
       // --- Surface collision against every body (all of them move) ---
       for (const s of states) {
@@ -257,7 +265,11 @@ export const Physics = {
           else sim.sankIntoClouds = true;
         } else {
           const descentSpeed = Math.abs(vRadial);
-          if (descentSpeed > LAND_SPEED || mag(vrel) > 12) {
+          // Landing legs raise the survivable touchdown speeds — that's their whole job.
+          const legs = (c.legCount || 0) > 0;
+          const maxDown = legs ? LEGS_LAND_SPEED : LAND_SPEED;
+          const maxTotal = legs ? LEGS_LAND_TOTAL : LAND_TOTAL;
+          if (descentSpeed > maxDown || mag(vrel) > maxTotal) {
             crashed = true;
             sim.crashedInto = s.key;
           } else {
@@ -654,9 +666,22 @@ export const Physics = {
     const b = BODIES[key];
     if (!b || !b.parent) return null;
     const bs = bodyStateAt(key, t);
+    const th = Math.atan2(bs.pos.y, bs.pos.x) + Math.PI; // toward the Sun: sunlit side
+    // Tiny moons (Phobos, Deimos) can't be orbited — their gravity is too weak to hold
+    // you against Mars's pull (true SOI < their radius). Real probes fly ALONGSIDE in a
+    // matching Mars orbit, so that's what the teleporter gives: parked a few radii off,
+    // co-moving with the moon. Nudge over gently and land.
+    if (b.tinyMoon) {
+      const off = b.radius * 5;
+      return {
+        pos: { x: bs.pos.x + off * Math.cos(th), y: bs.pos.y + off * Math.sin(th) },
+        vel: { x: bs.vel.x, y: bs.vel.y }, // fly formation with the moon
+        angle: th + Math.PI / 2, // heading (-sin a, cos a) = -(cos th, sin th): nose AT the moon
+        radius: off, altitude: off - b.radius, speed: 0, coOrbit: true,
+      };
+    }
     // Clear of the ground AND well above any atmosphere (3x its height — no stray drag).
     const r = Math.max(b.radius * 1.35, b.radius + 3 * ((b.atmosphere && b.atmosphere.height) || 0));
-    const th = Math.atan2(bs.pos.y, bs.pos.x) + Math.PI; // toward the Sun: sunlit side
     const v = Math.sqrt(b.mu / r);
     return {
       pos: { x: bs.pos.x + r * Math.cos(th), y: bs.pos.y + r * Math.sin(th) },
@@ -664,6 +689,29 @@ export const Physics = {
       angle: th, // heading convention (-sin a, cos a): nose starts prograde
       radius: r, altitude: r - b.radius, speed: v,
     };
+  },
+
+  // --- Satellites (Phase 5): a jettisoned probe-core stage left in a stable orbit ---
+  // becomes a tracked satellite. We freeze its two-body conic about the body it orbits
+  // at the moment of release; satellitePos Kepler-propagates it for display. Both pure.
+  makeSatellite(sim) {
+    if (!sim || !sim.craft || !sim.orbit || !sim.orbit.isOrbit) return null;
+    const t = sim.time || 0;
+    const dom = dominantBody(sim.craft.pos, t);
+    const el = keplerElements(
+      { x: dom.rel.x, y: dom.rel.y },
+      { x: sim.craft.vel.x - dom.vel.x, y: sim.craft.vel.y - dom.vel.y },
+      dom.body.mu
+    );
+    if (!el) return null; // hyperbolic/retrograde: not a keepable orbit
+    return { bodyKey: dom.body.key, epoch: t,
+             a: el.a, e: el.e, periAngle: el.periAngle, M0: el.M0, n: el.n };
+  },
+  satellitePos(sat, t) {
+    const bs = bodyStateAt(sat.bodyKey, t);
+    const p = keplerPosAt({ a: sat.a, e: sat.e, periAngle: sat.periAngle, M0: sat.M0, n: sat.n },
+                          t - sat.epoch);
+    return { x: bs.pos.x + p.x, y: bs.pos.y + p.y };
   },
 
   // Deterministic sanity check: a craft placed in a known CIRCULAR Earth orbit with

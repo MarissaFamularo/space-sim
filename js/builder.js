@@ -154,6 +154,12 @@ function keyStatLabel(def) {
       return "steadies flight";
     case "chute":
       return "soft landing ☂ (needs air!)";
+    case "legs":
+      return "touch down harder 🦵";
+    case "solar":
+      return "power for satellites ☀";
+    case "rover":
+      return "land it, stage it, it drives 🚗";
     default:
       return def.dryMass + " t";
   }

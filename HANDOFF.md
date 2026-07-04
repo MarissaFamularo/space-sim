@@ -1,5 +1,6 @@
 # Space Sim — Handoff for the next agent
-<!-- Rewritten 2026-07-03 after the overnight Phase-4 build (solar system pulled forward). -->
+<!-- Rewritten 2026-07-03 after the overnight Phase-4 build (solar system pulled forward).
+     Phase-5 batch added 2026-07-04 (his wish list: landings, looks, probes, Mars moons). -->
 
 A KSP-inspired browser space game + coding on-ramp, built for a young kid
 (advanced reader, ready to learn to code, space/physics/aerodynamics obsessed, graphics snob).
@@ -84,7 +85,42 @@ the Hohmann coast days for the game AND real scale). Escape/arrival callouts re-
 teleport so the trip home still coaches; the "You've escaped Earth" callout now names the
 world you actually escaped (`prevSoi`) since teleporting made escaping-from-Mars common.
 
-**Tests (`tests/`, all green, 117 total):** chute 5, mods 37, planets 31, reentry 8,
+**New 2026-07-04 later (Phase 5 — his wish list, all browser-verified):**
+- **Landing visibility:** descent HUD below ~2.5 km over solid ground (radar height + fall
+  speed, green/amber/red vs the survivable speed); a landing reticle ring on the ground
+  under the ship, same color logic; a two-tier instanced ROCK field (dense strip along the
+  ground track + sparse far boulders, deterministic per ground slot) so the surface
+  visibly rushes up. All render.js `updateSurfaceExtras` + main.js `updateDescentHud`.
+- **Landing Legs part** (`type:"legs"`): survivable touchdown 5→12 m/s descent, 12→18
+  total (physics.js LAND_* / LEGS_* constants read `craft.legCount`, set by loadStage).
+- **INTEGRATOR BUG FIX found by the legs test:** the collision sweep compared the craft's
+  post-substep position against START-of-substep body positions — touchdown triggered up
+  to ~|v_body|·h ≈ 500 m early/late depending on landing-site geometry (a radial-aligned
+  site could make a soft touchdown read as "still flying" half a km underground). Body
+  states now refresh post-integration before the sweep. All prior suites still green.
+- **Procedural planet faces** (render.js `makePlanetCanvas`, seeded per body, 512x256
+  equirect canvas): Earth continents/deserts/ice/clouds, Mars maria+caps, cratered
+  Moon/Mercury/Callisto, Io volcanoes, Europa cracks, banded Jupiter with the Great Red
+  Spot, Saturn, Neptune's dark spot, Titan haze, Pluto's HEART, Phobos with Stickney.
+  Emissive = same texture (night sides show detail dimly). MAP-VIEW GOTCHA fixed: the
+  flat map "dot" used to be drawn AT body scale when zoomed close and z-fought the
+  textured sphere as shattered glass — dots now hide once the true sphere is that big.
+- **Sky-Crane Thrusters** (engine that allows cargo BELOW it) + **Rover** part: land
+  wheels-first MSL-style; while LANDED with a rover aboard, Space releases it (no
+  decoupler needed) — it drives off at 0.35 m/s leaving wheel-track lines, parks at 900 m.
+- **Probe Core (uncrewed) + Solar Panels + SATELLITES:** no Connie aboard probe-only
+  rockets (all crash/landed messaging adapts); staging a probe-core stage off in a STABLE
+  orbit deploys a persistent satellite (Kepler elements frozen at release —
+  `Physics.makeSatellite`/`satellitePos`, pure; stored in localStorage `spacesim_sats_v1`,
+  cap 24). Rendered as a real tiny spacecraft up close, dot+label in map view near its
+  world. hasPower (panels in the dropped stage) drives the Navigator's power lesson.
+- **Phobos & Deimos** with real data. Their TRUE SOI < their own radius (you cannot orbit
+  them — real!), so buildBodies clamps display-SOI to 2x radius (`tinyMoon: true`) purely
+  so surface readouts measure from them. `parkingOrbit` gives a FORMATION with the moon
+  (matching Mars orbit, 5 radii off, like real Phobos missions) instead of an impossible
+  orbit; the Navigator teaches why. Phobos escape speed ≈ 3.6 m/s — bike speed.
+
+**Tests (`tests/`, all green, 141 total: +phase5 20, teleport now 26):** chute 5, mods 37, planets 31, reentry 8,
 transfer 14, teleport 22. planets_test.mjs is the Phase-4 suite: hierarchy, SOI, moving-pad
 launch, warp stability, Mars window + full mission, sloppy-burn + course-correction rescue,
 sky-crane, Jupiter dive. teleport_test.mjs flies a full parking-orbit lap around every

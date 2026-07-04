@@ -33,6 +33,8 @@ const WORLD_FACTS = {
   Mercury: "Mercury is the closest planet to the Sun — its daytime is hot enough to melt lead, but its shadowed craters hold ICE.",
   Venus: "Venus is the hottest planet of all — about 460°C day and night, hotter than Mercury, because its thick air traps the heat.",
   Mars: "Mars is the only planet we've sent rovers to. Its air is so thin that real landers use a parachute AND rockets — the sky crane!",
+  Phobos: "Phobos zips around Mars in under 8 hours — faster than Mars spins, so from the ground it rises in the WEST. It's slowly spiraling inward; one far-off day it'll break into a ring.",
+  Deimos: "Deimos is so small its own gravity can't squeeze it into a ball. Jump hard there and you'd fly right off into space!",
   Jupiter: "Jupiter is so big that 1,300 Earths would fit inside it. NASA's Galileo probe dove into its clouds in 2003 and melted on the way down.",
   Saturn: "Saturn's rings are made of billions of chunks of ice, some as small as snowflakes, some as big as houses.",
   Io: "Io is the most volcanic world in the solar system — hundreds of active volcanoes, because Jupiter's gravity kneads it like dough.",
@@ -50,19 +52,24 @@ const WORLD_FACTS = {
 // ---- propulsion for a given stage (integration owns this; physics reads the live fields) ----
 function activeStage(craft, stageNum) {
   let thrust = 0, veSum = 0, engines = 0, stageFuel = 0, remainingMass = 0, chutes = 0;
+  let legs = 0, solar = 0, rovers = 0;
   for (const inst of craft.parts) {
     const def = findPart(PARTS, inst.partId);
     if (!def) continue;
     if (inst.stage >= stageNum) {
       remainingMass += (def.dryMass || 0) + (def.fuelMass || 0);
       if (def.type === "chute") chutes++;
+      if (def.type === "legs") legs++;
+      if (def.type === "solar") solar++;
+      if (def.type === "rover") rovers++;
     }
     if (inst.stage === stageNum) {
       if (def.type === "engine") { thrust += def.thrust || 0; veSum += def.exhaustVelocity || 0; engines++; }
       stageFuel += def.fuelMass || 0;
     }
   }
-  return { thrust, exhaustVelocity: engines ? veSum / engines : 0, stageFuel, remainingMass, chutes };
+  return { thrust, exhaustVelocity: engines ? veSum / engines : 0, stageFuel, remainingMass,
+           chutes, legs, solar, rovers };
 }
 function maxStage(craft) {
   return craft.parts.reduce((m, i) => Math.max(m, i.stage || 0), 0);
@@ -75,8 +82,22 @@ function loadStage(stageNum) {
   sim.craft.thrust = s.thrust;
   sim.craft.exhaustVelocity = s.exhaustVelocity;
   sim.craft.chuteCount = s.chutes;
+  sim.craft.legCount = s.legs;      // physics: legs raise the safe touchdown speed
+  sim.craft.solarCount = s.solar;
+  sim.craft.roverCount = s.rovers;
   sim.stageWeightKN = s.remainingMass * BODIES.earth.g0;
   sim.cantLiftOff = s.thrust <= sim.stageWeightKN;
+}
+
+// Crew policy: a Connie flies only when a CREWED pod is aboard. A probe-core-only rocket
+// is an uncrewed robot mission (sim.crew = null) — crashes cost hardware, never a Connie.
+function assignCrew() {
+  const hasCrewPod = craft.parts.some((i) => {
+    const d = findPart(PARTS, i.partId);
+    return d && d.type === "command" && !d.uncrewed;
+  });
+  sim.crew = hasCrewPod ? pickConnie() : null;
+  return sim.crew;
 }
 
 // Deploy the parachute (P key, or auto low over any world with air). Teaches: chutes need AIR.
@@ -123,12 +144,13 @@ function launch() {
   sim = newSimState(BODIES.earth);
   sim.target = keepTarget;
   sim.mode = "flight"; sim.status = "flying"; sim.craft.throttle = 1; sim.timeWarp = 1;
-  sim.crew = pickConnie();
+  assignCrew();
   mapView = false;
   announced = freshAnnounced();
   announced.soi.Earth = true; // you start there; no callout for home
   loadStage(0);
-  copilotSay("🐍 Commander <b>" + sim.crew.name + "</b> is aboard — helmet sealed, coils braced. Liftoff!");
+  if (sim.crew) copilotSay("🐍 Commander <b>" + sim.crew.name + "</b> is aboard — helmet sealed, coils braced. Liftoff!");
+  else copilotSay("🛰️ <b>Uncrewed launch</b> — no Connie aboard, the probe core is doing the flying. Real space programs send robots first, so nobody's ever in danger. Liftoff!");
   if (sim.craft.thrust <= 0) copilotSay("This rocket has no working engine on its first stage — it won't lift off. Add an engine at the bottom.");
   else if (sim.cantLiftOff) copilotSay("Hmm — your engines push with " + Math.round(sim.craft.thrust) +
     " kN but the rocket weighs " + Math.round(sim.stageWeightKN) + " kN. Push must beat weight (thrust-to-weight over 1.0) or gravity wins. Drop a tank or add an engine.");
@@ -145,10 +167,71 @@ function reset() {
   enterBuild();
 }
 
+// ---- Satellites: jettisoned probe-core stages left in stable orbits, persisted locally ----
+const LS_SATS = "spacesim_sats_v1";
+function loadSats() {
+  try {
+    const a = JSON.parse(localStorage.getItem(LS_SATS) || "[]");
+    return Array.isArray(a) ? a.filter((s) => s && BODIES[s.bodyKey] && isFinite(s.a)) : [];
+  } catch { return []; }
+}
+function saveSats() { try { localStorage.setItem(LS_SATS, JSON.stringify(SATELLITES)); } catch {} }
+const SATELLITES = loadSats();
+
+function deploySatellite(hasPower) {
+  const rec = Physics.makeSatellite(sim);
+  if (!rec) return false;
+  rec.name = "Sat " + (SATELLITES.length + 1);
+  rec.hasPower = !!hasPower;
+  SATELLITES.push(rec);
+  if (SATELLITES.length > 24) SATELLITES.splice(0, SATELLITES.length - 24); // keep the sky tidy
+  saveSats();
+  const b = BODIES[rec.bodyKey];
+  copilotSay("🛰️ <b>Satellite deployed around " + (b ? b.name : "?") + "!</b> It'll keep circling all on its own — orbits are free, forever. Check the map to see it. " +
+    (hasPower
+      ? "Its solar panels keep it awake for years — just like the real satellites doing GPS, weather, and phone calls over Earth right now."
+      : "Heads up: it has no solar panels, so its battery will run down — real satellites always carry power. Next one, tuck Solar Panels into the same stage!"));
+  return true;
+}
+
+// A rover set free while landed: it drives off and leaves tracks (render draws it).
+function deployRover() {
+  if (!sim.landed) return false;
+  sim.rover = { body: sim.landed.body, t0: sim.time || 0,
+                offset: { x: sim.landed.offset.x, y: sim.landed.offset.y } };
+  const b = BODIES[sim.landed.body];
+  copilotSay("🚗 <b>Rover deployed on " + (b ? b.name : "the surface") + "!</b> Off it goes, leaving tracks — real rovers like Curiosity drive about as fast as a garden snail and stop for every interesting rock. Watch it explore!");
+  return true;
+}
+
 function doStage() {
   if (sim.mode !== "flight") return;
+  // Landed with a Rover aboard: Space sets it free — no decoupler needed, the rover has
+  // its own latches (like the real ones rolling off their landers).
+  if (sim.status === "landed" && (sim.craft.roverCount || 0) > 0 && !sim.rover) {
+    const idx = craft.parts.findIndex((i) => {
+      const d = findPart(PARTS, i.partId);
+      return d && d.type === "rover" && (i.stage || 0) >= (sim.craft.currentStage || 0);
+    });
+    if (idx !== -1) {
+      craft.parts.splice(idx, 1);
+      deployRover();
+      loadStage(sim.craft.currentStage || 0); // recompute mass without the rover
+      Render.buildCraftMesh({ name: craft.name,
+        parts: craft.parts.filter((i) => (i.stage || 0) >= (sim.craft.currentStage || 0)) });
+      return;
+    }
+  }
   const next = (sim.craft.currentStage || 0) + 1;
   if (next > maxStage(craft)) { copilotSay("No more stages to drop — you're flying the last one."); return; }
+  // What's in the stage being jettisoned? A probe core let go in a stable orbit stays
+  // up there as a SATELLITE.
+  const droppedDefs = craft.parts
+    .filter((i) => (i.stage || 0) === next - 1) // ONLY the stage being let go right now
+    .map((i) => findPart(PARTS, i.partId)).filter(Boolean);
+  const dropsProbe = droppedDefs.some((d) => d.type === "command" && d.uncrewed);
+  const dropsSolar = droppedDefs.some((d) => d.type === "solar");
+  if (dropsProbe && sim.orbit && sim.orbit.isOrbit && sim.status !== "landed") deploySatellite(dropsSolar);
   loadStage(next);
   const remaining = { name: craft.name, parts: craft.parts.filter((i) => (i.stage || 0) >= next) };
   Render.buildCraftMesh(remaining);
@@ -199,7 +282,7 @@ function teleport(key) {
     // Fresh flight, same setup as a launch — just skipping the ride up.
     sim = newSimState(BODIES.earth);
     sim.mode = "flight";
-    sim.crew = pickConnie();
+    assignCrew();
     announced = freshAnnounced();
     announced.soi.Earth = true;
     loadStage(0);
@@ -223,6 +306,9 @@ function teleport(key) {
   sim.teleported = b.name; // the Navigator sees he took the shortcut
   if (mapView) { mapView = false; Render.setFlightView("follow"); } // see the world, not a dot
   announced.soi[b.name] = true;        // skip the "burn retrograde to capture" coaching
+  // Tiny moons: you arrive parked in a MARS orbit alongside (their gravity can't hold an
+  // orbit), so suppress the parent's SOI-entry coaching too.
+  if (b.tinyMoon && BODIES[b.parent]) announced.soi[BODIES[b.parent].name] = true;
   announced.soi.Sun = false;           // re-coach the escape when he leaves for home
   announced.escapedEarth = false;
   announced.transferBurn = false;
@@ -230,10 +316,14 @@ function teleport(key) {
   announced.onTarget = false;
   delete announced["orbit_" + b.name]; // let the arrival callout celebrate this orbit
   if (key === "earth") announced.orbit = false;
-  const crew = sim.crew ? sim.crew.name : "Your Connie";
-  if (key === "earth") {
+  const crew = sim.crew ? sim.crew.name : "The probe";
+  if (park.coOrbit) {
+    const fact0 = WORLD_FACTS[b.name] ? " " + WORLD_FACTS[b.name] : "";
+    copilotSay("✨ <b>WHOOSH — you're flying formation with " + b.name + "!</b>" + fact0 +
+      " Here's the wild part: " + b.name + " is too small to ORBIT — its gravity is weaker than Mars's pull at this distance, so real probes do exactly what you're doing: match its orbit around Mars and fly alongside. Nudge over with tiny puffs of throttle and touch down super gently.");
+  } else if (key === "earth") {
     copilotSay("✨ <b>WHOOSH — teleported straight into Earth orbit!</b> " + crew +
-      "'s coils are still tingling. You skipped the whole climb to orbit — great for practicing reentries and Moon shots. When you want to earn it, that ride up is one good gravity turn away.");
+      (sim.crew ? "'s coils are still tingling." : " rebooted twice on the way.") + " You skipped the whole climb to orbit — great for practicing reentries and Moon shots. When you want to earn it, that ride up is one good gravity turn away.");
   } else {
     const days = tripDaysFromEarth(key);
     const fact = WORLD_FACTS[b.name] ? " " + WORLD_FACTS[b.name] : "";
@@ -343,12 +433,50 @@ function updateMapHint() {
   mapHint.style.display = (sim.mode === "flight" && mapView) ? "block" : "none";
 }
 
+// ---- Descent readout: "how close am I, and am I coming in soft enough?" ----
+// Shows below ~2.5 km over any solid world while descending: radar height + fall speed,
+// green when survivable, amber when close, red when you'd crater. Legs raise the bar.
+const descentHud = document.createElement("div");
+descentHud.style.cssText = "position:absolute;top:64px;left:50%;transform:translateX(-50%);z-index:8;" +
+  "font:700 22px system-ui,sans-serif;padding:9px 20px;border-radius:10px;display:none;" +
+  "text-align:center;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.45);";
+document.body.appendChild(descentHud);
+function updateDescentHud() {
+  let show = false;
+  if (sim.mode === "flight" && (sim.status === "flying" || sim.status === "orbit") && !mapView) {
+    const here = BODIES[sim.soi ? sim.soi.toLowerCase() : ""];
+    if (here && here.solid && sim.altitude < 2500 && sim.altitude > 0) {
+      const bs = bodyStateAt(here.key, sim.time || 0);
+      const rx = sim.craft.pos.x - bs.pos.x, ry = sim.craft.pos.y - bs.pos.y;
+      const rm = Math.hypot(rx, ry) || 1;
+      const vr = ((sim.craft.vel.x - bs.vel.x) * rx + (sim.craft.vel.y - bs.vel.y) * ry) / rm;
+      if (vr < -0.3 || sim.altitude < 300) {
+        show = true;
+        const down = Math.max(0, -vr);
+        const legs = (sim.craft.legCount || 0) > 0;
+        const safe = legs ? 12 : 5;
+        const ok = down <= safe, close = down <= safe * 1.8;
+        descentHud.style.background = ok ? "rgba(22,96,44,0.85)" : close ? "rgba(150,105,20,0.9)" : "rgba(140,24,24,0.9)";
+        descentHud.style.color = ok ? "#d6ffe0" : close ? "#ffedc4" : "#ffd6d6";
+        descentHud.innerHTML = "⬇ " + Math.round(sim.altitude) + " m · falling " + down.toFixed(1) + " m/s" +
+          "<br><span style='font-size:13px;font-weight:600'>" +
+          (ok ? "✅ soft enough — hold it steady" :
+            "slow to under " + safe + " m/s" + (legs ? " (your legs soak up 12)" : " — Landing Legs would allow 12")) +
+          "</span>";
+      }
+    }
+  }
+  descentHud.style.display = show ? "block" : "none";
+}
+
 const LANDED_LINES = {
   earth: "🛬 LANDED",
   moon: "🌙 ON THE MOON",
   mercury: "🪨 ON MERCURY",
   venus: "🌋 ON VENUS",
   mars: "🔴 ON MARS",
+  phobos: "🥔 ON PHOBOS",
+  deimos: "🥔 ON DEIMOS",
   io: "🌋 ON IO",
   europa: "🧊 ON EUROPA",
   ganymede: "🪐 ON GANYMEDE",
@@ -359,6 +487,9 @@ const LANDED_LINES = {
 
 function updateBanner() {
   const crew = sim.crew ? sim.crew.name : "Your Connie";
+  const crashSub = sim.crew
+    ? crew + " boinged away safely in the escape bubble — Connies always do. Press Reset to try again"
+    : "Nobody was aboard — that's exactly why we send robot probes first! Press Reset to try again";
   if (sim.mode === "flight" && sim.status === "crashed") {
     banner.style.display = "block";
     banner.style.background = "rgba(140,24,24,0.9)"; banner.style.color = "#ffd6d6";
@@ -376,8 +507,7 @@ function updateBanner() {
     } else {
       where = "CRASHED";
     }
-    banner.innerHTML = "💥 " + where + "<br><span style='font-size:14px;font-weight:400'>" +
-      crew + " boinged away safely in the escape bubble — Connies always do. Press Reset to try again</span>";
+    banner.innerHTML = "💥 " + where + "<br><span style='font-size:14px;font-weight:400'>" + crashSub + "</span>";
   } else if (sim.mode === "flight" && sim.status === "flying" && sim.cantLiftOff && sim.altitude < 5 && sim.speed < 2) {
     banner.style.display = "block";
     banner.style.background = "rgba(150,105,20,0.92)"; banner.style.color = "#ffedc4";
@@ -390,7 +520,10 @@ function updateBanner() {
     banner.style.background = "rgba(22,96,44,0.9)"; banner.style.color = "#d6ffe0";
     const bodyKey = sim.landed ? sim.landed.body : "earth";
     const head = LANDED_LINES[bodyKey] || ("🏁 LANDED ON " + (BODIES[bodyKey] ? BODIES[bodyKey].name.toUpperCase() : "?"));
-    const sub = bodyKey === "earth"
+    const sub = !sim.crew
+      ? (bodyKey === "earth" ? "The probe is home in one piece — mission complete!"
+                             : "Probe down safely — instruments on, science starting. Throttle up to fly it home.")
+      : bodyKey === "earth"
       ? "Gentle touchdown! " + crew + " slithers out, happy."
       : crew + " is out on the surface — a snake on another world! Throttle up to fly home.";
     banner.innerHTML = head + "<br><span style='font-size:14px;font-weight:400'>" + sub + "</span>";
@@ -475,32 +608,40 @@ function flightCallouts() {
   // Touchdowns.
   if (sim.status === "landed" && sim.landed && !announced.landed[sim.landed.body]) {
     announced.landed[sim.landed.body] = true;
-    const crew = sim.crew ? sim.crew.name : "Your Connie";
+    const crew = sim.crew ? sim.crew.name : null;
     const key = sim.landed.body;
     if (key === "earth") {
-      copilotSay("🛬 Gentle touchdown back on Earth — nicely flown. " + crew + " is out beside the ship, taking a bow.");
+      copilotSay(crew
+        ? "🛬 Gentle touchdown back on Earth — nicely flown. " + crew + " is out beside the ship, taking a bow."
+        : "🛬 Gentle touchdown back on Earth — the probe made it home in one piece. Real sample-return missions end exactly like this!");
     } else {
       const name = BODIES[key] ? BODIES[key].name : key;
       const fact = WORLD_FACTS[name] ? " " + WORLD_FACTS[name] : "";
-      copilotSay("🏁 <b>You landed on " + name + "!</b> " + crew +
-        " is out of the capsule, standing on another world — look beside your ship!" + fact +
+      copilotSay("🏁 <b>You landed on " + (key === "moon" ? "the Moon" : name) + "!</b> " +
+        (crew ? crew + " is out of the capsule, standing on another world — look beside your ship!"
+              : "Uncrewed and perfect — the probe's instruments are already sniffing the ground, like a real robot lander.") + fact +
+        ((sim.craft.roverCount || 0) > 0 ? " You've got a <b>Rover</b> aboard — press Space to set it loose!" : "") +
         " If you've still got fuel, throttle up (Z, then ↑) to lift off again.");
     }
   }
   // Crashes.
   if (sim.status === "crashed" && !announced.crashed) {
     announced.crashed = true;
-    const crew = sim.crew ? sim.crew.name : "Your Connie";
+    const crew = sim.crew ? sim.crew.name : null;
+    const bail = crew
+      ? crew + "'s escape bubble popped out in time, as always."
+      : "Nobody aboard — probes take the risks so Connies don't have to.";
     if (sim.sankIntoClouds) {
       const g = BODIES[sim.crashedInto];
-      copilotSay("🌀 The ship sank into <b>" + (g ? g.name : "the planet") + "'s</b> clouds and was crushed — gas giants have no surface at all, just air that gets thicker and thicker forever. " + crew + "'s escape bubble bounced back out, naturally. Orbit them, admire them… just don't try to park on them!");
+      copilotSay("🌀 The ship sank into <b>" + (g ? g.name : "the planet") + "'s</b> clouds and was crushed — gas giants have no surface at all, just air that gets thicker and thicker forever. " + bail + " Orbit them, admire them… just don't try to park on them!");
     } else if (sim.burnedUp && sim.crashedInto === "sun") {
-      copilotSay("☀️💥 You flew into the SUN. It's 5,500°C at the surface — nothing survives that. " + crew + " boinged away at the last second, slightly toasted. Fun fact: it actually takes MORE fuel to fall into the Sun than to escape the solar system!");
+      copilotSay("☀️💥 You flew into the SUN. It's 5,500°C at the surface — nothing survives that. " + bail + " Fun fact: it actually takes MORE fuel to fall into the Sun than to escape the solar system!");
     } else if (sim.burnedUp) {
-      copilotSay("🔥💥 The ship <b>burned up on reentry</b> — too fast and too steep, and the air-friction heat won. " + crew + "'s escape bubble popped out in time, as always. Next time skim the top of the air so it slows you a little at a time — real capsules survive with heat shields and a precise entry angle.");
+      copilotSay("🔥💥 The ship <b>burned up on reentry</b> — too fast and too steep, and the air-friction heat won. " + bail + " Next time skim the top of the air so it slows you a little at a time — real capsules survive with heat shields and a precise entry angle.");
     } else if (sim.crashedInto && sim.crashedInto !== "earth") {
       const b = BODIES[sim.crashedInto];
-      copilotSay("💥 We hit " + (b ? b.name : "the surface") + " too hard. " + (b && !b.atmosphere ? "No air here to slow you — you have to burn the engine to brake all the way down. " : "") + "Hit Reset and try a slower descent.");
+      copilotSay("💥 We hit " + (b ? b.name : "the surface") + " too hard. " + (b && !b.atmosphere ? "No air here to slow you — you have to burn the engine to brake all the way down. " : "") +
+        ((sim.craft.legCount || 0) > 0 ? "" : "Landing Legs would forgive a bumpier touchdown (12 m/s instead of 5). ") + "Hit Reset and try a slower descent.");
     } else {
       copilotSay("💥 We hit the ground. Hit Reset, then try a gentler tilt — go straight up first, then lean over slowly once you're high up.");
     }
@@ -514,6 +655,7 @@ let courseTimer = 0;
 function frame(t) {
   const dt = last ? Math.min((t - last) / 1000, 0.05) : 0;
   last = t;
+  sim.satellites = SATELLITES; // render + Navigator read them off the sim
 
   if (sim.mode === "flight" && sim.status !== "crashed") {
     applyControls(dt);
@@ -557,6 +699,7 @@ function frame(t) {
   Render.update(sim);
   updateBanner();
   updateMapHint();
+  updateDescentHud();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

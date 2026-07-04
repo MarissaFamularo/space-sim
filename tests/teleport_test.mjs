@@ -34,11 +34,36 @@ const check = (name, ok, detail = "") => {
   check("unknown key returns null", Physics.parkingOrbit("krypton") === null);
 }
 
-// --- 2. Fly one full lap around EVERY pickable world: stay owned by it, stay aloft ---
+// --- 2. Fly one full lap around EVERY pickable world: stay owned by it, stay aloft.
+// Tiny moons (Phobos, Deimos) can't be orbited at all — the teleporter instead parks you
+// in FORMATION (matching Mars orbit, co-moving). For those, fly 20 minutes and check we
+// stay close by without crashing. ---
 for (const key of PLANET_KEYS) {
   const t0 = 5000; // not t=0 — catches anything that assumed epoch positions
   const b = BODIES[key];
   const p = Physics.parkingOrbit(key, t0);
+  if (b.tinyMoon) {
+    check(`${b.name} teleport is a co-orbit (formation flying)`, p.coOrbit === true,
+      `off=${(p.radius / b.radius).toFixed(1)} radii`);
+    const sim = {
+      body: b,
+      craft: { pos: { ...p.pos }, vel: { ...p.vel }, angle: p.angle, throttle: 0,
+               fuelRemaining: 0, mass: 5, currentStage: 0 },
+      altitude: p.altitude, speed: 0, time: t0, status: "flying", orbit: null, target: key,
+    };
+    let ok = true, maxD = 0;
+    for (let i = 0; i < 240; i++) {
+      Physics.step(sim, 5); // 20 minutes total
+      if (sim.status === "crashed") { ok = false; break; }
+      const ms = bodyStateAt(key, sim.time);
+      const d = Math.hypot(sim.craft.pos.x - ms.pos.x, sim.craft.pos.y - ms.pos.y);
+      maxD = Math.max(maxD, d);
+    }
+    check(`formation with ${b.name} holds ~20 min (drifts, never crashes)`,
+      ok && maxD < b.radius * 60,
+      `maxDist=${(maxD / b.radius).toFixed(1)} radii status=${sim.status}`);
+    continue;
+  }
   const sim = {
     body: b,
     craft: { pos: { ...p.pos }, vel: { ...p.vel }, angle: p.angle, throttle: 0,
