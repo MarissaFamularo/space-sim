@@ -73,9 +73,22 @@ friendly errors, localStorage persistence).
   session: speed/prograde/altitude readouts are now measured vs the dominant body (parked
   on the Moon reads 0 m/s, not the Moon's orbital speed).
 
-**Tests (`tests/`, all green, 95 total):** chute 5, mods 37, planets 31, reentry 8, transfer 14.
-planets_test.mjs is the Phase-4 suite: hierarchy, SOI, moving-pad launch, warp stability,
-Mars window + full mission, sloppy-burn + course-correction rescue, sky-crane, Jupiter dive.
+**New 2026-07-04 (his ask): ✨ Teleport-to-orbit.** The 🎯 target picker moved OUT of the
+flight-only controls (visible in build mode too), with a ✨ Teleport button under it:
+magic-jump straight into a low circular orbit around the picked world, from build mode
+(fresh flight, full fuel, same setup as launch) or mid-flight (keeps fuel/stage). Backed by
+pure `Physics.parkingOrbit(key, t)` — circular CCW at max(1.35 r, r + 3×atmo height),
+entered on the SUNLIT side, nose prograde. Teleport sets `sim.teleported` (Navigator sees
+`flight.arrivedByTeleport` and prices out the skipped trip — the Navigator message quotes
+the Hohmann coast days for the game AND real scale). Escape/arrival callouts re-armed per
+teleport so the trip home still coaches; the "You've escaped Earth" callout now names the
+world you actually escaped (`prevSoi`) since teleporting made escaping-from-Mars common.
+
+**Tests (`tests/`, all green, 117 total):** chute 5, mods 37, planets 31, reentry 8,
+transfer 14, teleport 22. planets_test.mjs is the Phase-4 suite: hierarchy, SOI, moving-pad
+launch, warp stability, Mars window + full mission, sloppy-burn + course-correction rescue,
+sky-crane, Jupiter dive. teleport_test.mjs flies a full parking-orbit lap around every
+pickable world (Io drifts ~10% — Jupiter's tide, real and fine).
 
 ---
 

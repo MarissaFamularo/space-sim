@@ -166,6 +166,84 @@ function setTarget(key) {
     (key === "moon" ? "" : " To get there: reach Earth orbit, burn prograde until you ESCAPE Earth into a Sun orbit, then wait for the gold Burn marker on the map."));
 }
 
+// ✨ Teleport: magic-jump straight into a low circular orbit around any world he picks.
+// A practice shortcut, not physics — so the Navigator prices out the trip he skipped,
+// and everything AFTER the jump (landing, flying home) is the real game again.
+function tripDaysFromEarth(key) {
+  // Hohmann coast time from Earth('s orbit) to the target's orbit — the honest price.
+  const b = BODIES[key];
+  let central, r1, r2;
+  if (b.parent === "earth") {
+    central = BODIES.earth; r1 = BODIES.earth.radius * 1.35; r2 = b.orbitRadius;
+  } else {
+    central = BODIES.sun; r1 = BODIES.earth.orbitRadius;
+    r2 = (b.parent === "sun" ? b : BODIES[b.parent]).orbitRadius; // moons: reach their planet
+  }
+  const a = (r1 + r2) / 2;
+  return (Math.PI * Math.sqrt((a * a * a) / central.mu)) / 86400;
+}
+function fmtRealTrip(gameDays) {
+  const real = gameDays * Math.sqrt(10); // the scaled system runs ~3.2x fast; undo it
+  if (real > 700) return (real / 365).toFixed(1) + " years";
+  if (real > 75) return Math.round(real / 30.4) + " months";
+  return Math.round(real) + " days";
+}
+function teleport(key) {
+  const b = BODIES[key];
+  if (!b || !b.parent) return; // no teleporting into the Sun
+  if (craft.parts.length === 0) {
+    copilotSay("Even a teleporter needs a ship! Build a rocket first — pod, tank, engine.");
+    return;
+  }
+  if (sim.mode !== "flight" || sim.status === "crashed") {
+    // Fresh flight, same setup as a launch — just skipping the ride up.
+    sim = newSimState(BODIES.earth);
+    sim.mode = "flight";
+    sim.crew = pickConnie();
+    announced = freshAnnounced();
+    announced.soi.Earth = true;
+    loadStage(0);
+    Builder.hide();
+    Render.buildCraftMesh(craft);
+    Render.setMode("flight");
+    UI.setMode("flight");
+  }
+  const park = Physics.parkingOrbit(key, sim.time || 0);
+  sim.craft.pos = park.pos;
+  sim.craft.vel = park.vel;
+  sim.craft.angle = park.angle;
+  sim.craft.throttle = 0;
+  sim.craft.chuteDeployed = false; // repacked by the same magic
+  sim.chuteOpen = false;
+  sim.heat = 0;
+  sim.timeWarp = 1;
+  sim.status = "flying"; // physics promotes to "orbit" on the next step
+  sim.landed = null;
+  sim.target = key;
+  sim.teleported = b.name; // the Navigator sees he took the shortcut
+  if (mapView) { mapView = false; Render.setFlightView("follow"); } // see the world, not a dot
+  announced.soi[b.name] = true;        // skip the "burn retrograde to capture" coaching
+  announced.soi.Sun = false;           // re-coach the escape when he leaves for home
+  announced.escapedEarth = false;
+  announced.transferBurn = false;
+  announced.courseCheck = false;
+  announced.onTarget = false;
+  delete announced["orbit_" + b.name]; // let the arrival callout celebrate this orbit
+  if (key === "earth") announced.orbit = false;
+  const crew = sim.crew ? sim.crew.name : "Your Connie";
+  if (key === "earth") {
+    copilotSay("✨ <b>WHOOSH — teleported straight into Earth orbit!</b> " + crew +
+      "'s coils are still tingling. You skipped the whole climb to orbit — great for practicing reentries and Moon shots. When you want to earn it, that ride up is one good gravity turn away.");
+  } else {
+    const days = tripDaysFromEarth(key);
+    const fact = WORLD_FACTS[b.name] ? " " + WORLD_FACTS[b.name] : "";
+    const sayName = key === "moon" ? "the Moon" : b.name;
+    copilotSay("✨ <b>WHOOSH — you're in orbit around " + sayName + "!</b>" + fact +
+      " The honest-rocket trip is about <b>" + Math.round(days) + " days</b> of coasting here (a real probe: ~" +
+      fmtRealTrip(days) + ") — worth knowing when you fly it for real. From here on it's all real physics: land it, explore, or fly home!");
+  }
+}
+
 // ---- copilot helper ----
 function copilotSay(txt) {
   const log = document.getElementById("copilot-log");
@@ -184,6 +262,7 @@ UI.init({
   onToggleMap: () => { mapView = !mapView; Render.setFlightView(mapView ? "map" : "follow"); return mapView; },
   onToggleArrow: (which, on) => Render.setArrow(which, on),
   onTargetChange: (key) => setTarget(key),
+  onTeleport: (key) => teleport(key),
 });
 wireCopilot();
 Copilot.initSettings();
@@ -321,6 +400,7 @@ function updateBanner() {
 }
 
 // ---- one-shot flight callouts (SOI entries, orbit goals, arrivals) ----
+let prevSoi = "Earth"; // whose gravity owned us last frame — names the world we escaped
 function flightCallouts() {
   // Stable orbit around Earth: the Phase-1 goal.
   if (sim.status === "orbit" && sim.orbit && sim.orbit.bodyName === "Earth" && !announced.orbit) {
@@ -337,7 +417,7 @@ function flightCallouts() {
     } else if (sim.soi === "Sun") {
       if (!announced.escapedEarth) {
         announced.escapedEarth = true;
-        copilotSay("☀️ <b>You've escaped Earth — cut your engine (X) now!</b> You're not falling around Earth anymore — you're a tiny planet, orbiting the SUN. Don't keep burning or you'll fly past everything: coast, zoom the map way out, and wait for the gold <b>Burn</b> marker. When it comes around, THAT's your moment to head for " + (BODIES[sim.target] ? BODIES[sim.target].name : "your target") + ". (Time-warp with <b>.</b> — space trips take patience!)");
+        copilotSay("☀️ <b>You've escaped " + prevSoi + " — cut your engine (X) now!</b> You're not falling around " + prevSoi + " anymore — you're a tiny planet, orbiting the SUN. Don't keep burning or you'll fly past everything: coast, zoom the map way out, and wait for the gold <b>Burn</b> marker. When it comes around, THAT's your moment to head for " + (BODIES[sim.target] ? BODIES[sim.target].name : "your target") + ". (Time-warp with <b>.</b> — space trips take patience!)");
       }
     } else {
       const fact = WORLD_FACTS[sim.soi] ? " " + WORLD_FACTS[sim.soi] : "";
@@ -363,7 +443,7 @@ function flightCallouts() {
   if (sim.orbit && sim.orbit.isOrbit && sim.orbit.bodyName !== "Earth" && !announced["orbit_" + sim.orbit.bodyName]) {
     announced["orbit_" + sim.orbit.bodyName] = true;
     const b = sim.orbit.bodyName;
-    copilotSay("🛰️ You're in orbit around <b>" + b + "</b>! Periapsis " + (sim.orbit.periapsis / 1000).toFixed(0) +
+    copilotSay("🛰️ You're in orbit around <b>" + (b === "Moon" ? "the Moon" : b) + "</b>! Periapsis " + (sim.orbit.periapsis / 1000).toFixed(0) +
       " km, apoapsis " + (sim.orbit.apoapsis / 1000).toFixed(0) + " km. " +
       (BODIES[b.toLowerCase()] && !BODIES[b.toLowerCase()].solid
         ? "Careful — there's nothing to land ON down there. Enjoy the view from up here!"
@@ -425,6 +505,7 @@ function flightCallouts() {
       copilotSay("💥 We hit the ground. Hit Reset, then try a gentler tilt — go straight up first, then lean over slowly once you're high up.");
     }
   }
+  if (sim.soi) prevSoi = sim.soi;
 }
 
 // ---- game loop ----

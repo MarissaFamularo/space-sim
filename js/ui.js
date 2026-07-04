@@ -22,10 +22,10 @@ function fmtWarp(w) {
 
 export const UI = {
   els: {},
-  init({ onLaunch, onReset, onModeChange, onToggleMap, onToggleArrow, onTargetChange }) {
+  init({ onLaunch, onReset, onModeChange, onToggleMap, onToggleArrow, onTargetChange, onTeleport }) {
     this.els.readouts = document.getElementById("readout-list");
     this.els.controls = document.getElementById("control-list");
-    this.handlers = { onLaunch, onReset, onModeChange, onToggleMap, onToggleArrow, onTargetChange };
+    this.handlers = { onLaunch, onReset, onModeChange, onToggleMap, onToggleArrow, onTargetChange, onTeleport };
     this._renderControls();
   },
   // Show flight-only controls in flight, hide them in build (keeps the MODE box short).
@@ -41,6 +41,31 @@ export const UI = {
     mk("🚀 Launch", () => this.handlers.onLaunch && this.handlers.onLaunch());
     mk("Reset", () => this.handlers.onReset && this.handlers.onReset());
 
+    // 🎯 Target picker + ✨ Teleport — visible in BOTH modes: pick a world, fly or jump.
+    const targetRow = document.createElement("div");
+    targetRow.style.cssText = "margin-top:8px;display:flex;align-items:center;gap:6px;font-size:12px;color:#9fb3da;";
+    targetRow.appendChild(document.createTextNode("🎯"));
+    const sel = document.createElement("select");
+    sel.style.cssText = "flex:1;background:#0a1020;color:#e8eefc;border:1px solid #24304d;" +
+      "border-radius:5px;padding:3px 4px;font-size:12px;";
+    for (const key of TARGETS) {
+      const opt = document.createElement("option");
+      opt.value = key;
+      opt.textContent = (MOON_OF[key] ? "  · " : "") + BODIES[key].name + (key === "earth" ? " (home)" : "");
+      sel.appendChild(opt);
+    }
+    sel.value = "moon";
+    sel.onchange = () => this.handlers.onTargetChange && this.handlers.onTargetChange(sel.value);
+    targetRow.appendChild(sel);
+    c.appendChild(targetRow);
+
+    const tpBtn = document.createElement("button");
+    tpBtn.textContent = "✨ Teleport";
+    tpBtn.title = "Magic-jump straight into orbit around the 🎯 world";
+    tpBtn.style.cssText = "margin-top:6px;width:100%;";
+    tpBtn.onclick = () => this.handlers.onTeleport && this.handlers.onTeleport(sel.value);
+    c.appendChild(tpBtn);
+
     // Flight-only controls — hidden in build mode.
     const fc = document.createElement("div");
     this.els.flightControls = fc;
@@ -55,24 +80,6 @@ export const UI = {
       mapBtn.textContent = on ? "🚀 Flight view" : "🗺 Map view";
     };
     fc.appendChild(mapBtn);
-
-    // 🎯 Target picker: where are we going today?
-    const targetRow = document.createElement("div");
-    targetRow.style.cssText = "margin-top:8px;display:flex;align-items:center;gap:6px;font-size:12px;color:#9fb3da;";
-    targetRow.appendChild(document.createTextNode("🎯"));
-    const sel = document.createElement("select");
-    sel.style.cssText = "flex:1;background:#0a1020;color:#e8eefc;border:1px solid #24304d;" +
-      "border-radius:5px;padding:3px 4px;font-size:12px;";
-    for (const key of TARGETS) {
-      const opt = document.createElement("option");
-      opt.value = key;
-      opt.textContent = (MOON_OF[key] ? "  · " : "") + BODIES[key].name + (key === "earth" ? " (home)" : "");
-      sel.appendChild(opt);
-    }
-    sel.value = "moon";
-    sel.onchange = () => this.handlers.onTargetChange && this.handlers.onTargetChange(sel.value);
-    targetRow.appendChild(sel);
-    fc.appendChild(targetRow);
 
     const help = document.createElement("div");
     help.style.cssText = "font-size:11px;color:#9fb3da;margin-top:8px;line-height:1.5;";

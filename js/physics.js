@@ -647,6 +647,25 @@ export const Physics = {
     return sim;
   },
 
+  // Parking orbit for the ✨ Teleport shortcut: a circular CCW orbit just above `key`,
+  // entered on the SUNLIT side so the world greets you lit up, not as a black disc.
+  // Pure — main.js applies it to the live sim; tests fly it. Not for the Sun itself.
+  parkingOrbit(key, t = 0) {
+    const b = BODIES[key];
+    if (!b || !b.parent) return null;
+    const bs = bodyStateAt(key, t);
+    // Clear of the ground AND well above any atmosphere (3x its height — no stray drag).
+    const r = Math.max(b.radius * 1.35, b.radius + 3 * ((b.atmosphere && b.atmosphere.height) || 0));
+    const th = Math.atan2(bs.pos.y, bs.pos.x) + Math.PI; // toward the Sun: sunlit side
+    const v = Math.sqrt(b.mu / r);
+    return {
+      pos: { x: bs.pos.x + r * Math.cos(th), y: bs.pos.y + r * Math.sin(th) },
+      vel: { x: bs.vel.x - v * Math.sin(th), y: bs.vel.y + v * Math.cos(th) }, // CCW
+      angle: th, // heading convention (-sin a, cos a): nose starts prograde
+      radius: r, altitude: r - b.radius, speed: v,
+    };
+  },
+
   // Deterministic sanity check: a craft placed in a known CIRCULAR Earth orbit with
   // throttle 0 should stay at ~constant altitude over a revolution (solar tide is tiny).
   _selfTest() {

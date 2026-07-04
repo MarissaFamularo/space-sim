@@ -94,6 +94,7 @@ position; explicit coordinates are not needed in Phase 1 (render derives them by
   crew: { name, hero } | undefined, // the Connie aboard (set by main.js at launch, from connies.js)
   transfer: TransferWindow | null,  // burn-window phasing toward sim.target
   course: CourseCheck | null,       // mid-course closest-pass prediction (when transfer is null)
+  teleported: bodyName | undefined, // set when he ✨-teleported here (Navigator sees the shortcut)
 }
 ```
 
@@ -166,6 +167,9 @@ Physics.computeOrbit(sim)           // -> orbit about the DOMINANT body (see Sim
 Physics.applyStage(sim, craft)      // drop spent stage parts, recompute dry mass/fuel for new stage.
 Physics.transferWindow(sim, key?)   // -> TransferWindow | null (see shape above). Pure, node-testable.
 Physics.courseCorrection(sim, key?) // -> CourseCheck | null (see shape above). Pure, node-testable.
+Physics.parkingOrbit(key, t?)       // -> {pos, vel, angle, radius, altitude, speed} | null: a circular
+                                    //   CCW orbit just above body `key` at time t, entered on the sunlit
+                                    //   side. Backs the ✨ Teleport button; null for the Sun. Pure.
 ```
 Provide a tiny self-check at bottom under `if (import.meta.url === ... )`-style guard OR an
 exported `Physics._selfTest()` that logs a known circular-orbit check. Keep it deterministic.
