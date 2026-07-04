@@ -71,10 +71,12 @@ export const PARTS = [
   {
     // Side-mounted thrusters that can fire with cargo hanging BELOW them — the trick
     // NASA used to lower the Curiosity and Perseverance rovers onto Mars on cables.
+    // Packs its OWN fuel inside the frame (the real descent stage did too) — no tank
+    // needed for a pure sky-crane landing.
     id: "engine_crane",
     type: "engine",
     name: "Sky-Crane Thrusters",
-    dryMass: 0.35, thrust: 45, exhaustVelocity: 2600,
+    dryMass: 0.35, fuelMass: 1.5, thrust: 45, exhaustVelocity: 2600,
     height: 0.6, radius: 0.8, shape: "crane",
     attachTop: true, attachBottom: true, // unlike other engines, things CAN hang below
   },

@@ -143,7 +143,7 @@ Object.freeze(Builder);
 function keyStatLabel(def) {
   switch (def.type) {
     case "engine":
-      return def.thrust + " kN thrust";
+      return def.thrust + " kN thrust" + (def.fuelMass ? " · fuel inside" : "");
     case "tank":
       return def.fuelMass + " t fuel";
     case "command":

@@ -106,6 +106,13 @@ function dropOnMoon(speed, legCount) {
   check("probe core is an UNCREWED command part", probe.type === "command" && probe.uncrewed === true);
   const crane = STOCK.find((p) => p.id === "engine_crane");
   check("sky-crane thrusters allow cargo below (attachBottom)", crane.attachBottom === true);
+  // The crane packs its own fuel (so did the real MSL descent stage) — and it must be
+  // enough to land a crane+rover+probe stack from low Mars orbit (~965 m/s + margin).
+  check("sky crane packs its own fuel", (crane.fuelMass || 0) > 0, `fuel=${crane.fuelMass} t`);
+  const wet = crane.dryMass + crane.fuelMass + 0.5 + 0.3; // + rover + probe core
+  const dry = crane.dryMass + 0.5 + 0.3;
+  const dv = crane.exhaustVelocity * Math.log(wet / dry);
+  check("…enough Δv for a Mars sky-crane landing", dv > 1400, `Δv=${dv.toFixed(0)} m/s`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
