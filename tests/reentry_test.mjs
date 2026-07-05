@@ -1,8 +1,8 @@
 // Reentry heating + Ap/Pe orientation test for space-sim physics (node, no browser).
-import { pathToFileURL } from "url";
-const base = "/Users/marissafamularo/Desktop/CoworkProjects/Kids Games/space-sim/js/";
-const { Physics } = await import(pathToFileURL(base + "physics.js"));
-const { BODIES, newSimState, bodyStateAt } = await import(pathToFileURL(base + "state.js"));
+// Relative imports (like every other suite) so the tests run on any machine, not
+// just the one whose absolute path used to be hardcoded here.
+import { Physics } from "../js/physics.js";
+import { BODIES, newSimState, bodyStateAt } from "../js/state.js";
 
 const E = BODIES.earth;
 const EW = (t = 0) => bodyStateAt("earth", t); // heliocentric world: offset by Earth's state

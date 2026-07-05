@@ -10,6 +10,11 @@
 // perfect precision) and (0,0) in build mode. The subtraction happens in float64 here,
 // BEFORE numbers ever touch a THREE.Vector3.
 import * as THREE from "three";
+// Post-processing (vendored from three r160 examples, same no-internet rule as three itself).
+import { EffectComposer } from "../vendor/postprocessing/EffectComposer.js";
+import { RenderPass } from "../vendor/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "../vendor/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "../vendor/postprocessing/OutputPass.js";
 import { BODIES, PLANET_KEYS, bodyStateAt, dominantBody } from "./state.js";
 import { PARTS } from "./mods.js"; // merged catalog: stock + the kid's mods
 import { Physics } from "./physics.js"; // pure math only (satellite propagation)
@@ -19,6 +24,10 @@ let renderer = null;
 let scene = null;
 let camera = null;
 let canvas = null;
+let composer = null;      // post chain: render -> bloom -> tone map/sRGB (OutputPass)
+// HDR philosophy: bloom threshold sits at 1.0, so ONLY things pushed past white glow —
+// the Sun, engine plumes, reentry plasma, city lights. Normal surfaces never bloom.
+const BLOOM = { strength: 0.55, radius: 0.4, threshold: 1.0 };
 
 const ALL_KEYS = ["sun", ...PLANET_KEYS];
 let bodyGroups = {};       // key -> THREE.Group (planet mesh + halo + rings), positioned per frame
@@ -45,6 +54,12 @@ let showTarget = true, showHeading = true, showPrograde = true;
 
 let craftGroup = null;
 let craftHeight = 0;
+
+let earthClouds = null;    // drifting cloud shell (child of Earth's group, async-loaded)
+
+// Engine exhaust plume: rebuilt with the craft mesh, rides the stack's bottom.
+let plume = null;          // { group, core, outer, glow, light, points, pdata, r }
+let _plumeLastT = 0;
 
 let connieMesh = null;
 
@@ -124,8 +139,10 @@ let satPool = []; // [{ group, dot, label, name }]
 // ---- Materials (created once in init) ----
 let MAT = null;
 function makeMaterials() {
+  // Emissive floor keeps parts readable on night sides; lowered from 0.35 now that the
+  // key light is brighter under ACES — parts get shading contrast back.
   const m = (color, metalness, roughness) => new THREE.MeshStandardMaterial({
-    color, metalness, roughness, emissive: color, emissiveIntensity: 0.35,
+    color, metalness, roughness, emissive: color, emissiveIntensity: 0.22,
   });
   MAT = {
     engine: m(0x4a5058, 0.5, 0.4),
@@ -202,7 +219,7 @@ function makePlanetCanvas(key) {
   const craters = (n, dark, light, rMax = 9) => {
     for (let i = 0; i < n; i++) {
       const x = rng() * W, y = H * (0.06 + rng() * 0.88), r = 1.5 + rng() * rng() * rMax;
-      ctx.globalAlpha = 0.45;
+      ctx.globalAlpha = 0.6; // was 0.45 — too faint once ACES lighting flattened the mids
       ctx.fillStyle = dark; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = light; ctx.lineWidth = Math.max(1, r * 0.28);
       ctx.beginPath(); ctx.arc(x, y, r, -2.4, -0.6); ctx.stroke();
@@ -263,8 +280,8 @@ function makePlanetCanvas(key) {
     }
     case "moon": {
       fill("#9aa0a8");
-      for (let i = 0; i < 5; i++) blob(rng() * W, H * (0.2 + rng() * 0.6), 22, "#7c828c", 20, 0.75);
-      craters(95, "#6d737d", "#c3c9d4", 9);
+      for (let i = 0; i < 6; i++) blob(rng() * W, H * (0.2 + rng() * 0.6), 24, "#767c86", 22, 0.8); // maria
+      craters(150, "#63696f", "#c9cfd8", 11);
       break;
     }
     case "mercury": { fill("#9c8e82"); craters(120, "#6f6358", "#c4b8aa", 8); break; }
@@ -366,14 +383,66 @@ function makePlanetCanvas(key) {
   return cv;
 }
 
+// Detail pass: upscale the painted 512x256 face to 1024x512 and shade it with two
+// octaves of horizontally-wrapping value noise — reads as terrain mottling / storm
+// texture instead of flat poster color. Runs once per body at init (~30 ms each).
+function refinePlanetCanvas(cv, key) {
+  const W = 1024, H = 512;
+  const out = document.createElement("canvas");
+  out.width = W; out.height = H;
+  const ctx = out.getContext("2d");
+  ctx.drawImage(cv, 0, 0, W, H);
+
+  // Gas/cloud worlds get a whisper of mottling; rocky worlds get real texture.
+  const gassy = ["jupiter", "saturn", "uranus", "neptune", "venus", "titan"].includes(key);
+  const amp = gassy ? 0.07 : 0.16;
+
+  const rng = mulberry32(hashStr(key + "-detail"));
+  // Two lattices of random values; x wraps so there's no seam at the date line.
+  const mk = (n) => {
+    const g = new Float32Array(n * (n / 2 + 2));
+    for (let i = 0; i < g.length; i++) g[i] = rng() * 2 - 1;
+    return g;
+  };
+  const lat = [
+    { n: 24, g: mk(24), w: 0.62 },
+    { n: 96, g: mk(96), w: 0.38 },
+  ];
+  const img = ctx.getImageData(0, 0, W, H);
+  const d = img.data;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let n = 0;
+      for (const L of lat) {
+        const fx = (x / W) * L.n, fy = (y / H) * (L.n / 2);
+        const x0 = fx | 0, y0 = fy | 0;
+        const tx = fx - x0, ty = fy - y0;
+        const x1 = (x0 + 1) % L.n;
+        const row = L.n;
+        const a = L.g[y0 * row + x0], bb = L.g[y0 * row + x1];
+        const c = L.g[(y0 + 1) * row + x0], dd = L.g[(y0 + 1) * row + x1];
+        n += L.w * ((a + (bb - a) * tx) * (1 - ty) + (c + (dd - c) * tx) * ty);
+      }
+      const f = 1 + n * amp;
+      const i = (y * W + x) * 4;
+      d[i] = Math.min(255, d[i] * f);
+      d[i + 1] = Math.min(255, d[i + 1] * f);
+      d[i + 2] = Math.min(255, d[i + 2] * f);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return out;
+}
+
 const _texCache = {};
 function planetTexture(key) {
   if (key in _texCache) return _texCache[key];
   const cv = makePlanetCanvas(key);
   let tex = null;
   if (cv) {
-    tex = new THREE.CanvasTexture(cv);
+    tex = new THREE.CanvasTexture(refinePlanetCanvas(cv, key));
     tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 1;
   }
   _texCache[key] = tex;
   return tex;
@@ -384,9 +453,16 @@ function planetTexture(key) {
 // =====================================================================
 function init(canvasEl) {
   canvas = canvasEl;
-  renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true });
+  // Logarithmic depth: near=1 to far=5e12 in one camera gives a linear depth buffer
+  // ~500 km buckets at map-view range — the atmosphere halo z-fought the planet limb
+  // in ugly blocks the moment Earth got a real face. Log depth keeps ~meters of
+  // precision at every distance, which a solar-system-in-one-scene renderer needs.
+  renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true, logarithmicDepthBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0x05070f, 1);
+  // Filmic tone mapping: sunlit tanks roll off gently instead of clipping to flat white.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
 
   scene = new THREE.Scene();
 
@@ -399,16 +475,34 @@ function init(canvasEl) {
   // the Sun's scene position toward the craft (a PointLight at astronomical distance won't
   // survive three's physical falloff — planets rendered black). Same brightness everywhere,
   // a kid-friendly exposure setting; plus soft fill so night sides aren't void-black.
-  sunLight = new THREE.DirectionalLight(0xffffff, 1.4);
+  // (Intensities re-tuned for ACES: filmic curve eats ~1 stop in the mids.)
+  sunLight = new THREE.DirectionalLight(0xffffff, 2.0);
   sunLight.target.position.set(0, 0, 0); // the craft rides the scene origin in flight
   scene.add(sunLight);
   scene.add(sunLight.target);
-  scene.add(new THREE.AmbientLight(0x404a66, 0.7));
-  scene.add(new THREE.HemisphereLight(0xbcd4ff, 0x202830, 0.5));
+  scene.add(new THREE.AmbientLight(0x404a66, 0.5));
+  scene.add(new THREE.HemisphereLight(0xbcd4ff, 0x202830, 0.45));
 
   // Starfield — screen-size points on a huge shell centered on the floating origin
   // (the craft), so the stars are always around you no matter where you fly.
   scene.add(makeStarfield());
+
+  // Milky Way skysphere behind the point stars: a real night-sky panorama as the scene
+  // background (renders at infinity, no geometry, floating-origin-proof by construction).
+  new THREE.TextureLoader().load("./vendor/textures/milkyway.jpg", (tex) => {
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    scene.background = tex;
+    scene.backgroundIntensity = 0.35; // dim: the painted clear-color look, but with the galaxy in it
+  });
+
+  // Post chain: scene -> bloom -> tone map + sRGB. Bloom threshold 1.0 = HDR-only.
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  composer.addPass(new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    BLOOM.strength, BLOOM.radius, BLOOM.threshold));
+  composer.addPass(new OutputPass());
 
   // Build every body: the Sun, the planets, the Moon.
   for (const key of ALL_KEYS) bodyGroups[key] = makeBodyGroup(key);
@@ -542,14 +636,15 @@ function makeBodyGroup(key) {
   let mat;
   const tex = style.star ? null : planetTexture(key);
   if (style.star) {
-    // The Sun glows by itself — it IS the light source.
-    mat = new THREE.MeshBasicMaterial({ color: style.color });
+    // The Sun glows by itself — it IS the light source. Color pushed past white (HDR)
+    // so the bloom pass flares it into something you squint at, like the real thing.
+    mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xfff0c0).multiplyScalar(2.5) });
   } else if (tex) {
     // Painted face; emissiveMap = same texture so the night side shows it dimly
     // (flat-color emissive would wash the detail out).
     mat = new THREE.MeshStandardMaterial({
       map: tex, roughness: 0.95, metalness: 0,
-      emissive: 0xffffff, emissiveIntensity: 0.16, emissiveMap: tex,
+      emissive: 0xffffff, emissiveIntensity: 0.1, emissiveMap: tex,
     });
   } else {
     mat = new THREE.MeshStandardMaterial({
@@ -559,6 +654,11 @@ function makeBodyGroup(key) {
   }
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(b.radius, detail[0], detail[1]), mat);
   g.add(mesh);
+
+  // Earth gets the real thing: NASA Blue Marble day map, city lights at night, and a
+  // slowly drifting cloud shell. Loads async; if the files are missing (someone zipped
+  // just the js/), the painted canvas face above stays — graceful either way.
+  if (key === "earth") loadEarthTextures(mat, g, b);
 
   if (style.star) {
     // Soft additive glow sprite so the Sun reads as blinding, not a yellow ball.
@@ -591,13 +691,19 @@ function makeBodyGroup(key) {
   }
 
   if (style.rings) {
-    // Saturn's rings: flat annulus, tilted so it reads in both follow and map views.
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(b.radius * 1.25, b.radius * 2.3, 96),
-      new THREE.MeshBasicMaterial({
-        color: 0xcdbb96, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
-      })
-    );
+    // Saturn's rings: banded annulus with the Cassini Division, tilted so it reads in
+    // both follow and map views. RingGeometry UVs are planar, so rewrite u = radial
+    // fraction to stripe the texture into concentric rings.
+    const inner = b.radius * 1.25, outer = b.radius * 2.3;
+    const geo = new THREE.RingGeometry(inner, outer, 128, 4);
+    const pos = geo.getAttribute("position"), uv = geo.getAttribute("uv");
+    for (let i = 0; i < uv.count; i++) {
+      const rr = Math.hypot(pos.getX(i), pos.getY(i));
+      uv.setXY(i, (rr - inner) / (outer - inner), 0.5);
+    }
+    const ring = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      map: ringTexture(), transparent: true, side: THREE.DoubleSide, depthWrite: false,
+    }));
     ring.rotation.x = 0.45; // tilt out of the orbital plane
     g.add(ring);
   }
@@ -605,6 +711,66 @@ function makeBodyGroup(key) {
   g.visible = false; // shown in flight
   scene.add(g);
   return g;
+}
+
+// Real Earth: swap the painted face for NASA's Blue Marble when it loads, wire the
+// night-lights map into the emissive channel (cities bright enough to catch bloom),
+// and hang a cloud shell that drifts with game time.
+function loadEarthTextures(mat, group, b) {
+  const loader = new THREE.TextureLoader();
+  const srgb = (tex) => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return tex;
+  };
+  loader.load("./vendor/textures/earth_day.jpg", (tex) => {
+    mat.map = srgb(tex);
+    mat.needsUpdate = true;
+  });
+  loader.load("./vendor/textures/earth_night.jpg", (tex) => {
+    mat.emissiveMap = srgb(tex);
+    mat.emissive = new THREE.Color(0xffffff);
+    mat.emissiveIntensity = 1.3; // city cores cross the bloom threshold and twinkle
+    mat.needsUpdate = true;
+  });
+  loader.load("./vendor/textures/earth_clouds.jpg", (tex) => {
+    earthClouds = new THREE.Mesh(
+      new THREE.SphereGeometry(b.radius * 1.012, 64, 48),
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff, alphaMap: tex, transparent: true, depthWrite: false,
+        roughness: 1, metalness: 0, emissive: 0xffffff, emissiveIntensity: 0.06,
+      })
+    );
+    group.add(earthClouds);
+  });
+}
+
+// Saturn's ring strip: icy bands + the Cassini Division, painted once. Alpha lives in
+// the canvas so the gap is genuinely see-through.
+let _ringTex = null;
+function ringTexture() {
+  if (_ringTex) return _ringTex;
+  const W = 512;
+  const cv = document.createElement("canvas");
+  cv.width = W; cv.height = 2;
+  const ctx = cv.getContext("2d");
+  const rng = mulberry32(hashStr("saturn-rings"));
+  for (let x = 0; x < W; x++) {
+    const f = x / W; // 0 = inner edge, 1 = outer
+    // Broad structure: C ring (dim) -> B ring (bright) -> Cassini gap -> A ring.
+    let a =
+      f < 0.18 ? 0.25 + f * 1.2 :
+      f < 0.55 ? 0.75 :
+      f < 0.63 ? 0.06 :            // the Cassini Division
+      f < 0.94 ? 0.55 : 0.55 * (1 - (f - 0.94) / 0.06);
+    a *= 0.75 + rng() * 0.45;      // fine ringlet grain
+    const shade = 200 + Math.floor(rng() * 40);
+    ctx.fillStyle = `rgba(${shade},${shade - 18},${shade - 52},${Math.max(0, Math.min(1, a)).toFixed(3)})`;
+    ctx.fillRect(x, 0, 1, 2);
+  }
+  _ringTex = new THREE.CanvasTexture(cv);
+  _ringTex.colorSpace = THREE.SRGBColorSpace;
+  return _ringTex;
 }
 
 // Circle tracing a body's orbit, centered on its PARENT (positioned per frame).
@@ -649,6 +815,140 @@ function makeStarfield() {
   const pts = new THREE.Points(geo, mat);
   pts.frustumCulled = false;
   return pts;
+}
+
+// =====================================================================
+// Engine exhaust plume — the thing every launch is really about.
+// Two additive cones (white-hot core inside an orange sheath), a glow sprite at the
+// nozzle, a flickering light so the flame paints the rocket, and a spark trail.
+// Lives at the bottom of the craft stack in craft-local coords (exhaust = -Y), so it
+// pivots with the rocket and survives staging (rebuilt with the mesh).
+// =====================================================================
+let _plumeGlowTex = null;
+function plumeGlowTexture() {
+  if (_plumeGlowTex) return _plumeGlowTex;
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 64;
+  const ctx = cv.getContext("2d");
+  const grad = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
+  grad.addColorStop(0, "rgba(255,240,200,1)");
+  grad.addColorStop(0.35, "rgba(255,180,80,0.55)");
+  grad.addColorStop(1, "rgba(255,140,40,0)");
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, 64, 64);
+  _plumeGlowTex = new THREE.CanvasTexture(cv);
+  return _plumeGlowTex;
+}
+
+const PLUME_PARTICLES = 150;
+function makeExhaustPlume(r, len) {
+  const group = new THREE.Group();
+
+  // HDR colors (pushed past 1.0) so the flame catches the bloom pass.
+  const coreMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(1.6, 1.35, 0.95), transparent: true, opacity: 0.9,
+    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+  });
+  const outerMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(1.5, 0.55, 0.16), transparent: true, opacity: 0.32,
+    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+  });
+  // Cones: wide at the nozzle (top, y=0), tapering down the exhaust (-Y).
+  const core = new THREE.Mesh(new THREE.ConeGeometry(r * 0.42, len, 16, 1, true), coreMat);
+  core.rotation.x = Math.PI; // apex points down
+  core.position.y = -len / 2;
+  group.add(core);
+  const outer = new THREE.Mesh(new THREE.ConeGeometry(r * 0.8, len * 1.55, 16, 1, true), outerMat);
+  outer.rotation.x = Math.PI;
+  outer.position.y = -len * 0.775;
+  group.add(outer);
+
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: plumeGlowTexture(), blending: THREE.AdditiveBlending,
+    transparent: true, depthWrite: false,
+  }));
+  glow.scale.setScalar(r * 4.5);
+  group.add(glow);
+
+  // The flame lights the rocket: warm point light just below the nozzle.
+  const light = new THREE.PointLight(0xffa040, 600, 400, 2);
+  light.position.set(0, -1.2, 0);
+  group.add(light);
+
+  // Spark/smoke trail: recycled points streaming down -Y. Per-particle fade is done
+  // through vertex COLOR (additive blending: dark == invisible), no custom shader.
+  const pdata = [];
+  const posArr = new Float32Array(PLUME_PARTICLES * 3);
+  const colArr = new Float32Array(PLUME_PARTICLES * 3);
+  for (let i = 0; i < PLUME_PARTICLES; i++) {
+    pdata.push({ life: Math.random(), max: 0.5 + Math.random() * 0.5,
+                 vx: 0, vy: 0, vz: 0 });
+    posArr[i * 3 + 1] = -Math.random() * len;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
+  geo.setAttribute("color", new THREE.BufferAttribute(colArr, 3));
+  const points = new THREE.Points(geo, new THREE.PointsMaterial({
+    size: Math.max(0.25, r * 0.38), vertexColors: true, transparent: true,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  points.frustumCulled = false;
+  group.add(points);
+
+  group.visible = false;
+  return { group, core, outer, glow, light, points, pdata, r, len };
+}
+
+// Called every flight frame. Throttle drives length/brightness; a per-frame flicker
+// keeps it alive; vacuum fattens the sheath (no air pressure squeezing the exhaust —
+// real, and he'll notice).
+function updatePlume(sim, dom) {
+  if (!plume) return;
+  const c = sim.craft || {};
+  const burning = mode === "flight" && sim.status !== "crashed" &&
+    (c.throttle || 0) > 0 && (c.thrust || 0) > 0 && (c.fuelRemaining || 0) > 0;
+  plume.group.visible = burning;
+  if (!burning) { plume.light.intensity = 0; return; }
+
+  const t = sim.time || 0;
+  let dt = t - _plumeLastT;
+  _plumeLastT = t;
+  if (!(dt > 0) || dt > 0.08) dt = 0.016; // first frame / time-warp jump: just keep animating
+
+  const throttle = Math.max(0.15, Math.min(1, c.throttle || 0));
+  const flick = 0.9 + 0.1 * Math.sin(t * 47.0) * Math.sin(t * 31.7) + (Math.random() - 0.5) * 0.12;
+  const inVacuum = !(dom && dom.body.atmosphere && (sim.altitude || 0) < dom.body.atmosphere.height);
+  const widen = inVacuum ? 1.8 : 1.0; // exhaust balloons where there's no air to hold it
+
+  plume.core.scale.set(flick, throttle * flick, flick);
+  plume.outer.scale.set(widen * flick, throttle * (0.9 + 0.2 * flick), widen * flick);
+  plume.outer.material.opacity = (inVacuum ? 0.22 : 0.32) * (0.8 + 0.4 * Math.random());
+  plume.glow.scale.setScalar(plume.r * (4.5 + throttle * 2.5) * flick);
+  plume.light.intensity = 500 * throttle * (0.85 + 0.3 * Math.random());
+
+  // Trail particles: spawn at the nozzle, stream down, cool from white-orange to ember.
+  const pos = plume.points.geometry.getAttribute("position");
+  const col = plume.points.geometry.getAttribute("color");
+  const speed = plume.len * (2.2 + 1.5 * throttle);
+  for (let i = 0; i < PLUME_PARTICLES; i++) {
+    const p = plume.pdata[i];
+    p.life += dt;
+    if (p.life >= p.max) { // respawn at the nozzle with a fresh kick
+      p.life = 0;
+      p.max = (0.45 + Math.random() * 0.55) * (inVacuum ? 0.7 : 1);
+      const a = Math.random() * Math.PI * 2;
+      const rr = Math.random() * plume.r * 0.35;
+      pos.setXYZ(i, Math.cos(a) * rr, -Math.random() * 0.5, Math.sin(a) * rr);
+      const spread = (inVacuum ? 0.85 : 0.35) * plume.len;
+      p.vx = Math.cos(a) * spread * Math.random();
+      p.vz = Math.sin(a) * spread * Math.random();
+      p.vy = -speed * (0.75 + Math.random() * 0.5);
+    }
+    pos.setXYZ(i, pos.getX(i) + p.vx * dt, pos.getY(i) + p.vy * dt, pos.getZ(i) + p.vz * dt);
+    const f = 1 - p.life / p.max; // 1 fresh -> 0 dead
+    col.setXYZ(i, 1.7 * f, (1.25 * f) * f, 0.55 * f * f * f);
+  }
+  pos.needsUpdate = true;
+  col.needsUpdate = true;
 }
 
 // A Connie: coiled green snake, head up, inside a clear bubble helmet (his design).
@@ -810,6 +1110,7 @@ function onResize() {
   const h = window.innerHeight;
   if (w < 2 || h < 2) return; // minimized/zero-size window: aspect 0 NaNs the projection
   renderer.setSize(w, h); // updateStyle=true (see HANDOFF gotchas)
+  if (composer) composer.setSize(w, h);
   camera.aspect = w / Math.max(1, h);
   camera.updateProjectionMatrix();
 }
@@ -873,6 +1174,7 @@ function buildCraftMesh(craft) {
     disposeGroup(craftGroup);
     craftGroup = null;
   }
+  plume = null; // its geometries died with the group; rebuilt below
   craftHeight = 0;
 
   if (!craft || !craft.parts || craft.parts.length === 0) {
@@ -926,6 +1228,14 @@ function buildCraftMesh(craft) {
     group.add(partObj);
     cursor += h;
   }
+
+  // Exhaust plume at the stack's bottom (defs[0] — the stage that's actually firing).
+  // Sized by the bottom-most engine's bell; harmless if this stage has none (it only
+  // shows when sim thrust + throttle + fuel say the engines are truly burning).
+  const eng = defs.find((d) => d.type === "engine") || defs[0];
+  plume = makeExhaustPlume(eng.radius || 0.5, Math.max(3.5, total * 0.85));
+  plume.group.position.y = -total / 2;
+  group.add(plume.group);
 
   craftGroup = group;
   scene.add(group);
@@ -1151,7 +1461,8 @@ function update(sim) {
 
   updateBurnMarker(sim);
 
-  renderer.render(scene, camera);
+  if (composer) composer.render();
+  else renderer.render(scene, camera);
 }
 
 function updateBuildCamera() {
@@ -1215,7 +1526,8 @@ function updateFlight(sim) {
       heatGlow.scale.set(size, size * 1.35, size);
       heatGlow.rotation.z = angle;
       heatGlow.material.opacity = Math.min(0.85, heat * 1.1);
-      heatGlow.material.color.setHSL(0.07, 1.0, 0.5 + heat * 0.35);
+      // Pushed past white at high heat so the bloom pass flares the plasma sheath.
+      heatGlow.material.color.setHSL(0.07, 1.0, 0.5 + heat * 0.35).multiplyScalar(1 + heat * 0.9);
       heatGlow.visible = true;
     } else {
       heatGlow.visible = false;
@@ -1237,6 +1549,12 @@ function updateFlight(sim) {
       chuteCanopy.visible = false;
     }
   }
+
+  // Engine flame + spark trail (rides the craft group, so it's already placed).
+  updatePlume(sim, dom);
+
+  // Earth's clouds drift with game time (time-warp spins the weather — a feature).
+  if (earthClouds) earthClouds.rotation.y = (t * 0.0012) % (Math.PI * 2);
 
   // Phase 5: surface detail + deployed rover + satellites.
   updateSurfaceExtras(sim, dom);

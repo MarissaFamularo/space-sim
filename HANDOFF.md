@@ -74,6 +74,56 @@ friendly errors, localStorage persistence).
   session: speed/prograde/altitude readouts are now measured vs the dominant body (parked
   on the Moon reads 0 m/s, not the Moon's orbital speed).
 
+**New 2026-07-05 (his ask, via Mom: "make the graphics better") — THE GRAPHICS PASS.
+All render.js + vendored assets; frozen Render API untouched; physics untouched; all 7
+test suites green (and reentry_test.mjs now uses relative imports instead of a hardcoded
+Mac path, so it runs anywhere).**
+- **HDR + bloom pipeline:** EffectComposer → RenderPass → UnrealBloomPass → OutputPass,
+  vendored from three r160's examples into `vendor/postprocessing/` + `vendor/shaders/`
+  (same no-internet rule as three itself; pulled from the npm tarball). ACES filmic tone
+  mapping, exposure 1.05. **Bloom threshold sits at exactly 1.0**: only colors pushed past
+  white glow — the Sun (color ×2.5), engine plume cones, hot reentry plasma, Earth's city
+  lights. Normal surfaces can never bloom. Tune in the `BLOOM` const at the top.
+- **Engine exhaust plume** (`makeExhaustPlume`/`updatePlume`): white-hot core cone in an
+  orange sheath (additive, HDR), nozzle glow sprite, a flickering PointLight that paints
+  the rocket, and a 150-point spark trail that cools white→ember through vertex color.
+  Throttle drives length; **vacuum fattens the sheath ×1.8** (no air squeezing the
+  exhaust — tell him why). Rebuilt with the craft mesh, so staging keeps it on the live
+  stage's engines; only shows when throttle+thrust+fuel are all truly on.
+- **Real Earth:** NASA Blue Marble day map, Earth-at-Night as the emissive map (cities
+  actually glow at night and catch a little bloom), and a drifting cloud shell
+  (alpha-mapped, rotates with game time so time-warp spins the weather). Files in
+  `vendor/textures/` (~750 KB total, provenance in its README: three-globe/MIT, imagery
+  NASA public domain), downsized to 2048×1024 for school laptops. Async-loaded; missing
+  files fall back to the painted canvas face.
+- **Milky Way skysphere:** real night-sky panorama as `scene.background` (equirect,
+  intensity 0.35) behind the existing crisp point starfield.
+- **Procedural faces upgraded:** every painted planet now runs through
+  `refinePlanetCanvas` — upscaled to 1024×512 and shaded with two octaves of seam-free
+  value noise (rocky worlds ±16%, gas/cloud worlds ±7%) so nothing is flat poster color.
+  Moon maria/craters got more contrast (they were invisible under the grazing light).
+  Saturn's rings are now a banded canvas strip **with the Cassini Division** (ring UVs
+  rewritten to radial) instead of a flat translucent disc.
+- **LOGARITHMIC DEPTH BUFFER — the big correctness fix.** near=1/far=5e12 in one camera
+  left the linear depth buffer with ~500 km buckets at map range; Earth's atmosphere halo
+  z-fought the limb in ugly blocks the moment the planet got a real face. GOTCHA for
+  future work: any custom ShaderMaterial must include three's logdepth shader chunks or
+  its depth won't match the rest of the scene.
+- **Lighting rebalanced for ACES** (sun 2.0 / ambient 0.5 / hemi 0.45, part emissive
+  floor 0.35→0.22, textured-planet emissive 0.16→0.10). First pass overexposed the Moon
+  to a featureless ball — if a body ever looks washed out, suspect these numbers, not the
+  textures.
+- **Verified by driving the real game** (Playwright + bundled Chromium, screenshots):
+  build mode, liftoff plume, ascent sparks, Earth disc from map view (clouds + cities +
+  clean limb), Moon disc (maria + craters), Saturn map view (rings + gap), Jupiter,
+  teleports, staging. Stars still visible through atmosphere halos from inside — that's
+  pre-existing additive-halo behavior, not a regression.
+- **Still open (the tiers we discussed with Mom):** fresnel atmosphere rim shader (flagged
+  as a good learn-to-code project WITH him — mind the logdepth gotcha above), real maps
+  for Mars/Jupiter/etc. if bigger assets are ever OK, terrain relief when landed, GLTF
+  rocket parts, a graphics-quality toggle if a school laptop ever chugs (bloom + log
+  depth are the two costs; both are single-line disables in `init`).
+
 **New 2026-07-04 (his ask): ✨ Teleport-to-orbit.** The 🎯 target picker moved OUT of the
 flight-only controls (visible in build mode too), with a ✨ Teleport button under it:
 magic-jump straight into a low circular orbit around the picked world, from build mode

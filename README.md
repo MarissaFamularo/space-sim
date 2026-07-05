@@ -14,7 +14,7 @@ Then open http://localhost:8000. (A local server is needed because the game uses
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Bundles [three.js](https://threejs.org) (`vendor/three.module.js`), also MIT-licensed, © three.js authors.
+MIT — see [LICENSE](LICENSE). Bundles [three.js](https://threejs.org) (`vendor/three.module.js` plus post-processing modules in `vendor/postprocessing/` and `vendor/shaders/`), also MIT-licensed, © three.js authors. Planet/sky photos in `vendor/textures/` come from the MIT-licensed [three-globe](https://github.com/vasturiano/three-globe) examples (imagery originally NASA, public domain) — see `vendor/textures/README.md`.
 
 ## Docs
 
