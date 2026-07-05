@@ -74,6 +74,42 @@ friendly errors, localStorage persistence).
   session: speed/prograde/altitude readouts are now measured vs the dominant body (parked
   on the Moon reads 0 m/s, not the Moon's orbital speed).
 
+**New 2026-07-05 latest+2 — HIS MORNING WISH LIST (all four, browser-verified):**
+- **Galaxy on the map:** zoom the map past the last planet and every system he's visited
+  (plus Sol) appears as a colored ⭐/⚫ with its name — deterministic positions
+  (`stargen.galaxyPos`, game-compressed band just past Pluto), CLICK ONE TO TRAVEL.
+  Real bug fixed en route: with a 5e12 far plane, visible dots project to NDC z =
+  1 + 1e-13, so a strict `z > 1` behind-camera test rejected every star — guard now
+  tolerant (`window.__galaxyDebug` hook left in for automated tests).
+- **Future engines:** ION DRIVE (real: 6 kN / ve 30 km/s, can't lift off — true of real
+  ion tech) and STARFIRE TORCH (far-future fusion: 900 kN / ve 120 km/s, magnetic-coil
+  nozzle mesh). Engines with ve ≥ 20 km/s burn BLUE (plume, sparks, glow, light).
+  Navigator teaches the honest interstellar math (torch → nearest star ≈ 10,000 yr;
+  Andromeda = 2.5M ly; the Starmap fold skips what physics won't allow).
+- **Map view from the pad** (he asked; the M key already toggled state but render's
+  build path ignored it): map now works in build mode — bodies shown, "you are here"
+  marker on the pad, transfer windows checkable BEFORE building. Map button moved out
+  of the flight-only panel; entering build resets to pad view.
+- **EQUATORIAL PAD + SPACE CENTER:** he noticed the pad sat on the texture's north-pole
+  ice cap. Every planet mesh (and Earth's cloud shell) now rotates z=π/2 so texture
+  poles lie along ±X — the pad (world +Y) sits on the EQUATOR, equators face the
+  orbital plane like reality. The pad got a space center: VAB (blue stripe + door),
+  crawler-way, mission-control bunker + dish, water tower, propellant farm, flag —
+  all in the launchpad group, build-mode only, zero flight cost.
+- **🛰 SPACE STATIONS + DOCKING:** `state.STATIONS` (swapped per system like BODIES;
+  stargen scatters 1–2 per generated system, ~35% chance the far one is abandoned).
+  Sol has Harbor Station (Earth 2.3R), Selene Depot (Moon), and **Old Kestrel Station
+  (Earth 3.8R) — the meteor-struck derelict: ring torn to a Π·1.3 arc, snapped dead
+  panels, impact scar, 90-point junk cloud + tumbling debris chunks, dead tumble, no
+  blink light.** Docking = drift within 150 m under 10 m/s relative (main.js
+  `updateStationsSim`): working stations REFUEL the current stage (uses new
+  `sim.craft.stageFuelMax`) + Gemini rendezvous coaching; the derelict answers with the
+  space-junk lesson and no fuel. HUD "nearest station" row inside 5,000 km; stations
+  draw in follow view (<80 km) and as decluttered map dots; Navigator game-state gets
+  `flight.nearStation`. NOTE: docking mechanics are code-verified + map/HUD
+  browser-verified, but a full scripted rendezvous wasn't flown — worth a real
+  play-test pass.
+
 **New 2026-07-05 latest+1 — ⚫ SURPRISE BLACK HOLES (his ask, via Mom).**
 - ~7% of Starmap names (deterministic roll in stargen) get a BLACK HOLE instead of a
   star; any name containing "blackhole" summons one on purpose (undocumented in-game —

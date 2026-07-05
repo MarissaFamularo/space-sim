@@ -265,6 +265,24 @@ export function generateSystem(seedName) {
     }
   }
 
+  // Stations: every system gets one over the homeworld; half get a second one out
+  // at another planet — and sometimes THAT one is a wreck nobody ever came back for.
+  const stations = [{
+    id: "st_home", name: makeName(rng) + " Station", body: "earth",
+    altR: range(rng, 2.1, 3.2), phase0: rng() * Math.PI * 2,
+  }];
+  if (rng() < 0.55 && planetKeys.length > 2) {
+    const others = planetKeys.filter((k) => k !== "earth" && k !== "moon" && defs[k].parent === "sun");
+    if (others.length) {
+      const host = pick(rng, others);
+      stations.push({
+        id: "st_far", name: makeName(rng) + (rng() < 0.5 ? " Depot" : " Outpost"), body: host,
+        altR: range(rng, 2.4, 4), phase0: rng() * Math.PI * 2,
+        abandoned: rng() < 0.35,
+      });
+    }
+  }
+
   const bodies = buildCatalog(defs, order);
   return {
     key: "gen:" + norm,
@@ -279,5 +297,6 @@ export function generateSystem(seedName) {
     frostAU: frost / AU,
     bodies,
     planetKeys,
+    stations,
   };
 }

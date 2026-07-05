@@ -90,20 +90,22 @@ export const UI = {
     smBtn.onclick = () => this._toggleStarmap();
     c.appendChild(smBtn);
 
+    // Map view works from the pad too (check transfer windows before you build!).
+    const mapBtn = document.createElement("button");
+    this.els.mapBtn = mapBtn;
+    mapBtn.textContent = "🗺 Map view";
+    mapBtn.style.cssText = "margin-top:6px;width:100%;";
+    mapBtn.onclick = () => {
+      const on = this.handlers.onToggleMap && this.handlers.onToggleMap();
+      this.syncMapButton(on);
+    };
+    c.appendChild(mapBtn);
+
     // Flight-only controls — hidden in build mode.
     const fc = document.createElement("div");
     this.els.flightControls = fc;
     fc.style.display = "none";
     c.appendChild(fc);
-
-    const mapBtn = document.createElement("button");
-    mapBtn.textContent = "🗺 Map view";
-    mapBtn.style.cssText = "margin-top:8px;";
-    mapBtn.onclick = () => {
-      const on = this.handlers.onToggleMap && this.handlers.onToggleMap();
-      mapBtn.textContent = on ? "🚀 Flight view" : "🗺 Map view";
-    };
-    fc.appendChild(mapBtn);
 
     const help = document.createElement("div");
     help.style.cssText = "font-size:11px;color:#9fb3da;margin-top:8px;line-height:1.5;";
@@ -156,6 +158,9 @@ export const UI = {
     if (this.els.sysLabel) this.els.sysLabel.textContent = "🌌 " + SYSTEM.name;
   },
   currentTarget() { return this.els.targetSel ? this.els.targetSel.value : "moon"; },
+  syncMapButton(on) {
+    if (this.els.mapBtn) this.els.mapBtn.textContent = on ? "🚀 Ship view" : "🗺 Map view";
+  },
 
   _toggleStarmap() {
     if (this.els.starmap) { this.els.starmap.remove(); this.els.starmap = null; return; }
@@ -251,6 +256,11 @@ export const UI = {
       }
       if ((sim.craft.legCount || 0) > 0) html += row("Landing legs", "🦵 ok under 12 m/s");
       if (sim.satellites && sim.satellites.length) html += row("Satellites", "🛰 " + sim.satellites.length + " in orbit");
+      if (sim.stationNear) {
+        html += row(sim.stationNear.abandoned ? "⚠ " + sim.stationNear.name : "🛰 " + sim.stationNear.name,
+          sim.stationNear.docked ? "DOCKED ✅" : fmtDist(sim.stationNear.dist) +
+            (sim.stationNear.dist < 5000 ? " · " + sim.stationNear.rel.toFixed(0) + " m/s rel" : ""));
+      }
       if (sim.orbit) {
         html += row("Apoapsis", isFinite(sim.orbit.apoapsis) ? fmtDist(sim.orbit.apoapsis) : "∞ (escaping)");
         html += row("Periapsis", fmtDist(sim.orbit.periapsis));

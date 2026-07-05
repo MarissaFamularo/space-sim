@@ -3,7 +3,7 @@
 // and wires the copilot. Integrates physics.js + render.js + builder.js per the contract.
 
 import { PARTS } from "./mods.js";
-import { BODIES, SYSTEM, isSol, setSystem, returnToSol, newCraft, newSimState, computeStats, findPart, bodyStateAt } from "./state.js";
+import { BODIES, SYSTEM, STATIONS, isSol, setSystem, returnToSol, newCraft, newSimState, computeStats, findPart, bodyStateAt } from "./state.js";
 import { generateSystem, galaxyPos } from "./stargen.js";
 import { Physics } from "./physics.js";
 import { Render } from "./render.js";
@@ -16,6 +16,7 @@ const canvas = document.getElementById("scene");
 let craft = newCraft();
 craft._catalog = PARTS; // lets Physics.applyStage read part data if ever needed
 let sim = newSimState(BODIES.earth);
+let mapView = false; // declared early: enterBuild() touches it during boot
 
 // Time-warp tiers: , and . step through. Interplanetary cruises need the top ones —
 // a Mars transfer is ~82 (scaled) days of coasting.
@@ -80,6 +81,7 @@ function loadStage(stageNum) {
   sim.craft.currentStage = stageNum;
   sim.craft.mass = s.remainingMass;
   sim.craft.fuelRemaining = s.stageFuel;
+  sim.craft.stageFuelMax = s.stageFuel;
   sim.craft.thrust = s.thrust;
   sim.craft.exhaustVelocity = s.exhaustVelocity;
   sim.craft.chuteCount = s.chutes;
@@ -133,6 +135,9 @@ function onCraftChange() {
 }
 function enterBuild() {
   sim.mode = "build"; sim.status = "prelaunch";
+  mapView = false;
+  UI.syncMapButton(false);
+  Render.setFlightView("follow");
   Render.buildCraftMesh(craft);
   Render.setMode("build");
   Builder.show();
@@ -381,7 +386,8 @@ function refreshGalaxy() {
 
 function travelToSystem(seed) {
   const sys = generateSystem(seed);
-  setSystem(sys.bodies, sys.planetKeys, { key: sys.key, name: sys.name, seed: sys.seed });
+  setSystem(sys.bodies, sys.planetKeys,
+    { key: sys.key, name: sys.name, seed: sys.seed, stations: sys.stations });
   rememberVisit(sys);
   arriveInSystem();
   const home = BODIES.earth;
@@ -464,7 +470,6 @@ function wireCopilot() {
 
 // ---- keyboard flight controls ----
 const keys = {};
-let mapView = false;
 window.addEventListener("keydown", (e) => {
   if (e.target && e.target.tagName === "INPUT") return;
   keys[e.key] = true;
@@ -474,7 +479,7 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "x" || e.key === "X") sim.craft.throttle = 0;
   if (e.key === ".") stepWarp(+1);
   if (e.key === ",") stepWarp(-1);
-  if (e.key === "m" || e.key === "M") { mapView = !mapView; Render.setFlightView(mapView ? "map" : "follow"); }
+  if (e.key === "m" || e.key === "M") { mapView = !mapView; Render.setFlightView(mapView ? "map" : "follow"); UI.syncMapButton(mapView); }
   if (e.key === "p" || e.key === "P") deployChute(false);
 });
 window.addEventListener("keyup", (e) => { keys[e.key] = false; });
@@ -741,10 +746,76 @@ function flightCallouts() {
 // ---- game loop ----
 let last = 0;
 let courseTimer = 0;
+// ---- 🛰 Space stations: propagate their circular orbits, offer docking ----
+// Dock = drift within 150 m at under 10 m/s relative. Working stations refuel the
+// current stage (a gas station in orbit — that's why real programs want depots!).
+// The abandoned one just... doesn't answer. The Navigator tells you why.
+let dockedAtId = null;
+function stationStateAt(st, t) {
+  const b = BODIES[st.body];
+  if (!b) return null;
+  const bs = bodyStateAt(st.body, t);
+  const r = b.radius * st.altR;
+  const n = Math.sqrt(b.mu / (r * r * r));
+  const th = st.phase0 + n * t;
+  return {
+    pos: { x: bs.pos.x + r * Math.cos(th), y: bs.pos.y + r * Math.sin(th) },
+    vel: { x: bs.vel.x - r * n * Math.sin(th), y: bs.vel.y + r * n * Math.cos(th) },
+  };
+}
+function updateStationsSim() {
+  const t = sim.time || 0;
+  const view = [];
+  let nearest = null;
+  for (const st of STATIONS) {
+    const ss = stationStateAt(st, t);
+    if (!ss) continue;
+    view.push({ id: st.id, name: st.name, body: st.body, abandoned: !!st.abandoned, pos: ss.pos });
+    if (sim.mode === "flight" && sim.status === "flying") {
+      const dist = Math.hypot(sim.craft.pos.x - ss.pos.x, sim.craft.pos.y - ss.pos.y);
+      const rel = Math.hypot(sim.craft.vel.x - ss.vel.x, sim.craft.vel.y - ss.vel.y);
+      if (!nearest || dist < nearest.dist) nearest = { st, dist, rel };
+    }
+  }
+  sim.stationsView = view;
+  sim.stationNear = nearest && nearest.dist < 5e6
+    ? { name: nearest.st.name, dist: nearest.dist, rel: nearest.rel,
+        abandoned: !!nearest.st.abandoned, docked: dockedAtId === nearest.st.id }
+    : null;
+
+  if (!nearest) return;
+  const { st, dist, rel } = nearest;
+  if (dist < 150 && rel < 10 && sim.status === "flying") {
+    if (dockedAtId !== st.id) {
+      dockedAtId = st.id;
+      if (st.abandoned) {
+        copilotSay("🛰⚠️ <b>Docked with " + st.name + "</b>… and nobody answers. A meteor " +
+          "punched through the ring years ago — you can see the bite it took, the dead " +
+          "solar wings, and all the junk still tumbling around that nobody ever cleaned " +
+          "up. The tech shut down with the power, so there's <b>no fuel here</b>. Space " +
+          "junk is a REAL problem — we track over 30,000 pieces around the real Earth. " +
+          "Look around… then leave it to its quiet orbit.");
+      } else {
+        const before = sim.craft.fuelRemaining || 0;
+        sim.craft.fuelRemaining = Math.max(before, sim.craft.stageFuelMax || before);
+        copilotSay("🛰✅ <b>Docked with " + st.name + "!</b> Matching orbits within a few " +
+          "meters at walking speed is the hardest flying there is — Gemini crews spent " +
+          "whole missions practicing exactly this. The crew topped off your tanks " +
+          (sim.craft.fuelRemaining > before + 0.01 ? "(<b>fuel refilled!</b>)" : "(they were already full)") +
+          " — orbital gas stations are why real agencies dream of depots. Undock by " +
+          "easing the throttle.");
+      }
+    }
+  } else if (dockedAtId && dist > 600) {
+    dockedAtId = null; // drifted away: next visit greets (and refuels) again
+  }
+}
+
 function frame(t) {
   const dt = last ? Math.min((t - last) / 1000, 0.05) : 0;
   last = t;
   sim.satellites = SATELLITES; // render + Navigator read them off the sim
+  updateStationsSim();         // stations orbit + docking checks ride every frame
 
   if (sim.mode === "flight" && sim.status !== "crashed") {
     applyControls(dt);

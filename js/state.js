@@ -109,6 +109,19 @@ export const BODIES = buildCatalog(REAL, SOL_ORDER);
 export const PLANET_KEYS = ["mercury", "venus", "earth", "moon", "mars", "phobos", "deimos",
   "jupiter", "io", "europa", "ganymede", "callisto", "saturn", "titan", "uranus", "neptune", "pluto"];
 
+// Space stations of the active system — scattered in orbit, dockable. Not bodies
+// (no gravity of their own); main.js propagates their circular orbits per frame.
+// altR = orbit radius in multiples of the parent body's radius.
+const SOL_STATIONS = [
+  { id: "harbor",  name: "Harbor Station", body: "earth", altR: 2.3, phase0: 0.7 },
+  { id: "selene",  name: "Selene Depot",   body: "moon",  altR: 2.6, phase0: 2.4 },
+  // The derelict: a meteor punched through Old Kestrel years ago. Tech dead, ring
+  // cracked, junk everywhere. You can dock — nobody answers.
+  { id: "kestrel", name: "Old Kestrel Station", body: "earth", altR: 3.8, phase0: 4.1,
+    abandoned: true },
+];
+export const STATIONS = [...SOL_STATIONS];
+
 // Active-system metadata. `rev` bumps on every swap — modules that cache anything
 // derived from BODIES/PLANET_KEYS (physics' body list, render's world meshes) key
 // their cache on it.
@@ -123,6 +136,8 @@ export function setSystem(catalog, planetKeys, meta = {}) {
   for (const k of Object.keys(catalog)) BODIES[k] = catalog[k];
   PLANET_KEYS.length = 0;
   PLANET_KEYS.push(...planetKeys);
+  STATIONS.length = 0;
+  STATIONS.push(...(meta.key === "sol" ? SOL_STATIONS : (meta.stations || [])));
   SYSTEM.key = meta.key || "custom";
   SYSTEM.name = meta.name || "Unknown System";
   SYSTEM.seed = meta.seed ?? null;

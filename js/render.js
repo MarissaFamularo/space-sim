@@ -147,6 +147,7 @@ let surfaceRover = null;
 let roverTrackL = null, roverTrackR = null;
 const TRACK_N = 48;
 let satPool = []; // [{ group, dot, label, name }]
+let stationPool = {}; // id -> { group, ring, blink, dot, label, abandoned }
 
 // ---- Materials (created once in init) ----
 let MAT = null;
@@ -757,6 +758,13 @@ function rebuildWorld() {
     groundPatch = null; groundPatchKey = null;
   }
   earthClouds = null;          // died with its planet's group
+  for (const id of Object.keys(stationPool)) { // stations are per-system too
+    const e = stationPool[id];
+    disposeWorldObject(e.group);
+    disposeWorldObject(e.dot);
+    disposeWorldObject(e.label);
+  }
+  stationPool = {};
   mapBase = 0; mapFrame = 0;   // the map auto-fit re-learns the new system's scale
   buildWorldObjects();
 }
@@ -795,6 +803,10 @@ function makeBodyGroup(key) {
     });
   }
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(b.radius, detail[0], detail[1]), mat);
+  // Texture poles point along world +/-X, not +/-Y: the launchpad sits at the body's
+  // +Y, and he rightly complained he was launching from the north-pole ice cap.
+  // Now the pad is on the EQUATOR (and equators face the orbital plane, like reality).
+  mesh.rotation.z = Math.PI / 2;
   g.add(mesh);
 
   // Earth gets the real thing: NASA Blue Marble day map, city lights at night, and a
@@ -886,6 +898,7 @@ function loadEarthTextures(mat, group, b) {
         roughness: 1, metalness: 0, emissive: 0xffffff, emissiveIntensity: 0.06,
       })
     );
+    earthClouds.rotation.z = Math.PI / 2; // same equator-at-the-pad alignment as the surface
     group.add(earthClouds);
   });
 }
@@ -1384,11 +1397,72 @@ function placeConnie(basePos, up) {
 
 function makeLaunchpad() {
   const g = new THREE.Group();
-  const padGeo = new THREE.CylinderGeometry(1.8, 2.2, 0.5, 24);
-  const padMat = new THREE.MeshStandardMaterial({ color: 0x3a3f48, roughness: 0.9 });
-  const pad = new THREE.Mesh(padGeo, padMat);
+  const mk = (color, rough = 0.85, metal = 0.05) => new THREE.MeshStandardMaterial({
+    color, roughness: rough, metalness: metal, emissive: color, emissiveIntensity: 0.12,
+  });
+  const concrete = mk(0x3a3f48, 0.95);
+  const white = mk(0xe8ebf0, 0.7);
+  const gray = mk(0x8a919c, 0.8);
+  const dark = mk(0x2a2e36, 0.9);
+
+  const pad = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2.2, 0.5, 24), concrete);
   pad.position.y = 0.25;
   g.add(pad);
+
+  // His space center. The VAB — every real spaceport has one giant white box.
+  const vab = new THREE.Mesh(new THREE.BoxGeometry(6, 7, 5), white);
+  vab.position.set(11, 3.5, -7);
+  g.add(vab);
+  const vabDoor = new THREE.Mesh(new THREE.BoxGeometry(3.2, 5.6, 0.15), gray);
+  vabDoor.position.set(11, 2.8, -4.42);
+  g.add(vabDoor);
+  const vabStripe = new THREE.Mesh(new THREE.BoxGeometry(6.04, 0.9, 5.04), mk(0x2456c8, 0.7));
+  vabStripe.position.set(11, 6.1, -7);
+  g.add(vabStripe);
+
+  // Crawler-way from the VAB to the pad.
+  const way = new THREE.Mesh(new THREE.BoxGeometry(9, 0.08, 2.6), dark);
+  way.position.set(6, 0.04, -3.4);
+  way.rotation.y = 0.35;
+  g.add(way);
+
+  // Mission control bunker + tracking dish.
+  const bunker = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.3, 2.4), gray);
+  bunker.position.set(7.5, 0.65, 5.5);
+  g.add(bunker);
+  const dish = new THREE.Mesh(
+    new THREE.SphereGeometry(0.9, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2.6), white);
+  dish.rotation.x = -Math.PI / 3;
+  dish.position.set(8.4, 1.9, 5.2);
+  g.add(dish);
+
+  // Water tower (for the launch sound-suppression deluge — real pads dump a lake).
+  const tank = new THREE.Mesh(new THREE.SphereGeometry(0.9, 14, 10), white);
+  tank.position.set(-6, 3.1, 4);
+  g.add(tank);
+  for (const a of [0.3, 1.9, 3.5, 5.1]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.8, 6), gray);
+    leg.position.set(-6 + Math.cos(a) * 0.55, 1.4, 4 + Math.sin(a) * 0.55);
+    g.add(leg);
+  }
+
+  // Propellant farm: two horizontal tanks behind a berm.
+  for (const dz of [-1, 1]) {
+    const fuel = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 2.6, 14), white);
+    fuel.rotation.z = Math.PI / 2;
+    fuel.position.set(-5.5, 0.5, -3.5 + dz * 1.4);
+    g.add(fuel);
+  }
+
+  // The flag.
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.4, 6), gray);
+  pole.position.set(-3, 1.2, 2.6);
+  g.add(pole);
+  const flag = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.02),
+    mk(0xd23a3a, 0.6));
+  flag.position.set(-2.58, 2.1, 2.6);
+  g.add(flag);
+
   return g;
 }
 
@@ -2045,6 +2119,10 @@ function hideMapDots() {
     if (mapDots[key]) { mapDots[key].dot.visible = false; mapDots[key].label.visible = false; }
   }
   for (const e of galaxy.entries) { e.dot.visible = false; e.label.visible = false; }
+  for (const id of Object.keys(stationPool)) {
+    stationPool[id].dot.visible = false;
+    stationPool[id].label.visible = false;
+  }
 }
 
 // =====================================================================
@@ -2053,9 +2131,11 @@ function hideMapDots() {
 function update(sim) {
   if (!renderer || !scene || !camera) return;
 
-  if (mode === "build") {
+  if (mode === "build" && flightView !== "map") {
     updateBuildCamera();
-  } else {
+  } else if (sim) {
+    // Flight — or the pad-side map (build mode + map view): same world placement,
+    // ORIGIN = the craft sitting on the pad, marker shows "you are here".
     updateFlight(sim);
   }
 
@@ -2167,10 +2247,11 @@ function updateFlight(sim) {
   // The accretion disk spins (fast near a black hole — truthfully, much faster).
   if (bhDisk) bhDisk.rotation.set(0.45, 0, (t * 0.05) % (Math.PI * 2));
 
-  // Phase 5: surface detail + deployed rover + satellites.
+  // Phase 5: surface detail + deployed rover + satellites + stations.
   updateSurfaceExtras(sim, dom);
   updateRover(sim, states);
   updateSatellites(sim);
+  updateStations(sim);
 
   // Landed EVA: the Connie stands beside the ship on WHATEVER world she landed on
   // (only when someone's actually aboard — probes carry no Connie).
@@ -2385,6 +2466,158 @@ function updateRover(sim, states) {
     attr.needsUpdate = true;
     line.geometry.computeBoundingSphere();
     line.visible = true;
+  }
+}
+
+// =====================================================================
+// Space stations: dockable outposts on fixed circular orbits (state.js STATIONS,
+// propagated by main into sim.stationsView). A working one spins its ring and
+// blinks a green docking light. The ABANDONED one is the story: a meteor tore a
+// bite out of the ring, the panels hang dead, and years of litter tumble around it.
+// =====================================================================
+function makeStationMesh(abandoned) {
+  const g = new THREE.Group();
+  const skin = abandoned
+    ? new THREE.MeshStandardMaterial({ color: 0x4a4e56, roughness: 0.95, metalness: 0.2,
+        emissive: 0x14161a, emissiveIntensity: 0.4 })
+    : tankMat();
+  if (abandoned) skin._isClone = true; // per-station material: dispose with the pool
+
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 2.6, 16), skin);
+  core.rotation.z = Math.PI / 2;
+  g.add(core);
+
+  // The habitat ring. Working: full circle. Abandoned: a Pi*1.3 arc — the meteor
+  // took the rest, and you can SEE the bite.
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(2.0, 0.32, 10, 28, abandoned ? Math.PI * 1.3 : Math.PI * 2), skin);
+  ring.rotation.y = Math.PI / 2;
+  g.add(ring);
+  for (let i = 0; i < (abandoned ? 2 : 3); i++) { // spokes
+    const a = (i / 3) * Math.PI * 2 + 0.5;
+    const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.9, 6), skin);
+    spoke.position.set(0, Math.cos(a) * 0.95, Math.sin(a) * 0.95);
+    spoke.rotation.x = -a;
+    ring.add(spoke.clone());
+  }
+
+  // Solar wings: crisp on a live station; one snapped, one missing on the wreck.
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.1, 3.4),
+    abandoned ? skin : solarMat());
+  wing.position.set(-1.9, 0, 0);
+  g.add(wing);
+  if (!abandoned) {
+    const wing2 = wing.clone();
+    wing2.position.x = 1.9;
+    g.add(wing2);
+  } else {
+    wing.rotation.x = 0.8; // hangs broken
+    wing.position.y = -0.4;
+    // The meteor's exit wound: a dark scar plate on the core.
+    const scar = new THREE.Mesh(new THREE.CircleGeometry(0.45, 10),
+      new THREE.MeshBasicMaterial({ color: 0x08090c }));
+    scar.position.set(0.4, 0.55, 0.62);
+    scar.lookAt(2, 2.5, 3);
+    g.add(scar);
+    // Litter: a slow cloud of junk that never got cleaned up.
+    const N = 90;
+    const pos = new Float32Array(N * 3);
+    const rng = mulberry32(hashStr("kestrel-junk"));
+    for (let i = 0; i < N; i++) {
+      const rr = 3 + rng() * 9, th = rng() * Math.PI * 2, ph = (rng() - 0.5) * 1.6;
+      pos[i * 3] = Math.cos(th) * Math.cos(ph) * rr;
+      pos[i * 3 + 1] = Math.sin(ph) * rr * 0.5;
+      pos[i * 3 + 2] = Math.sin(th) * Math.cos(ph) * rr;
+    }
+    const jg = new THREE.BufferGeometry();
+    jg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    const junk = new THREE.Points(jg, new THREE.PointsMaterial({
+      color: 0x9aa0a8, size: 0.14, sizeAttenuation: true, depthWrite: false,
+    }));
+    g.add(junk);
+    for (let i = 0; i < 5; i++) { // bigger debris chunks
+      const chunk = new THREE.Mesh(new THREE.BoxGeometry(0.3 + rng() * 0.4, 0.2 + rng() * 0.3, 0.25), skin);
+      const rr = 3.5 + rng() * 6, th = rng() * Math.PI * 2;
+      chunk.position.set(Math.cos(th) * rr, (rng() - 0.5) * 3, Math.sin(th) * rr);
+      chunk.rotation.set(rng() * 3, rng() * 3, rng() * 3);
+      g.add(chunk);
+    }
+  }
+
+  // Docking port + light on the +X end.
+  const port = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 0.4, 12),
+    abandoned ? skin : hazardMat());
+  port.rotation.z = Math.PI / 2;
+  port.position.x = 1.5;
+  g.add(port);
+  let blink = null;
+  if (!abandoned) {
+    blink = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 2.0, 0.6) })); // HDR: it blooms
+    blink.position.x = 1.85;
+    g.add(blink);
+  }
+  return { group: g, ring, blink };
+}
+
+function ensureStation(st) {
+  if (stationPool[st.id]) return stationPool[st.id];
+  const m = makeStationMesh(!!st.abandoned);
+  m.group.visible = false;
+  scene.add(m.group);
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6),
+    new THREE.MeshBasicMaterial({ color: st.abandoned ? 0x8a93a8 : 0x7fe8a8 }));
+  dot.frustumCulled = false;
+  dot.visible = false;
+  scene.add(dot);
+  const label = makeTextSprite((st.abandoned ? "⚠ " : "🛰 ") + st.name,
+    st.abandoned ? "#8a93a8" : "#7fe8a8");
+  scene.add(label);
+  stationPool[st.id] = { ...m, dot, label, abandoned: !!st.abandoned };
+  return stationPool[st.id];
+}
+
+function updateStations(sim) {
+  const list = (sim && sim.stationsView) || [];
+  const t = (sim && sim.time) || 0;
+  const seen = new Set();
+  for (const st of list) {
+    seen.add(st.id);
+    const e = ensureStation(st);
+    const sx = st.pos.x - ORIGIN.x, sy = st.pos.y - ORIGIN.y;
+    if (flightView === "map") {
+      e.group.visible = false;
+      const b = BODIES[st.body];
+      const inFrame = mapFrame > 0 && Math.hypot(sx, sy) < mapFrame * 6;
+      const show = inFrame && b && mapFrame < b.soiRadius * 12; // same declutter as satellites
+      e.dot.visible = show; e.label.visible = show;
+      if (show) {
+        e.dot.position.set(sx, sy, mapFrame * 0.015);
+        e.dot.scale.setScalar(mapFrame * 0.006);
+        const lblS = mapFrame * 0.03;
+        e.label.position.set(sx, sy - mapFrame * 0.03, mapFrame * 0.015);
+        e.label.scale.set(lblS * 2.6, lblS * 0.9, 1);
+      }
+    } else {
+      e.dot.visible = false; e.label.visible = false;
+      const d = Math.hypot(sx, sy);
+      e.group.visible = mode === "flight" && d < 80000;
+      if (e.group.visible) {
+        e.group.position.set(sx, sy, 0);
+        if (e.abandoned) {
+          e.group.rotation.set(t * 0.013 % 6.283, t * 0.007 % 6.283, t * 0.019 % 6.283); // dead tumble
+        } else {
+          e.ring.rotation.x = (t * 0.12) % (Math.PI * 2); // gravity ring spin
+          if (e.blink) e.blink.visible = Math.sin(t * 4) > -0.2; // docking beacon
+        }
+      }
+    }
+  }
+  for (const id of Object.keys(stationPool)) { // hide anything not in this system
+    if (!seen.has(id)) {
+      const e = stationPool[id];
+      e.group.visible = false; e.dot.visible = false; e.label.visible = false;
+    }
   }
 }
 
@@ -2795,10 +3028,20 @@ function setArrow(which, on) {
 // Switch flight camera between "follow" (chase the rocket) and "map" (top-down orbit view).
 function setFlightView(v) {
   flightView = v === "map" ? "map" : "follow";
-  if (flightView === "map") { mapFrame = 0; mapBase = 0; } // recompute auto-fit; keep user zoom
-  else {
+  if (flightView === "map") {
+    mapFrame = 0; mapBase = 0; // recompute auto-fit; keep user zoom
+    if (mode === "build") {
+      // Pad-side map: reveal the solar system, tuck the pad scenery away.
+      for (const key of ALL_KEYS) if (bodyGroups[key]) bodyGroups[key].visible = true;
+      for (const key of PLANET_KEYS) if (orbitRings[key]) orbitRings[key].visible = true;
+      if (launchpad) launchpad.visible = false;
+      if (ground) ground.visible = false;
+      if (connieMesh) connieMesh.visible = false;
+    }
+  } else {
     if (mapMarker) mapMarker.visible = false;
     hideMapDots();
+    if (mode === "build") setMode("build"); // restore the pad scene exactly
   }
 }
 
