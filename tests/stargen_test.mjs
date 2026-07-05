@@ -85,6 +85,22 @@ let bhCount = 0;
 for (let i = 0; i < 400; i++) if (generateSystem("surprise-" + i).blackHole) bhCount++;
 check("surprise rate is a surprise, not a plague (2–14% of 400 seeds)", bhCount >= 8 && bhCount <= 56, bhCount + "/400");
 
+// --- Galaxy positions: deterministic, in the visible band ---
+import("../js/stargen.js").then(() => {}); // (already imported above; keep simple)
+{
+  const { galaxyPos } = await import("../js/stargen.js");
+  const p1 = galaxyPos("Snakestar"), p2 = galaxyPos("  snakestar ");
+  check("galaxyPos deterministic + case/space-insensitive", p1.x === p2.x && p1.y === p2.y);
+  let bandOk = true;
+  for (let i = 0; i < 100; i++) {
+    const r = Math.hypot(galaxyPos("gal-" + i).x, galaxyPos("gal-" + i).y);
+    if (r < 6.9e11 || r > 1.45e12) bandOk = false;
+  }
+  check("galaxy stars sit past Pluto, inside the starfield shell", bandOk);
+  const pa = galaxyPos("A"), pb = galaxyPos("B");
+  check("different names, different places", pa.x !== pb.x || pa.y !== pb.y);
+}
+
 // --- Swap integration: state machinery drives the live catalog ---
 const solEarthMu = BODIES.earth.mu;
 const solKeys = [...PLANET_KEYS];

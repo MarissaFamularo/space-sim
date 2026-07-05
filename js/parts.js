@@ -81,6 +81,29 @@ export const PARTS = [
     attachTop: true, attachBottom: true, // unlike other engines, things CAN hang below
   },
   {
+    // REAL future tech, flying today: ion engines (Deep Space 1, Dawn, Psyche) push
+    // gently but sip fuel — exhaust 10x faster than chemical. Too weak to lift off
+    // (真 real!): launch on chemicals, then cruise the system on ions.
+    id: "engine_ion",
+    type: "engine",
+    name: "Ion Drive",
+    dryMass: 0.4, thrust: 6, exhaustVelocity: 30000,
+    height: 0.8, radius: 0.55, shape: "nozzle",
+    attachTop: true, attachBottom: false,
+  },
+  {
+    // FAR-future fusion torch for the interstellar dreamers. Exhaust at 120 km/s —
+    // 40x a chemical rocket — and enough thrust to lift off with it. Even this
+    // monster would take ~10,000 years to reach the nearest star; the Starmap's
+    // fold is the only way to skip that. (Physics stays honest — ask the Navigator.)
+    id: "engine_torch",
+    type: "engine",
+    name: "Starfire Torch",
+    dryMass: 2.5, thrust: 900, exhaustVelocity: 120000,
+    height: 1.8, radius: 0.8, shape: "torch",
+    attachTop: true, attachBottom: false,
+  },
+  {
     id: "decoupler",
     type: "decoupler",
     name: "Stage Decoupler",

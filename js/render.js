@@ -58,6 +58,11 @@ let craftHeight = 0;
 let earthClouds = null;    // drifting cloud shell (child of Earth's group, async-loaded)
 let bhDisk = null;         // black hole accretion disk (spun in updateFlight)
 
+// Galaxy layer: OTHER star systems drawn on the map when zoomed way out. Positions
+// come from main (relative to the ACTIVE system); clicking one travels there.
+const GALAXY_ZOOM = 4.5e11;  // map frame beyond which the neighborhood fades in (past Pluto)
+let galaxy = { entries: [], onPick: null };
+
 // Engine exhaust plume: rebuilt with the craft mesh, rides the stack's bottom.
 let plume = null;          // { group, core, outer, glow, light, points, pdata, r }
 let _plumeLastT = 0;
@@ -114,6 +119,8 @@ const buildCam = {
   lastX: 0,
   lastY: 0,
 };
+
+let _ptrDown = null; // pointerdown position, to tell clicks from drags
 
 // ---- Reusable scratch objects (avoid per-frame allocation) ----
 const _v1 = new THREE.Vector3();
@@ -911,6 +918,66 @@ function ringTexture() {
   return _ringTex;
 }
 
+// The named neighborhood: dots + labels for systems he's visited (and Sol), shown
+// in map view past GALAXY_ZOOM. Rebuilt by main after every Starmap jump.
+function setGalaxy(list, onPick) {
+  for (const e of galaxy.entries) {
+    disposeWorldObject(e.dot);
+    disposeWorldObject(e.label);
+  }
+  galaxy = { entries: [], onPick };
+  if (!scene) return;
+  for (const item of list || []) {
+    const dot = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 12, 10),
+      new THREE.MeshBasicMaterial({ color: item.color })
+    );
+    dot.frustumCulled = false;
+    dot.visible = false;
+    scene.add(dot);
+    const label = makeTextSprite(
+      (item.blackHole ? "⚫ " : "⭐ ") + item.name,
+      "#" + new THREE.Color(item.color).getHexString());
+    scene.add(label);
+    galaxy.entries.push({ dot, label, pos: item.pos, seed: item.seed });
+  }
+}
+
+// Project galaxy dots to screen and pick the one within reach of a click.
+function pickGalaxyStar(px, py) {
+  if (!galaxy.onPick || mode !== "flight" || flightView !== "map" || mapFrame <= GALAXY_ZOOM) return false;
+  const w = canvas.clientWidth, hgt = canvas.clientHeight;
+  let best = null, bestD = 30; // px radius
+  for (const e of galaxy.entries) {
+    if (!e.dot.visible) continue;
+    _v1.copy(e.dot.position).project(camera);
+    // Tolerance matters: with a 5e12 far plane, visible dots project to z = 1 + 1e-13
+    // float noise — a strict "> 1 means behind the camera" check rejected every star.
+    if (_v1.z > 1.001) continue;
+    const sx = (_v1.x * 0.5 + 0.5) * w, sy = (-_v1.y * 0.5 + 0.5) * hgt;
+    const d = Math.hypot(sx - px, sy - py);
+    if (d < bestD) { bestD = d; best = e; }
+  }
+  if (best) { galaxy.onPick(best.seed); return true; }
+  return false;
+}
+
+// Debug hook for automated tests (harmless in normal play).
+if (typeof window !== "undefined") {
+  window.__galaxyDebug = () => {
+    const w = canvas ? canvas.clientWidth : 0, hgt = canvas ? canvas.clientHeight : 0;
+    return {
+      mode, flightView, mapFrame, entries: galaxy.entries.map((e) => {
+        _v1.copy(e.dot.position).project(camera);
+        return { seed: e.seed, visible: e.dot.visible, z: _v1.z,
+                 px: (_v1.x * 0.5 + 0.5) * w, py: (-_v1.y * 0.5 + 0.5) * hgt };
+      }),
+      hasPick: !!galaxy.onPick,
+    };
+  };
+  window.__pickGalaxy = (x, y) => pickGalaxyStar(x, y);
+}
+
 // Black hole dressing: the spinning accretion disk (drawn far larger than the hole,
 // like every real black-hole picture — the M87 photo is all disk), a photon ring for
 // anyone brave enough to fly close, and a cool glow. HDR colors so the bloom flares it.
@@ -1033,32 +1100,43 @@ function makeStarfield() {
 // Lives at the bottom of the craft stack in craft-local coords (exhaust = -Y), so it
 // pivots with the rocket and survives staging (rebuilt with the mesh).
 // =====================================================================
-let _plumeGlowTex = null;
-function plumeGlowTexture() {
-  if (_plumeGlowTex) return _plumeGlowTex;
+const _plumeGlowTexCache = {};
+function plumeGlowTexture(cool = false) {
+  const key = cool ? "cool" : "warm";
+  if (_plumeGlowTexCache[key]) return _plumeGlowTexCache[key];
   const cv = document.createElement("canvas");
   cv.width = cv.height = 64;
   const ctx = cv.getContext("2d");
   const grad = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
-  grad.addColorStop(0, "rgba(255,240,200,1)");
-  grad.addColorStop(0.35, "rgba(255,180,80,0.55)");
-  grad.addColorStop(1, "rgba(255,140,40,0)");
+  if (cool) { // fusion/ion exhaust: blue-white
+    grad.addColorStop(0, "rgba(220,235,255,1)");
+    grad.addColorStop(0.35, "rgba(130,180,255,0.55)");
+    grad.addColorStop(1, "rgba(90,140,255,0)");
+  } else {
+    grad.addColorStop(0, "rgba(255,240,200,1)");
+    grad.addColorStop(0.35, "rgba(255,180,80,0.55)");
+    grad.addColorStop(1, "rgba(255,140,40,0)");
+  }
   ctx.fillStyle = grad; ctx.fillRect(0, 0, 64, 64);
-  _plumeGlowTex = new THREE.CanvasTexture(cv);
-  return _plumeGlowTex;
+  _plumeGlowTexCache[key] = new THREE.CanvasTexture(cv);
+  return _plumeGlowTexCache[key];
 }
 
 const PLUME_PARTICLES = 150;
-function makeExhaustPlume(r, len) {
+function makeExhaustPlume(r, len, hot = false) {
   const group = new THREE.Group();
 
-  // HDR colors (pushed past 1.0) so the flame catches the bloom pass.
+  // HDR colors (pushed past 1.0) so the flame catches the bloom pass. `hot` engines
+  // (ion / fusion torch, exhaust >= 20 km/s) burn BLUE-white — hotter flame, bluer
+  // light, same physics as a gas stove vs a candle.
   const coreMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(1.6, 1.35, 0.95), transparent: true, opacity: 0.9,
+    color: hot ? new THREE.Color(1.3, 1.6, 2.0) : new THREE.Color(1.6, 1.35, 0.95),
+    transparent: true, opacity: 0.9,
     blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
   });
   const outerMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(1.5, 0.55, 0.16), transparent: true, opacity: 0.32,
+    color: hot ? new THREE.Color(0.45, 0.95, 1.9) : new THREE.Color(1.5, 0.55, 0.16),
+    transparent: true, opacity: 0.32,
     blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
   });
   // Cones: wide at the nozzle (top, y=0), tapering down the exhaust (-Y).
@@ -1072,14 +1150,14 @@ function makeExhaustPlume(r, len) {
   group.add(outer);
 
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: plumeGlowTexture(), blending: THREE.AdditiveBlending,
+    map: plumeGlowTexture(hot), blending: THREE.AdditiveBlending,
     transparent: true, depthWrite: false,
   }));
   glow.scale.setScalar(r * 4.5);
   group.add(glow);
 
-  // The flame lights the rocket: warm point light just below the nozzle.
-  const light = new THREE.PointLight(0xffa040, 600, 400, 2);
+  // The flame lights the rocket: warm (or fusion-blue) light below the nozzle.
+  const light = new THREE.PointLight(hot ? 0x86b8ff : 0xffa040, 600, 400, 2);
   light.position.set(0, -1.2, 0);
   group.add(light);
 
@@ -1104,7 +1182,7 @@ function makeExhaustPlume(r, len) {
   group.add(points);
 
   group.visible = false;
-  return { group, core, outer, glow, light, points, pdata, r, len };
+  return { group, core, outer, glow, light, points, pdata, r, len, hot };
 }
 
 // Called every flight frame. Throttle drives length/brightness; a per-frame flicker
@@ -1154,7 +1232,8 @@ function updatePlume(sim, dom) {
     }
     pos.setXYZ(i, pos.getX(i) + p.vx * dt, pos.getY(i) + p.vy * dt, pos.getZ(i) + p.vz * dt);
     const f = 1 - p.life / p.max; // 1 fresh -> 0 dead
-    col.setXYZ(i, 1.7 * f, (1.25 * f) * f, 0.55 * f * f * f);
+    if (plume.hot) col.setXYZ(i, 0.8 * f * f, 1.2 * f * f, 2.0 * f);       // blue sparks
+    else col.setXYZ(i, 1.7 * f, (1.25 * f) * f, 0.55 * f * f * f);         // embers
   }
   pos.needsUpdate = true;
   col.needsUpdate = true;
@@ -1330,6 +1409,7 @@ function onResize() {
 function attachBuildControls() {
   if (!canvas) return;
   canvas.addEventListener("pointerdown", (e) => {
+    _ptrDown = { x: e.clientX, y: e.clientY };
     if (mode === "build") {
       buildCam.dragging = true;
       buildCam.lastX = e.clientX;
@@ -1340,7 +1420,14 @@ function attachBuildControls() {
       followCam.lastY = e.clientY;
     }
   });
-  window.addEventListener("pointerup", () => { buildCam.dragging = false; followCam.dragging = false; });
+  window.addEventListener("pointerup", (e) => {
+    // A click (not a drag) on a galaxy star travels there.
+    if (_ptrDown && Math.hypot(e.clientX - _ptrDown.x, e.clientY - _ptrDown.y) < 6) {
+      pickGalaxyStar(e.clientX, e.clientY);
+    }
+    _ptrDown = null;
+    buildCam.dragging = false; followCam.dragging = false;
+  });
   window.addEventListener("pointermove", (e) => {
     const lim = Math.PI / 2 - 0.05;
     if (buildCam.dragging && mode === "build") {
@@ -1442,7 +1529,8 @@ function buildCraftMesh(craft) {
   // Sized by the bottom-most engine's bell; harmless if this stage has none (it only
   // shows when sim thrust + throttle + fuel say the engines are truly burning).
   const eng = defs.find((d) => d.type === "engine") || defs[0];
-  plume = makeExhaustPlume(eng.radius || 0.5, Math.max(3.5, total * 0.85));
+  plume = makeExhaustPlume(eng.radius || 0.5, Math.max(3.5, total * 0.85),
+    (eng.exhaustVelocity || 0) >= 20000);
   plume.group.position.y = -total / 2;
   group.add(plume.group);
 
@@ -1703,6 +1791,39 @@ function makePartObject(def, h, r) {
       }
       return grp;
     }
+    case "torch": {
+      // Far-future fusion torch: a compact reactor over an OPEN magnetic nozzle —
+      // three field coils where a chemical engine would have a bell, and a fusion
+      // throat that glows past white (the bloom pass flares it) even at idle.
+      const grp = new THREE.Group();
+      const headMat = MAT ? MAT.engine : mat;
+      const reactor = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.7, r * 0.55, h * 0.4, 20), headMat);
+      reactor.position.y = h * 0.3;
+      grp.add(reactor);
+      const throat = new THREE.Mesh(
+        new THREE.SphereGeometry(r * 0.24, 14, 10),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(0.9, 1.2, 1.8) })
+      );
+      throat.position.y = h * 0.05;
+      grp.add(throat);
+      for (let i = 0; i < 3; i++) { // magnetic coils, flaring downward
+        const fy = h * (0.05 - 0.16 * (i + 1));
+        const cr = r * (0.4 + 0.2 * (i + 1));
+        const coil = new THREE.Mesh(new THREE.TorusGeometry(cr, r * 0.07, 8, 24), foilMat());
+        coil.rotation.x = Math.PI / 2;
+        coil.position.y = fy;
+        grp.add(coil);
+      }
+      for (let i = 0; i < 3; i++) { // struts holding the coils
+        const a = (i / 3) * Math.PI * 2 + 0.5;
+        const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, h * 0.62, 6), headMat);
+        strut.position.set(Math.cos(a) * r * 0.6, -h * 0.18, Math.sin(a) * r * 0.6);
+        strut.rotation.z = Math.cos(a) * -0.35;
+        strut.rotation.x = Math.sin(a) * 0.35;
+        grp.add(strut);
+      }
+      return grp;
+    }
     case "chute": {
       // Packed canopy in red/white gores, strapped down over its band.
       const grp = new THREE.Group();
@@ -1923,6 +2044,7 @@ function hideMapDots() {
   for (const key of ALL_KEYS) {
     if (mapDots[key]) { mapDots[key].dot.visible = false; mapDots[key].label.visible = false; }
   }
+  for (const e of galaxy.entries) { e.dot.visible = false; e.label.visible = false; }
 }
 
 // =====================================================================
@@ -2359,6 +2481,20 @@ function updateMapCamera(sim, dom, states) {
     mapMarker.scale.setScalar(mapFrame * 0.018);
   }
 
+  // The galaxy neighborhood: his named systems as stars, past the last planet.
+  const showGal = mapFrame > GALAXY_ZOOM;
+  for (const e of galaxy.entries) {
+    e.dot.visible = showGal;
+    e.label.visible = showGal;
+    if (!showGal) continue;
+    const gx = e.pos.x - ORIGIN.x, gy = e.pos.y - ORIGIN.y;
+    e.dot.position.set(gx, gy, mapFrame * 0.012);
+    e.dot.scale.setScalar(mapFrame * 0.009);
+    const lblS = mapFrame * 0.038;
+    e.label.position.set(gx, gy + lblS * 0.8, mapFrame * 0.012);
+    e.label.scale.set(lblS * 2.2, lblS * 0.8, 1);
+  }
+
   // Body dots + labels — never smaller than the true sphere (zoomed close, reality wins).
   // DECLUTTER RULE: a body only gets its dot+label once it visually SEPARATES from its
   // parent at this zoom (> ~4.5% of the frame). Otherwise Jupiter and its four moons pile
@@ -2701,6 +2837,7 @@ function debug() {
 export const Render = Object.freeze({
   init,
   rebuildWorld,
+  setGalaxy,
   buildCraftMesh,
   setMode,
   update,

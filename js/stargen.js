@@ -81,6 +81,18 @@ const ICE_PALETTES = [
   ["#7fc8b8", "#5da898", "#a8e0d0"],
 ];
 
+// Where a named system sits in the galaxy — deterministic, like everything else.
+// Distances are GAME-compressed: the band starts just past Pluto's orbit (~6e11 m
+// scaled) so "zoom out and there are the stars" actually happens on a kid's scroll
+// wheel. Real neighboring stars are ~50,000x farther — the Navigator teaches that.
+export function galaxyPos(seedName) {
+  const norm = String(seedName).trim().toLowerCase();
+  const rng = mulberry32(hashStr("galaxy:" + norm));
+  const a = rng() * Math.PI * 2;
+  const r = 7e11 + Math.sqrt(rng()) * 7e11; // 0.7e12..1.4e12 m, inside the starfield shell
+  return { x: Math.cos(a) * r, y: Math.sin(a) * r };
+}
+
 export function generateSystem(seedName) {
   const seed = String(seedName).trim();
   const norm = seed.toLowerCase();

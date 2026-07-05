@@ -4,7 +4,7 @@
 
 import { PARTS } from "./mods.js";
 import { BODIES, SYSTEM, isSol, setSystem, returnToSol, newCraft, newSimState, computeStats, findPart, bodyStateAt } from "./state.js";
-import { generateSystem } from "./stargen.js";
+import { generateSystem, galaxyPos } from "./stargen.js";
 import { Physics } from "./physics.js";
 import { Render } from "./render.js";
 import { Builder } from "./builder.js";
@@ -357,6 +357,28 @@ function rememberVisit(sys) {
   try { localStorage.setItem(VISITED_KEY, JSON.stringify(list.slice(0, 12))); } catch {}
 }
 
+// The galaxy neighborhood for the zoomed-out map: Sol + every system he's visited,
+// positioned deterministically (galaxyPos), relative to wherever he is NOW. Clicking
+// a star on the map travels there — the map IS a starmap once you zoom out enough.
+function buildGalaxyList() {
+  const entries = [{ seed: "@sol", name: "The Solar System", color: 0xffd75e,
+                     blackHole: false, pos: { x: 0, y: 0 } }];
+  for (const v of loadVisited()) {
+    const sys = generateSystem(v.seed);
+    entries.push({ seed: v.seed, name: sys.name, blackHole: sys.blackHole,
+                   color: sys.bodies.sun.style.color, pos: galaxyPos(v.seed) });
+  }
+  const activePos = isSol() ? { x: 0, y: 0 } : galaxyPos(SYSTEM.seed);
+  const activeSeed = isSol() ? "@sol" : SYSTEM.seed.toLowerCase();
+  return entries
+    .filter((e) => (e.seed === "@sol" ? "@sol" : e.seed.toLowerCase()) !== activeSeed)
+    .map((e) => ({ ...e, pos: { x: e.pos.x - activePos.x, y: e.pos.y - activePos.y } }));
+}
+function refreshGalaxy() {
+  Render.setGalaxy(buildGalaxyList(),
+    (seed) => (seed === "@sol" ? travelHome() : travelToSystem(seed)));
+}
+
 function travelToSystem(seed) {
   const sys = generateSystem(seed);
   setSystem(sys.bodies, sys.planetKeys, { key: sys.key, name: sys.name, seed: sys.seed });
@@ -393,6 +415,7 @@ function travelHome() {
 // Common arrival: fresh sim on the (new) homeworld's pad; the rocket comes with you.
 function arriveInSystem() {
   Render.rebuildWorld();
+  refreshGalaxy();
   UI.rebuildTargets();
   sim = newSimState(BODIES.earth);
   sim.target = "moon";
@@ -417,6 +440,7 @@ UI.init({
 });
 wireCopilot();
 Copilot.initSettings();
+refreshGalaxy();
 enterBuild();
 copilotSay("Hi! I'm your navigator. Build a rocket on the left, hit Launch, then use the arrow keys to steer. The whole solar system is out there — pick a target and go. Ask me anything!");
 
