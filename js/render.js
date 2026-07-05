@@ -1252,47 +1252,288 @@ function resolveDefs(craft) {
   return out;
 }
 
+// =====================================================================
+// Part looks (the "fancier rocket parts" pass): painted-canvas details —
+// panel seams, rivets, hazard stripes, gold foil, solar cells — on lathe
+// profiles with domed shoulders, real engine bells, and greebles. All
+// procedural (no model files, boots offline), all cached and shared.
+// Every part still fits exactly inside its def's height × radius box, so
+// stacking, physics, and the kid's modded parts are untouched.
+// =====================================================================
+const _partMats = {};
+function partMat(key, painter, opts = {}) {
+  if (_partMats[key]) return _partMats[key];
+  const cv = document.createElement("canvas");
+  cv.width = opts.w || 256; cv.height = opts.h || 256;
+  painter(cv.getContext("2d"), cv.width, cv.height);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 1;
+  const m = new THREE.MeshStandardMaterial({
+    map: tex, metalness: opts.metalness ?? 0.25, roughness: opts.roughness ?? 0.55,
+    emissive: 0xffffff, emissiveIntensity: 0.16, emissiveMap: tex, // night-side readability
+    ...(opts.side ? { side: opts.side } : {}),
+  });
+  _partMats[key] = m;
+  return m;
+}
+const brushNoise = (ctx, W, H, alpha = 0.05) => { // vertical brushed-metal streaks
+  const rng = mulberry32(hashStr("brush"));
+  for (let i = 0; i < 260; i++) {
+    ctx.globalAlpha = alpha * rng();
+    ctx.fillStyle = rng() > 0.5 ? "#ffffff" : "#5a6270";
+    const x = rng() * W;
+    ctx.fillRect(x, rng() * H, 1 + rng() * 2, 12 + rng() * 60);
+  }
+  ctx.globalAlpha = 1;
+};
+const rivetRow = (ctx, W, y, n = 26, c = "#7d8492") => {
+  ctx.fillStyle = c;
+  for (let i = 0; i < n; i++) {
+    ctx.beginPath(); ctx.arc((i + 0.5) * (W / n), y, 1.6, 0, Math.PI * 2); ctx.fill();
+  }
+};
+
+function tankMat() {
+  return partMat("tank", (ctx, W, H) => {
+    ctx.fillStyle = "#e6e9ef"; ctx.fillRect(0, 0, W, H);
+    brushNoise(ctx, W, H);
+    // Panel seams + rivets; the texture repeats vertically every ~0.9 m of tank.
+    ctx.fillStyle = "#c3c9d4"; ctx.fillRect(0, H * 0.48, W, 3);
+    rivetRow(ctx, W, H * 0.48 - 5); rivetRow(ctx, W, H * 0.48 + 9);
+    ctx.fillStyle = "#d7dbe4"; ctx.fillRect(0, H * 0.02, W, 2); // faint minor seam
+  }, { metalness: 0.35, roughness: 0.45 });
+}
+function podMat() {
+  return partMat("pod", (ctx, W, H) => {
+    // v=0 bottom: charcoal heat shield, then the classic orange, white crown stripe.
+    ctx.fillStyle = "#3a3d44"; ctx.fillRect(0, 0, W, H);              // shield (v 0–0.12)
+    ctx.fillStyle = "#f08a3d"; ctx.fillRect(0, H * 0.12, W, H);       // orange body
+    ctx.fillStyle = "#d96f28"; ctx.fillRect(0, H * 0.12, W, 4);       // shield trim line
+    ctx.fillStyle = "#f4f6f9"; ctx.fillRect(0, H * 0.74, W, H * 0.1); // white stripe
+    brushNoise(ctx, W, H, 0.04);
+    rivetRow(ctx, W, H * 0.4, 20, "#c86a2a"); rivetRow(ctx, W, H * 0.7, 20, "#c86a2a");
+  }, { metalness: 0.2, roughness: 0.5 });
+}
+function bellMat() {
+  return partMat("bell", (ctx, W, H) => {
+    // v=0 = rim of the bell, v=1 = throat: darken toward the throat, faint ribs.
+    const g = ctx.createLinearGradient(0, H, 0, 0);
+    g.addColorStop(0, "#23262c"); g.addColorStop(0.55, "#454b56"); g.addColorStop(1, "#6a7280");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 0.25; ctx.fillStyle = "#141619";
+    for (let x = 0; x < W; x += 8) ctx.fillRect(x, 0, 2, H); // cooling ribs
+    ctx.globalAlpha = 1;
+  }, { metalness: 0.7, roughness: 0.35, side: THREE.DoubleSide });
+}
+function hazardMat() {
+  return partMat("hazard", (ctx, W, H) => {
+    ctx.fillStyle = "#8a8f99"; ctx.fillRect(0, 0, W, H);
+    brushNoise(ctx, W, H, 0.06);
+    // Yellow/black warning band across the middle — "this thing SEPARATES".
+    const y0 = H * 0.3, bh = H * 0.4;
+    ctx.save(); ctx.beginPath(); ctx.rect(0, y0, W, bh); ctx.clip();
+    ctx.fillStyle = "#e8c02a"; ctx.fillRect(0, y0, W, bh);
+    ctx.fillStyle = "#22242a";
+    for (let x = -H; x < W + H; x += 28) {
+      ctx.beginPath();
+      ctx.moveTo(x, y0 + bh); ctx.lineTo(x + 14, y0 + bh); ctx.lineTo(x + 14 + bh, y0); ctx.lineTo(x + bh, y0);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }, { metalness: 0.3, roughness: 0.55 });
+}
+function foilMat() {
+  return partMat("foil", (ctx, W, H) => {
+    // Crinkled gold MLI foil, like every real deep-space probe.
+    ctx.fillStyle = "#c99a35"; ctx.fillRect(0, 0, W, H);
+    const rng = mulberry32(hashStr("foil"));
+    for (let i = 0; i < 900; i++) {
+      ctx.globalAlpha = 0.16 + rng() * 0.2;
+      ctx.fillStyle = ["#e8c05a", "#a87c25", "#f2d47e", "#8f6a20"][Math.floor(rng() * 4)];
+      const x = rng() * W, y = rng() * H;
+      ctx.beginPath();
+      ctx.moveTo(x, y); ctx.lineTo(x + (rng() - 0.5) * 26, y + (rng() - 0.5) * 12);
+      ctx.lineTo(x + (rng() - 0.5) * 26, y + (rng() - 0.5) * 12);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    // metalness kept modest: at 0.75 the sun's specular glint crossed the bloom
+    // threshold and the whole probe burned like a lamp.
+  }, { metalness: 0.45, roughness: 0.6 });
+}
+function solarMat() {
+  return partMat("solar", (ctx, W, H) => {
+    ctx.fillStyle = "#172c66"; ctx.fillRect(0, 0, W, H);
+    const rng = mulberry32(hashStr("cells"));
+    const cw = W / 8, ch = H / 5;
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 5; j++) { // individual cells, subtly varied
+      ctx.fillStyle = rng() > 0.5 ? "#1b357a" : "#142857";
+      ctx.fillRect(i * cw + 2, j * ch + 2, cw - 4, ch - 4);
+      ctx.fillStyle = "rgba(120,160,255,0.25)"; // cell sheen corner
+      ctx.fillRect(i * cw + 2, j * ch + 2, cw * 0.35, 2);
+    }
+  }, { metalness: 0.5, roughness: 0.45 });
+}
+function chuteMat() {
+  return partMat("chute", (ctx, W, H) => {
+    const gores = 12; // alternating red/white canopy wedges
+    for (let i = 0; i < gores; i++) {
+      ctx.fillStyle = i % 2 ? "#f4f6f8" : "#e8564a";
+      ctx.fillRect(Math.floor(i * W / gores), 0, Math.ceil(W / gores), H);
+    }
+    ctx.globalAlpha = 0.12; ctx.fillStyle = "#803028";
+    for (let i = 0; i <= gores; i++) ctx.fillRect(Math.floor(i * W / gores), 0, 2, H); // seams
+    ctx.globalAlpha = 1;
+  }, { metalness: 0.05, roughness: 0.8 });
+}
+
+// Lathe helper: profile points as [radius, yFraction 0..1] over the part's height h,
+// centered on the part origin like every primitive the stacker places.
+function lathe(points, h, mat, segs = 28) {
+  const pts = points.map(([pr, fy]) => new THREE.Vector2(Math.max(0.001, pr), fy * h - h / 2));
+  return new THREE.Mesh(new THREE.LatheGeometry(pts, segs), mat);
+}
+
 function makePartObject(def, h, r) {
   const mat = materialForPart(def);
   switch (def.shape) {
     case "cone": {
-      const geo = new THREE.ConeGeometry(r, h, 24);
-      return new THREE.Mesh(geo, mat);
+      // The Acorn: heat-shield lip, curved orange capsule, rounded crown — plus
+      // portholes the Connie can look out of and a docking ring on the nose.
+      const grp = new THREE.Group();
+      grp.add(lathe([
+        [0.001, 0], [r * 0.84, 0], [r, 0.1], [r * 0.96, 0.3], [r * 0.78, 0.56],
+        [r * 0.52, 0.78], [r * 0.3, 0.92], [r * 0.14, 0.985], [0.001, 1],
+      ], h, podMat()));
+      const winMat = MAT ? MAT.engine : mat;
+      for (const a of [-0.55, 0, 0.55]) { // portholes, front-facing like the real capsules
+        const win = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.12, 12), winMat);
+        win.position.set(Math.sin(a) * r * 0.85, h * 0.05, Math.cos(a) * r * 0.85);
+        win.rotation.x = Math.PI / 2; win.rotation.z = -a; // face outward along its angle
+        grp.add(win);
+      }
+      const dock = new THREE.Mesh(new THREE.TorusGeometry(r * 0.15, 0.03, 8, 18), winMat);
+      dock.rotation.x = Math.PI / 2;
+      dock.position.y = h * 0.485;
+      grp.add(dock);
+      return grp;
     }
     case "cylinder": {
-      const geo = new THREE.CylinderGeometry(r, r, h, 24);
-      return new THREE.Mesh(geo, mat);
+      if (def.type === "decoupler") {
+        // Warning-striped separation ring with explosive bolts around it.
+        const grp = new THREE.Group();
+        grp.add(new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 28), hazardMat()));
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2 + 0.4;
+          const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.1, h * 0.5, 0.06), MAT ? MAT.legs : mat);
+          bolt.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+          bolt.rotation.y = -a + Math.PI / 2;
+          grp.add(bolt);
+        }
+        return grp;
+      }
+      // Tanks (and modded cylinders): domed shoulders within the same height box,
+      // riveted panel skin, seam rings, and a fuel line running up the side.
+      const grp = new THREE.Group();
+      const skin = tankMat();
+      const body = lathe([
+        [0.001, 0], [r * 0.8, 0], [r, 0.045], [r, 0.955], [r * 0.8, 1], [0.001, 1],
+      ], h, skin);
+      skin.map.repeat.set(2, 1); // skin wraps twice around (shared texture, set once is fine)
+      grp.add(body);
+      for (const fy of h > 2.4 ? [0.3, 0.62] : [0.48]) { // raised seam rings
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(r + 0.012, 0.018, 6, 28), MAT ? MAT.decoupler : mat);
+        ring.rotation.x = Math.PI / 2;
+        ring.position.y = fy * h - h / 2;
+        grp.add(ring);
+      }
+      const pipe = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.035, 0.035, h * 0.86, 8), MAT ? MAT.legs : mat);
+      pipe.position.set(r * 0.99, 0, 0.12);
+      grp.add(pipe);
+      for (const fy of [-0.3, 0.3]) { // pipe clamps
+        const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.05, 0.09), MAT ? MAT.decoupler : mat);
+        clamp.position.set(r * 0.99, fy * h, 0.12);
+        grp.add(clamp);
+      }
+      return grp;
     }
     case "nozzle": {
-      const geo = new THREE.CylinderGeometry(r * 0.55, r, h, 24, 1, true);
-      const bellMat = mat.clone();
-      bellMat._isClone = true;
-      bellMat.side = THREE.DoubleSide;
-      return new THREE.Mesh(geo, bellMat);
+      // A real engine: powerhead with plumbing up top, gimbal ring, then a properly
+      // curved bell. Vacuum engines (high exhaust velocity) get the long wide bell
+      // with the skinny throat — the shape IS the spec, tell him why.
+      const grp = new THREE.Group();
+      const vac = (def.exhaustVelocity || 0) >= 4000;
+      const throat = r * (vac ? 0.22 : 0.34);
+      const bellTop = vac ? 0.78 : 0.66; // fraction of h the bell occupies
+      const prof = [];
+      const N = 10;
+      for (let i = 0; i <= N; i++) {
+        const t = i / N; // 0 = throat (top), 1 = rim (bottom)
+        prof.push([throat + (r * 0.98 - throat) * Math.pow(t, vac ? 2.0 : 1.6), (1 - t) * bellTop]);
+      }
+      const bell = lathe(prof.reverse(), h, bellMat());
+      grp.add(bell);
+      const headMat = MAT ? MAT.engine : mat;
+      const head = new THREE.Mesh(
+        new THREE.CylinderGeometry(r * 0.55, r * 0.45, h * (1 - bellTop) + 0.02, 20), headMat);
+      head.position.y = h / 2 - (h * (1 - bellTop)) / 2;
+      grp.add(head);
+      const gimbal = new THREE.Mesh(new THREE.TorusGeometry(throat + 0.06, 0.035, 8, 20), headMat);
+      gimbal.rotation.x = Math.PI / 2;
+      gimbal.position.y = h * bellTop - h / 2;
+      grp.add(gimbal);
+      for (let i = 0; i < 4; i++) { // turbopump plumbing
+        const a = (i / 4) * Math.PI * 2 + 0.3;
+        const pipe = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.03, 0.03, h * (1 - bellTop) * 0.95, 6), MAT ? MAT.legs : mat);
+        pipe.position.set(Math.cos(a) * r * 0.5, h / 2 - (h * (1 - bellTop)) / 2, Math.sin(a) * r * 0.5);
+        grp.add(pipe);
+      }
+      return grp;
     }
     case "chute": {
+      // Packed canopy in red/white gores, strapped down over its band.
       const grp = new THREE.Group();
       const dome = new THREE.Mesh(
-        new THREE.SphereGeometry(r * 0.75, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat);
+        new THREE.SphereGeometry(r * 0.75, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), chuteMat());
       dome.scale.y = h / (r * 0.75);
       dome.position.y = -h / 2;
       grp.add(dome);
       const band = new THREE.Mesh(
-        new THREE.CylinderGeometry(r * 0.76, r * 0.76, h * 0.22, 20),
-        MAT ? MAT.tank : mat);
+        new THREE.CylinderGeometry(r * 0.76, r * 0.76, h * 0.22, 20), tankMat());
       band.position.y = -h / 2 + h * 0.11;
       grp.add(band);
+      for (let i = 0; i < 3; i++) { // hold-down straps over the pack
+        const strap = new THREE.Mesh(new THREE.TorusGeometry(r * 0.75, 0.02, 6, 20, Math.PI), MAT ? MAT.legs : mat);
+        strap.rotation.y = (i / 3) * Math.PI; // 0..π arc is already the over-the-top half
+        strap.scale.y = h / (r * 0.75);
+        strap.position.y = -h / 2;
+        grp.add(strap);
+      }
       return grp;
     }
     case "fin": {
+      // Swept delta fins (extruded + beveled) instead of flat slabs.
       const grp = new THREE.Group();
-      const finGeo = new THREE.BoxGeometry(r * 1.2, h, 0.08);
-      const fin = new THREE.Mesh(finGeo, mat);
-      fin.position.x = r * 0.9;
-      grp.add(fin);
-      const fin2 = fin.clone();
-      fin2.position.x = -r * 0.9;
-      grp.add(fin2);
+      const s = new THREE.Shape();
+      s.moveTo(0, h * 0.5);
+      s.lineTo(r * 1.15, h * 0.05);
+      s.lineTo(r * 1.15, -h * 0.32);
+      s.lineTo(0, -h * 0.5);
+      s.closePath();
+      const geo = new THREE.ExtrudeGeometry(s, {
+        depth: 0.05, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.03, bevelSegments: 2,
+      });
+      geo.translate(0, 0, -0.025);
+      for (const side of [1, -1]) {
+        const fin = new THREE.Mesh(geo, mat);
+        fin.position.x = side * r * 0.5;
+        if (side < 0) fin.rotation.y = Math.PI;
+        grp.add(fin);
+      }
       return grp;
     }
     case "legs": {
@@ -1306,58 +1547,90 @@ function makePartObject(def, h, r) {
         strut.position.set(Math.cos(a) * r * 0.95, -h * 0.55, Math.sin(a) * r * 0.95);
         strut.quaternion.setFromAxisAngle(tangent, 0.5);
         grp.add(strut);
+        // Shock-absorber sleeve over the upper strut — legs read as suspension now.
+        const sleeve = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.085, 0.085, h * 1.0, 8), MAT ? MAT.decoupler : mat);
+        sleeve.position.set(Math.cos(a) * r * 0.72, -h * 0.12, Math.sin(a) * r * 0.72);
+        sleeve.quaternion.setFromAxisAngle(tangent, 0.5);
+        grp.add(sleeve);
         const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.08, 10), mat);
         pad.position.set(Math.cos(a) * r * 1.5, -h * 1.55, Math.sin(a) * r * 1.5);
         grp.add(pad);
       }
-      const collar = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.85, r * 0.85, h * 0.5, 16), mat);
+      const collar = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.85, r * 0.85, h * 0.5, 16), tankMat());
       grp.add(collar);
       return grp;
     }
     case "probe": {
+      // Gold-foil box (real MLI insulation look), paraboloid high-gain dish, whip
+      // antenna with a tip ball, and little RCS thruster blocks on the corners.
       const grp = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(r * 1.3, h * 0.85, r * 1.3), mat);
+      const body = new THREE.Mesh(new THREE.BoxGeometry(r * 1.3, h * 0.85, r * 1.3), foilMat());
       grp.add(body);
-      const dish = new THREE.Mesh(
-        new THREE.SphereGeometry(r * 0.45, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
-        MAT ? MAT.tank : mat);
-      dish.rotation.x = -Math.PI / 2;
-      dish.position.set(0, h * 0.1, r * 0.85);
+      const dishMat = MAT ? MAT.tank : mat;
+      const dish = new THREE.Mesh(new THREE.LatheGeometry(
+        Array.from({ length: 7 }, (_, i) => {
+          const t = i / 6;
+          return new THREE.Vector2(Math.max(0.001, r * 0.5 * t), r * 0.28 * t * t); // paraboloid
+        }), 20), dishMat);
+      dish.rotation.x = Math.PI / 2; // aim the dish outward (+z), concave side out
+      dish.position.set(0, h * 0.1, r * 0.9);
       grp.add(dish);
+      const feed = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, r * 0.4, 6), dishMat);
+      feed.rotation.x = Math.PI / 2;
+      feed.position.set(0, h * 0.1, r * 0.72);
+      grp.add(feed);
       const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, h * 1.5, 6), MAT ? MAT.decoupler : mat);
       ant.position.y = h * 0.8;
       grp.add(ant);
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), MAT ? MAT.decoupler : mat);
+      tip.position.y = h * 1.55;
+      grp.add(tip);
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) { // corner RCS blocks
+        const rcs = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.09), MAT ? MAT.engine : mat);
+        rcs.position.set(sx * r * 0.65, h * 0.32, sz * r * 0.65);
+        grp.add(rcs);
+      }
       return grp;
     }
     case "panels": {
+      // Real cell-grid texture on the wings, silver frame border, tiny hinge arms.
       const grp = new THREE.Group();
       const hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.5, r * 0.5, h * 0.8, 12), MAT ? MAT.decoupler : mat);
       grp.add(hub);
       for (const s of [-1, 1]) {
-        const wing = new THREE.Mesh(new THREE.BoxGeometry(r * 3.2, h * 0.8, 0.06), mat);
-        wing.position.x = s * (r * 0.5 + r * 1.65);
+        const cx = s * (r * 0.5 + r * 1.65);
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(r * 3.28, h * 0.86, 0.045), MAT ? MAT.legs : mat);
+        frame.position.x = cx;
+        grp.add(frame);
+        const wing = new THREE.Mesh(new THREE.BoxGeometry(r * 3.2, h * 0.8, 0.06), solarMat());
+        wing.position.x = cx;
         grp.add(wing);
-        // panel grid lines: thin dark strips for the classic solar-cell look
-        for (let i = -1; i <= 1; i++) {
-          const strip = new THREE.Mesh(new THREE.BoxGeometry(0.03, h * 0.82, 0.07), MAT ? MAT.engine : mat);
-          strip.position.set(s * (r * 0.5 + r * 1.65) + i * r * 0.9, 0, 0);
-          grp.add(strip);
-        }
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, r * 0.55, 6), MAT ? MAT.legs : mat);
+        arm.rotation.z = Math.PI / 2;
+        arm.position.x = s * r * 0.72;
+        grp.add(arm);
       }
       return grp;
     }
     case "crane": {
       // A flat frame ringed by four outward-splayed thrusters — cargo hangs BELOW.
+      // It packs its own fuel: the silver spheres ARE the tanks (the real MSL
+      // descent stage carried spherical hydrazine tanks too).
       const grp = new THREE.Group();
-      const frame = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.9, h * 0.5, 16), mat);
+      const frame = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.9, h * 0.5, 16), foilMat());
       grp.add(frame);
       for (let i = 0; i < 4; i++) {
         const a = (i / 4) * Math.PI * 2;
         const tangent = new THREE.Vector3(-Math.sin(a), 0, Math.cos(a));
-        const noz = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.17, h * 0.7, 10), MAT ? MAT.engine : mat);
+        const noz = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.17, h * 0.7, 10), bellMat());
         noz.position.set(Math.cos(a) * r * 1.0, -h * 0.1, Math.sin(a) * r * 1.0);
         noz.quaternion.setFromAxisAngle(tangent, -0.45); // canted out so the plume misses the cargo
         grp.add(noz);
+        const tank = new THREE.Mesh(new THREE.SphereGeometry(h * 0.32, 12, 10), MAT ? MAT.tank : mat);
+        const ta = a + Math.PI / 4;
+        tank.position.set(Math.cos(ta) * r * 0.62, h * 0.12, Math.sin(ta) * r * 0.62);
+        grp.add(tank);
       }
       return grp;
     }

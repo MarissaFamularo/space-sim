@@ -74,6 +74,27 @@ friendly errors, localStorage persistence).
   session: speed/prograde/altitude readouts are now measured vs the dominant body (parked
   on the Moon reads 0 m/s, not the Moon's orbital speed).
 
+**New 2026-07-05 later — FANCIER ROCKET PARTS (Mom picked it from the tier list).
+All in render.js `makePartObject` + a `partMat` painted-texture block above it; parts.js
+data, physics, stacking, and the frozen APIs untouched. Every part still fits exactly
+inside its def's height × radius box, so the kid's modded parts and share codes render
+fine (modded cylinders get the riveted tank skin; unknown shapes keep the old plain look).**
+- Painted-canvas details, all procedural + cached: riveted panel skin (tanks), orange
+  capsule livery with heat-shield band (pod), yellow/black hazard stripes (decoupler —
+  yellow/black = "this separates", kept OFF everything that doesn't), crinkled gold MLI
+  foil (probe, sky-crane frame), solar cell grid, red/white parachute gores, dark
+  ribbed engine-bell gradient.
+- Geometry: tanks are lathes with domed shoulders + seam rings + a side fuel line;
+  engines have a real curved bell, powerhead, gimbal ring, and turbopump pipes — and
+  **vacuum engines (ve ≥ 4000) automatically get the long skinny-throat bell** (the
+  shape IS the spec — tell him why); pod is a lathed acorn with portholes and a docking
+  ring; fins are swept beveled deltas; legs got shock-absorber sleeves; probe got a
+  paraboloid dish + whip antenna + corner RCS; sky-crane shows its spherical fuel tanks.
+- GOTCHA learned: metalness ≳ 0.7 under the 2.0 sun makes specular glints cross the
+  bloom threshold — the gold probe burned like a lamp until foil dropped to 0.45.
+- Verified in-browser: kitchen-sink stack close-ups, launch, and staging (plume attaches
+  to the new bell of whichever stage is live).
+
 **New 2026-07-05 (his ask, via Mom: "make the graphics better") — THE GRAPHICS PASS.
 All render.js + vendored assets; frozen Render API untouched; physics untouched; all 7
 test suites green (and reentry_test.mjs now uses relative imports instead of a hardcoded
