@@ -1516,8 +1516,12 @@ function makePartObject(def, h, r) {
       return grp;
     }
     case "fin": {
-      // Swept delta fins (extruded + beveled) instead of flat slabs.
+      // Swept delta fins (extruded + beveled) bolted to a structural sleeve. The
+      // sleeve matters: a fin "part" occupies a slot in the one-column stack, and
+      // without a body section the fuselage looked broken in half at that slot.
       const grp = new THREE.Group();
+      const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 24), tankMat());
+      grp.add(sleeve);
       const s = new THREE.Shape();
       s.moveTo(0, h * 0.5);
       s.lineTo(r * 1.15, h * 0.05);
@@ -1530,7 +1534,7 @@ function makePartObject(def, h, r) {
       geo.translate(0, 0, -0.025);
       for (const side of [1, -1]) {
         const fin = new THREE.Mesh(geo, mat);
-        fin.position.x = side * r * 0.5;
+        fin.position.x = side * r * 0.9; // root buried in the sleeve wall
         if (side < 0) fin.rotation.y = Math.PI;
         grp.add(fin);
       }
