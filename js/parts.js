@@ -104,6 +104,16 @@ export const PARTS = [
     attachTop: true, attachBottom: false,
   },
   {
+    // You can't just bump into a station and stick — you need the matching ring.
+    // Rides on the nose (like Apollo's probe-and-drogue) or inline in the stack.
+    id: "docking_port",
+    type: "dock",
+    name: "Docking Port",
+    dryMass: 0.1,
+    height: 0.4, radius: 0.5, shape: "dock",
+    attachTop: true, attachBottom: true,
+  },
+  {
     id: "decoupler",
     type: "decoupler",
     name: "Stage Decoupler",

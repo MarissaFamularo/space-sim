@@ -25,6 +25,7 @@ let scene = null;
 let camera = null;
 let canvas = null;
 let composer = null;      // post chain: render -> bloom -> tone map/sRGB (OutputPass)
+let _renderPass = null;   // kept so the station-interior scene can borrow the chain
 // HDR philosophy: bloom threshold sits at 1.0, so ONLY things pushed past white glow —
 // the Sun, engine plumes, reentry plasma, city lights. Normal surfaces never bloom.
 const BLOOM = { strength: 0.55, radius: 0.4, threshold: 1.0 };
@@ -585,7 +586,8 @@ function init(canvasEl) {
 
   // Post chain: scene -> bloom -> tone map + sRGB. Bloom threshold 1.0 = HDR-only.
   composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
+  _renderPass = new RenderPass(scene, camera);
+  composer.addPass(_renderPass);
   composer.addPass(new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
     BLOOM.strength, BLOOM.radius, BLOOM.threshold));
@@ -1475,6 +1477,10 @@ function onResize() {
   if (composer) composer.setSize(w, h);
   camera.aspect = w / Math.max(1, h);
   camera.updateProjectionMatrix();
+  if (interior) {
+    interior.cam.aspect = w / Math.max(1, h);
+    interior.cam.updateProjectionMatrix();
+  }
 }
 
 // =====================================================================
@@ -1865,6 +1871,25 @@ function makePartObject(def, h, r) {
       }
       return grp;
     }
+    case "dock": {
+      // Apollo-style port: base drum, latch ring, three guide petals angled inward.
+      const grp = new THREE.Group();
+      const drum = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.9, r, h * 0.55, 20), tankMat());
+      drum.position.y = -h * 0.22;
+      grp.add(drum);
+      const ringM = new THREE.Mesh(new THREE.TorusGeometry(r * 0.55, r * 0.14, 10, 22), hazardMat());
+      ringM.rotation.x = Math.PI / 2;
+      ringM.position.y = h * 0.18;
+      grp.add(ringM);
+      for (let i = 0; i < 3; i++) { // guide petals
+        const a = (i / 3) * Math.PI * 2;
+        const petal = new THREE.Mesh(new THREE.BoxGeometry(r * 0.34, h * 0.42, 0.04), MAT ? MAT.legs : mat);
+        petal.position.set(Math.cos(a) * r * 0.5, h * 0.3, Math.sin(a) * r * 0.5);
+        petal.lookAt(0, h * 1.4, 0); // lean inward, funnel-shaped
+        grp.add(petal);
+      }
+      return grp;
+    }
     case "torch": {
       // Far-future fusion torch: a compact reactor over an OPEN magnetic nozzle —
       // three field coils where a chemical engine would have a bell, and a fusion
@@ -2130,6 +2155,7 @@ function hideMapDots() {
 // =====================================================================
 function update(sim) {
   if (!renderer || !scene || !camera) return;
+  if (interior) { updateInterior(); return; } // aboard a station: the room is the world
 
   if (mode === "build" && flightView !== "map") {
     updateBuildCamera();
@@ -3045,6 +3071,271 @@ function setFlightView(v) {
   }
 }
 
+// =====================================================================
+// 🚪 STATION INTERIORS — dock, press E, and the Connie floats INSIDE.
+// A seeded little world per station (never identical): module size, wall tint,
+// windows, cargo, plant racks, science consoles. Derelicts are dark, red-lit, and
+// full of drifting junk. Some stations out in the generated systems have a RESIDENT.
+// Zero-g: arrow keys nudge the Connie, she coasts, walls bounce softly. Drift close
+// to a glowing console and science HAPPENS (callback to main). E exits.
+// =====================================================================
+let interior = null; // { scene, cam, connie, vel, consoles, alien, keys, hintEl, cb, len, rad, t0 }
+
+function interiorKeyDown(e) {
+  if (!interior) return;
+  interior.keys[e.key] = true;
+  if (e.key === "e" || e.key === "E" || e.key === "Escape") {
+    const cb = interior.cb;
+    exitStation();
+    if (cb && cb.onExit) cb.onExit();
+  }
+}
+function interiorKeyUp(e) { if (interior) interior.keys[e.key] = false; }
+
+function enterStation(info, cb) {
+  if (interior) exitStation();
+  const rng = mulberry32(hashStr("interior:" + info.seedKey));
+  const iScene = new THREE.Scene();
+  const len = 8 + rng() * 6;       // every module a different length
+  const rad = 2.6 + rng() * 0.8;
+  const derelict = !!info.abandoned;
+
+  // Hull: a cylinder seen from INSIDE, with end caps. Wall tint is seeded.
+  const wallColor = derelict ? 0x3a3236
+    : new THREE.Color().setHSL(rng(), 0.12, 0.72).getHex();
+  const wallMat = new THREE.MeshStandardMaterial({
+    color: wallColor, roughness: 0.9, metalness: 0.1, side: THREE.BackSide,
+  });
+  const hull = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, len, 28, 1, true), wallMat);
+  hull.rotation.z = Math.PI / 2; // axis along X
+  iScene.add(hull);
+  for (const sx of [-1, 1]) {
+    const cap = new THREE.Mesh(new THREE.CircleGeometry(rad, 28), wallMat.clone());
+    cap.material.side = THREE.FrontSide;
+    cap.material._isClone = true;
+    cap.position.x = sx * len / 2;
+    cap.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
+    iScene.add(cap);
+  }
+  // Ring frames every couple of meters, like every real module.
+  for (let x = -len / 2 + 1.2; x < len / 2 - 0.8; x += 2.2) {
+    const frame = new THREE.Mesh(new THREE.TorusGeometry(rad - 0.06, 0.055, 6, 24),
+      new THREE.MeshStandardMaterial({ color: derelict ? 0x2a2426 : 0x9aa2ae, roughness: 0.8 }));
+    frame.material._isClone = true;
+    frame.rotation.y = Math.PI / 2;
+    frame.position.x = x;
+    iScene.add(frame);
+  }
+
+  // Windows: starfield outside (tiny baked canvas), glowing gently.
+  const nWin = derelict ? 1 : 2 + Math.floor(rng() * 3);
+  for (let i = 0; i < nWin; i++) {
+    const cv = document.createElement("canvas");
+    cv.width = 64; cv.height = 48;
+    const ctx = cv.getContext("2d");
+    ctx.fillStyle = "#050a18"; ctx.fillRect(0, 0, 64, 48);
+    ctx.fillStyle = "#fff";
+    for (let k = 0; k < 30; k++) ctx.fillRect(rng() * 64, rng() * 48, 1, 1);
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.9),
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv) }));
+    const wx = -len / 2 + 1.5 + (i + 0.5) * (len - 3) / nWin;
+    win.position.set(wx, 0.3 + rng() * 0.8, -rad + 0.08);
+    iScene.add(win);
+  }
+
+  // Science consoles: glowing racks the Connie floats up to. Kinds rotate; the
+  // derelict has ONE faint salvage log instead; an alien brings its own console.
+  const consoles = [];
+  const addConsole = (x, y, kind, screenColor) => {
+    const rack = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.3, 0.5),
+      new THREE.MeshStandardMaterial({ color: derelict ? 0x2f2b2e : 0x6a7280, roughness: 0.7 }));
+    rack.material._isClone = true;
+    rack.position.set(x, y, -rad + 0.5);
+    iScene.add(rack);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.42),
+      new THREE.MeshBasicMaterial({ color: screenColor }));
+    screen.position.set(x, y + 0.22, -rad + 0.78);
+    iScene.add(screen);
+    consoles.push({ x, y, kind, screen, done: false });
+  };
+  if (derelict) {
+    addConsole(0.5, -0.4, "salvage", new THREE.Color(0.5, 0.12, 0.1)); // dying ember of a screen
+  } else {
+    const kinds = ["bio", "materials", "astro"];
+    const n = 1 + Math.floor(rng() * 3);
+    for (let i = 0; i < n; i++) {
+      addConsole(-len / 2 + 1.6 + i * (len - 3) / Math.max(1, n - 0.5) + rng(),
+        -0.6 + rng() * 1.2, kinds[Math.floor(rng() * kinds.length)],
+        new THREE.Color(0.15, 1.6, 0.8)); // HDR: it blooms
+    }
+    // A plant rack — things grow up here, in every direction at once.
+    const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.5),
+      new THREE.MeshStandardMaterial({ color: 0x8a919c }));
+    shelf.material._isClone = true;
+    shelf.position.set(len * 0.22, -1.1, -rad + 0.6);
+    iScene.add(shelf);
+    for (let i = 0; i < 5; i++) {
+      const sprout = new THREE.Mesh(new THREE.SphereGeometry(0.09 + rng() * 0.08, 8, 6),
+        new THREE.MeshStandardMaterial({ color: 0x4fae54, roughness: 0.8 }));
+      sprout.material._isClone = true;
+      sprout.position.set(len * 0.22 - 0.5 + i * 0.24, -0.98 + rng() * 0.1, -rad + 0.6);
+      iScene.add(sprout);
+    }
+  }
+
+  // Floating clutter: cargo bags on a live station; years of drifting junk on a wreck.
+  const nJunk = derelict ? 16 : 5 + Math.floor(rng() * 4);
+  const drifters = [];
+  for (let i = 0; i < nJunk; i++) {
+    const box = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2 + rng() * 0.3, 0.15 + rng() * 0.25, 0.2),
+      new THREE.MeshStandardMaterial({
+        color: derelict ? 0x4a4448 : [0xc8b48a, 0xdfe3ea, 0x8fa8c8][Math.floor(rng() * 3)],
+        roughness: 0.85,
+      }));
+    box.material._isClone = true;
+    box.position.set((rng() - 0.5) * (len - 2), (rng() - 0.5) * (rad), (rng() - 0.5) * rad * 0.8);
+    box.rotation.set(rng() * 3, rng() * 3, rng() * 3);
+    iScene.add(box);
+    drifters.push({ m: box, w: (rng() - 0.5) * (derelict ? 0.8 : 0.25) });
+  }
+
+  // The RESIDENT. 👽 Friendly — big eyes like a Connie, its own glyph console,
+  // and it hums in prime numbers (the Navigator explains).
+  let alien = null;
+  if (info.alien && !derelict) {
+    alien = new THREE.Group();
+    const hue = rng();
+    const skin = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setHSL(hue, 0.55, 0.55), roughness: 0.5,
+      emissive: new THREE.Color().setHSL(hue, 0.6, 0.25), emissiveIntensity: 0.7,
+    });
+    skin._isClone = true;
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.42, 18, 14), skin);
+    body.scale.y = 1.25;
+    alien.add(body);
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.4;
+      const tent = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.09, 0.7, 8), skin);
+      tent.position.set(Math.cos(a) * 0.22, -0.6, Math.sin(a) * 0.22);
+      tent.rotation.z = Math.cos(a) * 0.5;
+      tent.rotation.x = -Math.sin(a) * 0.5;
+      alien.add(tent);
+    }
+    for (const sx of [-1, 1]) { // big friendly eyes, Connie-style
+      const white = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8),
+        new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      white.position.set(sx * 0.17, 0.28, 0.33);
+      alien.add(white);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6),
+        new THREE.MeshBasicMaterial({ color: 0x101418 }));
+      pupil.position.set(sx * 0.17, 0.28, 0.44);
+      alien.add(pupil);
+    }
+    alien.position.set(len * 0.32, 0.3, -0.4);
+    iScene.add(alien);
+    addConsole(len * 0.32 + 1.1, -0.2, "alien", new THREE.Color(1.8, 0.3, 1.6)); // glyph screen
+  }
+
+  // Light: warm and even on a live station; one uneasy red flicker on the wreck.
+  if (derelict) {
+    iScene.add(new THREE.AmbientLight(0x201418, 1.2));
+    const red = new THREE.PointLight(0xff3020, 30, 30, 2);
+    red.position.set(-len * 0.3, 0.8, 0);
+    iScene.add(red);
+    interiorFlicker = red;
+  } else {
+    iScene.add(new THREE.AmbientLight(0xf4efe6, 1.4));
+    const warm = new THREE.PointLight(0xfff0d8, 40, 40, 2);
+    warm.position.set(0, rad * 0.6, 0.5);
+    iScene.add(warm);
+    interiorFlicker = null;
+  }
+
+  // The Connie herself, floating free.
+  const connie = makeConnie();
+  connie.scale.setScalar(0.9);
+  connie.position.set(-len * 0.3, 0, 0);
+  iScene.add(connie);
+
+  const cam = new THREE.PerspectiveCamera(70, window.innerWidth / Math.max(1, window.innerHeight), 0.05, 100);
+  cam.position.set(0, 0.25, rad * 0.85);
+  cam.lookAt(0, 0, -rad * 0.4);
+
+  const hintEl = document.createElement("div");
+  hintEl.style.cssText = "position:absolute;bottom:70px;left:50%;transform:translateX(-50%);" +
+    "background:rgba(12,18,34,0.86);border:1px solid #24304d;border-radius:8px;color:#9fb3da;" +
+    "padding:6px 14px;font:600 13px system-ui,sans-serif;z-index:15;";
+  hintEl.textContent = "🐍 " + info.name + " — arrows float · drift to a glowing screen for science · E to return to your ship";
+  document.getElementById("app").appendChild(hintEl);
+
+  interior = { scene: iScene, cam, connie, vel: { x: 0, y: 0 }, consoles, alien,
+               keys: {}, hintEl, cb, len, rad, drifters, last: 0 };
+  window.addEventListener("keydown", interiorKeyDown);
+  window.addEventListener("keyup", interiorKeyUp);
+  if (_renderPass) { _renderPass.scene = iScene; _renderPass.camera = cam; }
+}
+let interiorFlicker = null;
+
+function exitStation() {
+  if (!interior) return;
+  window.removeEventListener("keydown", interiorKeyDown);
+  window.removeEventListener("keyup", interiorKeyUp);
+  interior.hintEl.remove();
+  interior.scene.traverse((o) => {
+    if (o.geometry) o.geometry.dispose();
+    const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of mats) { if (m.map) m.map.dispose(); if (m._isClone || m.map) m.dispose(); }
+  });
+  if (_renderPass) { _renderPass.scene = scene; _renderPass.camera = camera; }
+  interior = null;
+  interiorFlicker = null;
+}
+
+function isInside() { return !!interior; }
+
+function updateInterior() {
+  const it = interior;
+  const now = performance.now() / 1000;
+  const dt = it.last ? Math.min(now - it.last, 0.05) : 0.016;
+  it.last = now;
+  // Zero-g drift: arrows nudge, motion coasts, walls bounce softly.
+  const A = 2.2;
+  if (it.keys.ArrowLeft) it.vel.x -= A * dt;
+  if (it.keys.ArrowRight) it.vel.x += A * dt;
+  if (it.keys.ArrowUp) it.vel.y += A * dt;
+  if (it.keys.ArrowDown) it.vel.y -= A * dt;
+  it.vel.x *= 0.995; it.vel.y *= 0.995;
+  const c = it.connie;
+  c.position.x += it.vel.x * dt;
+  c.position.y += it.vel.y * dt;
+  const mx = it.len / 2 - 0.8, my = it.rad - 0.9;
+  if (Math.abs(c.position.x) > mx) { c.position.x = Math.sign(c.position.x) * mx; it.vel.x *= -0.4; }
+  if (Math.abs(c.position.y) > my) { c.position.y = Math.sign(c.position.y) * my; it.vel.y *= -0.4; }
+  c.rotation.z = Math.max(-0.5, Math.min(0.5, -it.vel.x * 0.4)); // lean into the drift
+  c.rotation.x = Math.max(-0.4, Math.min(0.4, it.vel.y * 0.25));
+
+  for (const d of it.drifters) { d.m.rotation.z += d.w * dt; d.m.rotation.x += d.w * 0.6 * dt; }
+  if (it.alien) it.alien.position.y = 0.3 + Math.sin(now * 1.3) * 0.12; // gentle bob
+  if (interiorFlicker) interiorFlicker.intensity = 18 + Math.random() * 22;
+
+  // Camera eases along the module to keep her in frame.
+  it.cam.position.x += (c.position.x * 0.7 - it.cam.position.x) * 0.04;
+  it.cam.lookAt(c.position.x * 0.85, 0, -it.rad * 0.3);
+
+  // Science: drift close to a live screen and it fires (once each per visit).
+  for (const con of it.consoles) {
+    if (con.done) continue;
+    if (Math.hypot(c.position.x - con.x, c.position.y - con.y) < 1.15) {
+      con.done = true;
+      con.screen.material.color = new THREE.Color(2.0, 1.8, 0.4); // flashes gold
+      if (it.cb && it.cb.onScience) it.cb.onScience(con.kind);
+    }
+  }
+  if (composer) composer.render();
+  else renderer.render(it.scene, it.cam);
+}
+
 // ---- Disposal helper ----
 function disposeGroup(group) {
   group.traverse((obj) => {
@@ -3081,6 +3372,9 @@ export const Render = Object.freeze({
   init,
   rebuildWorld,
   setGalaxy,
+  enterStation,
+  exitStation,
+  isInside,
   buildCraftMesh,
   setMode,
   update,

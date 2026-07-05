@@ -1,6 +1,6 @@
 // ui.js — PM-owned. Live readouts + mode/flight controls. Reads SimState + Stats.
 
-import { BODIES, PLANET_KEYS, SYSTEM } from "./state.js";
+import { BODIES, PLANET_KEYS, STATIONS, SYSTEM } from "./state.js";
 
 // Destinations for the target picker, derived from the ACTIVE system (the Starmap can
 // swap it): home's moon first (the tutorial trip), then the other planets outward with
@@ -154,6 +154,12 @@ export const UI = {
       opt.textContent = (moonOf[key] ? "  · " : "") + BODIES[key].name + (key === "earth" ? " (home)" : "");
       sel.appendChild(opt);
     }
+    for (const st of STATIONS) { // stations: teleport right next to them, then dock
+      const opt = document.createElement("option");
+      opt.value = "station:" + st.id;
+      opt.textContent = (st.abandoned ? "⚠ " : "🛰 ") + st.name;
+      sel.appendChild(opt);
+    }
     sel.value = targets.includes("moon") ? "moon" : targets[0];
     if (this.els.sysLabel) this.els.sysLabel.textContent = "🌌 " + SYSTEM.name;
   },
@@ -255,6 +261,7 @@ export const UI = {
         html += row("Parachute", sim.chuteOpen ? "☂ open" : (sim.craft.chuteDeployed ? "armed…" : "packed (P)"));
       }
       if ((sim.craft.legCount || 0) > 0) html += row("Landing legs", "🦵 ok under 12 m/s");
+      if ((sim.craft.dockCount || 0) > 0) html += row("Docking port", "🛰 ready");
       if (sim.satellites && sim.satellites.length) html += row("Satellites", "🛰 " + sim.satellites.length + " in orbit");
       if (sim.stationNear) {
         html += row(sim.stationNear.abandoned ? "⚠ " + sim.stationNear.name : "🛰 " + sim.stationNear.name,
@@ -282,6 +289,7 @@ export const UI = {
         `<span style="color:#6effa0">▲ going (prograde)</span><br>` +
         `<span style="color:#9fb3da">point your nose (cyan) at the gold arrow</span></div>`;
     }
+    if (sim && sim.science > 0) html += row("🔬 Science", sim.science);
     this.els.readouts.innerHTML = html || "<i>Build a rocket →</i>";
   },
 };

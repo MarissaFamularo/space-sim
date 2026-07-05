@@ -53,7 +53,7 @@ const WORLD_FACTS = {
 
 // ---- propulsion for a given stage (integration owns this; physics reads the live fields) ----
 function activeStage(craft, stageNum) {
-  let thrust = 0, veSum = 0, engines = 0, stageFuel = 0, remainingMass = 0, chutes = 0;
+  let thrust = 0, veSum = 0, engines = 0, stageFuel = 0, remainingMass = 0, chutes = 0, docks = 0;
   let legs = 0, solar = 0, rovers = 0;
   for (const inst of craft.parts) {
     const def = findPart(PARTS, inst.partId);
@@ -61,6 +61,7 @@ function activeStage(craft, stageNum) {
     if (inst.stage >= stageNum) {
       remainingMass += (def.dryMass || 0) + (def.fuelMass || 0);
       if (def.type === "chute") chutes++;
+      if (def.type === "dock") docks++;
       if (def.type === "legs") legs++;
       if (def.type === "solar") solar++;
       if (def.type === "rover") rovers++;
@@ -71,7 +72,7 @@ function activeStage(craft, stageNum) {
     }
   }
   return { thrust, exhaustVelocity: engines ? veSum / engines : 0, stageFuel, remainingMass,
-           chutes, legs, solar, rovers };
+           chutes, legs, solar, rovers, docks };
 }
 function maxStage(craft) {
   return craft.parts.reduce((m, i) => Math.max(m, i.stage || 0), 0);
@@ -85,6 +86,7 @@ function loadStage(stageNum) {
   sim.craft.thrust = s.thrust;
   sim.craft.exhaustVelocity = s.exhaustVelocity;
   sim.craft.chuteCount = s.chutes;
+  sim.craft.dockCount = s.docks;    // stations only mate with a real docking port
   sim.craft.legCount = s.legs;      // physics: legs raise the safe touchdown speed
   sim.craft.solarCount = s.solar;
   sim.craft.roverCount = s.rovers;
@@ -244,6 +246,18 @@ function doStage() {
 }
 
 function setTarget(key) {
+  if (key && key.startsWith("station:")) {
+    // A station target: guidance aims at its parent body; the HUD's station row and
+    // ✨ Teleport handle the last mile.
+    const st = STATIONS.find((x) => "station:" + x.id === key);
+    if (st && BODIES[st.body]) {
+      sim.target = st.body;
+      copilotSay("🛰 Target: <b>" + st.name + "</b>, orbiting " + BODIES[st.body].name +
+        ". Rendezvous the real way (reach its orbit, close in slowly) — or use ✨ Teleport " +
+        "to jump straight to the final 250 meters and practice the docking.");
+    }
+    return;
+  }
   if (!BODIES[key]) return;
   sim.target = key;
   announced.transferBurn = false; // a new destination gets its own TLI call
@@ -279,8 +293,10 @@ function fmtRealTrip(gameDays) {
   return Math.round(real) + " days";
 }
 function teleport(key) {
-  const b = BODIES[key];
-  if (!b || !b.parent) return; // no teleporting into the Sun
+  const station = key && key.startsWith("station:")
+    ? STATIONS.find((x) => "station:" + x.id === key) : null;
+  const b = station ? BODIES[station.body] : BODIES[key];
+  if (!b || (!station && !b.parent)) return; // no teleporting into the Sun
   if (craft.parts.length === 0) {
     copilotSay("Even a teleporter needs a ship! Build a rocket first — pod, tank, engine.");
     return;
@@ -297,6 +313,24 @@ function teleport(key) {
     Render.buildCraftMesh(craft);
     Render.setMode("flight");
     UI.setMode("flight");
+  }
+  if (station) {
+    // Park 250 m off the docking port with velocity MATCHED — the final approach is
+    // his to fly. (This is the part real crews drilled hardest.)
+    const ss = stationStateAt(station, sim.time || 0);
+    if (!ss) return;
+    sim.craft.pos = { x: ss.pos.x + 250, y: ss.pos.y };
+    sim.craft.vel = { x: ss.vel.x, y: ss.vel.y };
+    sim.craft.angle = Math.PI / 2; // craft sits +X of the station; nose points -X, at it
+    sim.craft.throttle = 0;
+    sim.craft.chuteDeployed = false;
+    sim.chuteOpen = false;
+    copilotSay("✨🛰 <b>250 meters from " + station.name + ", speeds matched.</b> Now the " +
+      "hardest flying in the book, in slow motion: tap the gentlest throttle toward it, " +
+      "coast, and arrive under 10 m/s" +
+      ((sim.craft.dockCount || 0) ? " — your docking port will do the rest." :
+        " — but heads up: you have <b>no Docking Port</b> aboard, so you can look but not latch.") );
+    return;
   }
   const park = Physics.parkingOrbit(key, sim.time || 0);
   sim.craft.pos = park.pos;
@@ -472,8 +506,10 @@ function wireCopilot() {
 const keys = {};
 window.addEventListener("keydown", (e) => {
   if (e.target && e.target.tagName === "INPUT") return;
+  if (Render.isInside()) return; // the station interior owns the keys while aboard
   keys[e.key] = true;
   if (e.repeat) return;
+  if (e.key === "e" || e.key === "E") boardStation();
   if (e.key === " ") { e.preventDefault(); doStage(); }
   if (e.key === "z" || e.key === "Z") sim.craft.throttle = 1;
   if (e.key === "x" || e.key === "X") sim.craft.throttle = 0;
@@ -746,6 +782,58 @@ function flightCallouts() {
 // ---- game loop ----
 let last = 0;
 let courseTimer = 0;
+// ---- 🔬 Science: earned inside stations, kept forever ----
+const SCIENCE_KEY = "spacesim.science.v1";
+let SCIENCE = 0;
+try { SCIENCE = parseInt(localStorage.getItem(SCIENCE_KEY)) || 0; } catch {}
+const SCIENCE_FACTS = {
+  bio: ["🌱 Plant lab checked! In zero-g, roots grow every which way — plants use LIGHT to find 'up' instead of gravity. Astronauts on the ISS have eaten space-grown lettuce.",
+        "🧫 Bio experiment logged! Your bones get lazy in zero-g — real astronauts exercise 2 hours a day just so their skeletons don't quit."],
+  materials: ["🔥 Materials lab done! A candle flame in zero-g is a little blue BALL — no gravity means no 'up' for hot air to rise, so fire burns in a sphere.",
+        "🫧 Fluids experiment! Spilled water in zero-g wads into a wobbly ball — real crews chase escaped water blobs with towels."],
+  astro: ["🔭 Telescope time! Up here there's no air to blur the stars — that's exactly why we put Hubble and JWST in space instead of on mountains.",
+        "🌍 Earth-watching logged! Astronauts call it the Overview Effect — seeing your whole world in one window changes how you think about it."],
+  salvage: ["📼 You recovered the station's old log! Final entry: 'Meteor strike. Power failing. We got everyone to the escape craft — leave the lights off on your way out.' Space junk is why real stations fly dodge maneuvers every year.",],
+  alien: ["👽🎵 The resident hums at you — in PRIME NUMBERS. 2, 3, 5, 7, 11… Math is the one language every scientist expects the universe to share. It taps its console and gifts you its notes: ALIEN SCIENCE!",
+        "👽📐 It draws you a right triangle and hums three notes: 3, 4, 5. Pythagoras works in every star system — that's WHY scientists think math is how we'd talk to aliens first."],
+};
+const SCIENCE_VALUE = { bio: 10, materials: 10, astro: 10, salvage: 15, alien: 25 };
+let factRotor = 0;
+function awardScience(kind) {
+  const pts = SCIENCE_VALUE[kind] || 10;
+  SCIENCE += pts;
+  try { localStorage.setItem(SCIENCE_KEY, String(SCIENCE)); } catch {}
+  const facts = SCIENCE_FACTS[kind] || [];
+  const fact = facts.length ? facts[(factRotor++) % facts.length] : "";
+  copilotSay(fact + " <b>+" + pts + " Science</b> (total " + SCIENCE + ").");
+}
+
+// Boarding: docked + press E -> the Connie floats around INSIDE (render owns the room).
+function boardStation() {
+  if (Render.isInside() || !sim.stationNear || !sim.stationNear.docked) return;
+  const st = STATIONS.find((x) => x.id === dockedAtId);
+  if (!st) return;
+  // Some far-system stations have a RESIDENT — deterministic per system+station,
+  // never in Sol (aliens live out among his named stars), never on a wreck.
+  const seedKey = SYSTEM.key + "/" + st.id;
+  const alienRoll = ((h) => { // tiny inline hash->0..1
+    let x = 2166136261;
+    for (let i = 0; i < h.length; i++) { x ^= h.charCodeAt(i); x = Math.imul(x, 16777619); }
+    return ((x >>> 0) % 1000) / 1000;
+  })(seedKey + ":resident");
+  const hasAlien = !isSol() && !st.abandoned && alienRoll < 0.45;
+  Render.enterStation(
+    { name: st.name, abandoned: !!st.abandoned, alien: hasAlien, seedKey },
+    { onScience: awardScience,
+      onExit: () => copilotSay("🚀 Back aboard your ship — still docked, tanks " +
+        (st.abandoned ? "empty as ever (this old wreck has nothing left)." : "topped off. Undock with a gentle throttle when you're ready.")) });
+  copilotSay(st.abandoned
+    ? "🚪🔦 <b>You float into " + st.name + ".</b> It's dark. One red light still blinks. Junk drifts everywhere — nobody's been here for years. Find the old log screen… and be gentle with this place."
+    : hasAlien
+      ? "🚪👽 <b>You float into " + st.name + "… and someone is HOME.</b> Big eyes, gentle hum, very friendly. Drift over and see what it's studying!"
+      : "🚪 <b>Welcome aboard " + st.name + "!</b> Float with the arrow keys — in zero-g you push once and coast. Glowing screens are experiments waiting for a scientist. That's you.");
+}
+
 // ---- 🛰 Space stations: propagate their circular orbits, offer docking ----
 // Dock = drift within 150 m at under 10 m/s relative. Working stations refuel the
 // current stage (a gas station in orbit — that's why real programs want depots!).
@@ -771,7 +859,8 @@ function updateStationsSim() {
     const ss = stationStateAt(st, t);
     if (!ss) continue;
     view.push({ id: st.id, name: st.name, body: st.body, abandoned: !!st.abandoned, pos: ss.pos });
-    if (sim.mode === "flight" && sim.status === "flying") {
+    const inSpace = sim.mode === "flight" && (sim.status === "flying" || sim.status === "orbit");
+    if (inSpace) {
       const dist = Math.hypot(sim.craft.pos.x - ss.pos.x, sim.craft.pos.y - ss.pos.y);
       const rel = Math.hypot(sim.craft.vel.x - ss.vel.x, sim.craft.vel.y - ss.vel.y);
       if (!nearest || dist < nearest.dist) nearest = { st, dist, rel };
@@ -785,7 +874,18 @@ function updateStationsSim() {
 
   if (!nearest) return;
   const { st, dist, rel } = nearest;
-  if (dist < 150 && rel < 10 && sim.status === "flying") {
+  if (dist < 150 && rel < 10 && (sim.status === "flying" || sim.status === "orbit")) {
+    if ((sim.craft.dockCount || 0) === 0) {
+      // Perfect rendezvous, nothing to grab with — the honest lesson, once per approach.
+      if (dockedAtId !== "noport:" + st.id) {
+        dockedAtId = "noport:" + st.id;
+        copilotSay("🛰🤏 Beautiful rendezvous with <b>" + st.name + "</b> — you're holding " +
+          "position meters away! But there's nothing to grab with: docking needs a " +
+          "<b>Docking Port</b> (matching rings that latch — like Apollo's probe and " +
+          "drogue). Add one to your rocket next launch and the station can pull you in.");
+      }
+      return;
+    }
     if (dockedAtId !== st.id) {
       dockedAtId = st.id;
       if (st.abandoned) {
@@ -794,13 +894,13 @@ function updateStationsSim() {
           "solar wings, and all the junk still tumbling around that nobody ever cleaned " +
           "up. The tech shut down with the power, so there's <b>no fuel here</b>. Space " +
           "junk is a REAL problem — we track over 30,000 pieces around the real Earth. " +
-          "Look around… then leave it to its quiet orbit.");
+          "Press <b>E</b> to float inside… if you're brave.");
       } else {
         const before = sim.craft.fuelRemaining || 0;
         sim.craft.fuelRemaining = Math.max(before, sim.craft.stageFuelMax || before);
         copilotSay("🛰✅ <b>Docked with " + st.name + "!</b> Matching orbits within a few " +
           "meters at walking speed is the hardest flying there is — Gemini crews spent " +
-          "whole missions practicing exactly this. The crew topped off your tanks " +
+          "whole missions practicing exactly this. Press <b>E</b> to go aboard! The crew topped off your tanks " +
           (sim.craft.fuelRemaining > before + 0.01 ? "(<b>fuel refilled!</b>)" : "(they were already full)") +
           " — orbital gas stations are why real agencies dream of depots. Undock by " +
           "easing the throttle.");
@@ -815,6 +915,12 @@ function frame(t) {
   const dt = last ? Math.min((t - last) / 1000, 0.05) : 0;
   last = t;
   sim.satellites = SATELLITES; // render + Navigator read them off the sim
+  sim.science = SCIENCE;       // the 🔬 ledger, shown in the HUD
+  if (Render.isInside()) {     // aboard a station: time holds its breath
+    Render.update(sim);
+    requestAnimationFrame(frame);
+    return;
+  }
   updateStationsSim();         // stations orbit + docking checks ride every frame
 
   if (sim.mode === "flight" && sim.status !== "crashed") {

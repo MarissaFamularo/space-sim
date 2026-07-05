@@ -74,6 +74,37 @@ friendly errors, localStorage persistence).
   session: speed/prograde/altitude readouts are now measured vs the dominant body (parked
   on the Moon reads 0 m/s, not the Moon's orbital speed).
 
+**New 2026-07-05 latest+3 — DOCKING PORTS, STATION TELEPORTS, AND: GOING INSIDE. 👽**
+- **Docking Port part** (`type:"dock"`, nose-mounts on the pod like Apollo's probe —
+  builder Rule 1 got a "nose gear" exception for chute+dock stacking; "dock" added to
+  mods TYPES so he can mod ports too). **Docking now REQUIRES one aboard** — a perfect
+  rendezvous without it holds position and teaches why. HUD shows "Docking port ready".
+- **Teleport to stations:** 🛰 entries in the target picker; ✨ Teleport parks you 250 m
+  off the port, speeds matched, nose aimed — the final approach is his to fly. BUGFIX
+  found by test: docking/station proximity only engaged when status was "flying" —
+  stable "orbit" (where stations LIVE) was excluded. Now flying|orbit.
+- **STATION INTERIORS** (render.js `enterStation`/`updateInterior`; borrow the composer
+  via `_renderPass` scene swap so bloom works inside): dock, press **E**, and the
+  Connie floats INSIDE. Zero-g drift on arrow keys (nudge + coast + soft wall bounce),
+  seeded per system+station so no two match (module size, wall tint, windows with
+  baked starfields, ring frames, cargo, plant rack). Physics/time FREEZE while aboard
+  (main frame() early-out). E exits, back to the docked ship.
+- **🔬 SCIENCE:** glowing consoles (bio/materials/astro) fire on proximity — each pays
+  Science points (persisted, `spacesim.science.v1`, HUD row) + a REAL zero-g fact
+  (spherical flames, light-seeking roots, why telescopes live in space). The derelict
+  interior is dark with one flickering red light, drifting junk, and a salvage log
+  (its final entry tells the meteor story).
+- **👽 ALIENS: some stations in GENERATED systems have a friendly resident** (~45%
+  deterministic per system+station; never in Sol — the real system stays honest, and
+  the Navigator says "no alien life found YET, and looking is real science"). Big
+  Connie-style eyes, seeded skin color, gentle bob, its own magenta glyph console
+  worth double ("alien science"); it hums in primes — the Navigator teaches why math
+  is humanity's expected first-contact language. VERIFIED: greeting + interior variety
+  + console science browser-tested end-to-end (Sol Harbor Station: dock→board→science
+  →exit all green); the alien's own console fires the same proximity path but wasn't
+  reached by the scripted drift — worth one human play-test (seed "Neon", home
+  station, drift right and slightly down).
+
 **New 2026-07-05 latest+2 — HIS MORNING WISH LIST (all four, browser-verified):**
 - **Galaxy on the map:** zoom the map past the last planet and every system he's visited
   (plus Sol) appears as a colored ⭐/⚫ with its name — deterministic positions

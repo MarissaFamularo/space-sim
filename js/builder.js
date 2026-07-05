@@ -472,12 +472,15 @@ function addPart(partId) {
 
   // Rule 1: you can't stack onto something that refuses a top attachment
   // (e.g. a command pod has attachTop:false — nothing goes above the brain).
-  // EXCEPTION: a parachute rides on top of the pod, like a real capsule's chute canister.
-  const chuteOnPod = def.type === "chute" && topDef && topDef.type === "command";
-  if (topDef && topDef.attachTop === false && !chuteOnPod) {
+  // EXCEPTION: a parachute OR a docking port rides on top of the pod (real capsules
+  // dock nose-first — Apollo's probe sat right above the crew), and they can stack
+  // on each other in either order.
+  const noseGear = (def.type === "chute" || def.type === "dock") && topDef &&
+    (topDef.type === "command" || topDef.type === "chute" || topDef.type === "dock");
+  if (topDef && topDef.attachTop === false && !noseGear) {
     showHint(
       `Nothing fits on top of the ${topDef.name}` +
-      (topDef.type === "command" ? " — except a Parachute!" : ". Try putting parts under it instead.")
+      (topDef.type === "command" ? " — except a Parachute or a Docking Port!" : ". Try putting parts under it instead.")
     );
     return;
   }
