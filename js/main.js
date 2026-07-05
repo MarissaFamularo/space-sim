@@ -315,21 +315,23 @@ function teleport(key) {
     UI.setMode("flight");
   }
   if (station) {
-    // Park 250 m off the docking port with velocity MATCHED — the final approach is
-    // his to fly. (This is the part real crews drilled hardest.)
+    // Arrive RIGHT AT the port, speeds matched (his play-test: "250 m away" from a
+    // 6 m station just looked like empty space). At 35 m the station fills the view
+    // and the docking latch engages on the next frame — teleport in, already docked.
     const ss = stationStateAt(station, sim.time || 0);
     if (!ss) return;
-    sim.craft.pos = { x: ss.pos.x + 250, y: ss.pos.y };
+    sim.craft.pos = { x: ss.pos.x + 35, y: ss.pos.y };
     sim.craft.vel = { x: ss.vel.x, y: ss.vel.y };
     sim.craft.angle = Math.PI / 2; // craft sits +X of the station; nose points -X, at it
     sim.craft.throttle = 0;
     sim.craft.chuteDeployed = false;
     sim.chuteOpen = false;
-    copilotSay("✨🛰 <b>250 meters from " + station.name + ", speeds matched.</b> Now the " +
-      "hardest flying in the book, in slow motion: tap the gentlest throttle toward it, " +
-      "coast, and arrive under 10 m/s" +
-      ((sim.craft.dockCount || 0) ? " — your docking port will do the rest." :
-        " — but heads up: you have <b>no Docking Port</b> aboard, so you can look but not latch.") );
+    if ((sim.craft.dockCount || 0) === 0) {
+      copilotSay("✨🛰 <b>Right alongside " + station.name + "!</b> Look at it out the " +
+        "window… but you have <b>no Docking Port</b> aboard, so the rings can't latch. " +
+        "Add one to your rocket and teleport back to hook on.");
+    }
+    // (With a port aboard, the dock latches on the next frame and announces itself.)
     return;
   }
   const park = Physics.parkingOrbit(key, sim.time || 0);
@@ -463,6 +465,9 @@ function arriveInSystem() {
   Render.setFlightView("follow");
   enterBuild();
 }
+
+// Debug handle for automated tests (agents drive the game headless with this).
+if (typeof window !== "undefined") window.__simRef = () => sim;
 
 // ---- boot ----
 Render.init(canvas);
@@ -921,7 +926,6 @@ function frame(t) {
     requestAnimationFrame(frame);
     return;
   }
-  updateStationsSim();         // stations orbit + docking checks ride every frame
 
   if (sim.mode === "flight" && sim.status !== "crashed") {
     applyControls(dt);
@@ -961,6 +965,11 @@ function frame(t) {
     }
     UI.renderStats(null, sim);
   }
+
+  // Stations AFTER the physics step: their drawn position must match the same
+  // instant as the craft's, or at time-warp the station visibly lags kilometers
+  // behind its true spot (his play-test report: "teleports you very far away").
+  updateStationsSim();
 
   Render.update(sim);
   updateBanner();

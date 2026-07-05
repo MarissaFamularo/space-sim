@@ -988,6 +988,16 @@ if (typeof window !== "undefined") {
                  px: (_v1.x * 0.5 + 0.5) * w, py: (-_v1.y * 0.5 + 0.5) * hgt };
       }),
       hasPick: !!galaxy.onPick,
+      stations: Object.keys(stationPool).map((id) => {
+        const e = stationPool[id];
+        _v1.copy(e.group.position).project(camera);
+        return { id, visible: e.group.visible, inScene: e.group.parent === scene,
+                 pos: [e.group.position.x, e.group.position.y, e.group.position.z],
+                 px: (_v1.x * 0.5 + 0.5) * (canvas ? canvas.clientWidth : 0),
+                 py: (-_v1.y * 0.5 + 0.5) * (canvas ? canvas.clientHeight : 0),
+                 z: _v1.z,
+                 children: e.group.children.length };
+      }),
     };
   };
   window.__pickGalaxy = (x, y) => pickGalaxyStar(x, y);
@@ -2589,6 +2599,7 @@ function makeStationMesh(abandoned) {
 function ensureStation(st) {
   if (stationPool[st.id]) return stationPool[st.id];
   const m = makeStationMesh(!!st.abandoned);
+  m.group.scale.setScalar(3.5); // stations DWARF capsules (the ISS is ~30 rockets wide)
   m.group.visible = false;
   scene.add(m.group);
   const dot = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6),
