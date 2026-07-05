@@ -3,7 +3,8 @@
 // and wires the copilot. Integrates physics.js + render.js + builder.js per the contract.
 
 import { PARTS } from "./mods.js";
-import { BODIES, newCraft, newSimState, computeStats, findPart, bodyStateAt } from "./state.js";
+import { BODIES, SYSTEM, isSol, setSystem, returnToSol, newCraft, newSimState, computeStats, findPart, bodyStateAt } from "./state.js";
+import { generateSystem } from "./stargen.js";
 import { Physics } from "./physics.js";
 import { Render } from "./render.js";
 import { Builder } from "./builder.js";
@@ -147,7 +148,7 @@ function launch() {
   assignCrew();
   mapView = false;
   announced = freshAnnounced();
-  announced.soi.Earth = true; // you start there; no callout for home
+  announced.soi[BODIES.earth.name] = true; // you start there; no callout for home
   loadStage(0);
   if (sim.crew) copilotSay("🐍 Commander <b>" + sim.crew.name + "</b> is aboard — helmet sealed, coils braced. Liftoff!");
   else copilotSay("🛰️ <b>Uncrewed launch</b> — no Connie aboard, the probe core is doing the flying. Real space programs send robots first, so nobody's ever in danger. Liftoff!");
@@ -246,7 +247,8 @@ function setTarget(key) {
   const b = BODIES[key];
   const fact = WORLD_FACTS[b.name] ? " " + WORLD_FACTS[b.name] : "";
   copilotSay("🎯 Target set: <b>" + b.name + "</b>." + fact +
-    (key === "moon" ? "" : " To get there: reach Earth orbit, burn prograde until you ESCAPE Earth into a Sun orbit, then wait for the gold Burn marker on the map."));
+    (key === "moon" ? "" : " To get there: reach " + BODIES.earth.name + " orbit, burn prograde until you ESCAPE " +
+      BODIES.earth.name + " into a " + BODIES.sun.name + " orbit, then wait for the gold Burn marker on the map."));
 }
 
 // ✨ Teleport: magic-jump straight into a low circular orbit around any world he picks.
@@ -284,7 +286,7 @@ function teleport(key) {
     sim.mode = "flight";
     assignCrew();
     announced = freshAnnounced();
-    announced.soi.Earth = true;
+    announced.soi[BODIES.earth.name] = true;
     loadStage(0);
     Builder.hide();
     Render.buildCraftMesh(craft);
@@ -309,7 +311,7 @@ function teleport(key) {
   // Tiny moons: you arrive parked in a MARS orbit alongside (their gravity can't hold an
   // orbit), so suppress the parent's SOI-entry coaching too.
   if (b.tinyMoon && BODIES[b.parent]) announced.soi[BODIES[b.parent].name] = true;
-  announced.soi.Sun = false;           // re-coach the escape when he leaves for home
+  announced.soi[BODIES.sun.name] = false; // re-coach the escape when he leaves for home
   announced.escapedEarth = false;
   announced.transferBurn = false;
   announced.courseCheck = false;
@@ -343,6 +345,51 @@ function copilotSay(txt) {
   log.appendChild(d); log.scrollTop = log.scrollHeight;
 }
 
+// ---- 🌌 Starmap travel: swap the active system, rebuild the world, back to the pad ----
+// The name IS the system (seeded generation) — see stargen.js. Sol is always home.
+const VISITED_KEY = "spacesim.visitedSystems.v1";
+function loadVisited() {
+  try { return JSON.parse(localStorage.getItem(VISITED_KEY)) || []; } catch { return []; }
+}
+function rememberVisit(sys) {
+  const list = loadVisited().filter((v) => v.seed.toLowerCase() !== sys.seed.toLowerCase());
+  list.unshift({ seed: sys.seed, star: sys.starLabel, planets: sys.planetCount });
+  try { localStorage.setItem(VISITED_KEY, JSON.stringify(list.slice(0, 12))); } catch {}
+}
+
+function travelToSystem(seed) {
+  const sys = generateSystem(seed);
+  setSystem(sys.bodies, sys.planetKeys, { key: sys.key, name: sys.name, seed: sys.seed });
+  rememberVisit(sys);
+  arriveInSystem();
+  const home = BODIES.earth;
+  copilotSay("🌌 <b>Welcome to the " + sys.name + " system!</b> Your ship is on the pad of <b>" +
+    sys.homeName + "</b> (gravity " + home.g0.toFixed(1) + " vs Earth's 9.8), under a " +
+    sys.starLabel + " with <b>" + sys.planetCount + " planets</b>. Your moon here is <b>" +
+    sys.moonName + "</b> — same trip as ever: orbit, burn prograde, time the arrival. " +
+    "Worlds close to the star are rock and lava; past the frost line it's gas and ice — " +
+    "that's real astronomy, and it's why this system looks the way it does. " +
+    "Tell a friend the name <b>" + sys.seed + "</b> and they'll find the exact same system!");
+}
+
+function travelHome() {
+  if (isSol()) { copilotSay("You're already home — this IS the Solar System. 🌍"); return; }
+  returnToSol();
+  arriveInSystem();
+  copilotSay("🏠 <b>Home again — the real Solar System.</b> Same Sun, same Earth, same Moon waiting.");
+}
+
+// Common arrival: fresh sim on the (new) homeworld's pad; the rocket comes with you.
+function arriveInSystem() {
+  Render.rebuildWorld();
+  UI.rebuildTargets();
+  sim = newSimState(BODIES.earth);
+  sim.target = "moon";
+  mapView = false;
+  Render.setFlightView("follow");
+  enterBuild();
+}
+
 // ---- boot ----
 Render.init(canvas);
 Builder.init({ craft, partsCatalog: PARTS, onChange: onCraftChange });
@@ -353,6 +400,9 @@ UI.init({
   onToggleArrow: (which, on) => Render.setArrow(which, on),
   onTargetChange: (key) => setTarget(key),
   onTeleport: (key) => teleport(key),
+  onStarmapTravel: (seed) => travelToSystem(seed),
+  onStarmapHome: () => travelHome(),
+  getVisitedSystems: () => loadVisited(),
 });
 wireCopilot();
 Copilot.initSettings();

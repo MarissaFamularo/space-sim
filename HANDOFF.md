@@ -74,6 +74,41 @@ friendly errors, localStorage persistence).
   session: speed/prograde/altitude readouts are now measured vs the dominant body (parked
   on the Moon reads 0 m/s, not the Moon's orbital speed).
 
+**New 2026-07-05 latest — 🌌 THE STARMAP: infinite seeded star systems (Phase A of the
+interstellar plan; Mom's ask: "a code so that no matter where he goes, a new system
+appears"). This is the project's FIRST revision to the frozen contract — see the new
+"active system" section in ARCHITECTURE.md before touching anything.**
+- **`js/stargen.js`** — pure seeded generator: any typed name → a deterministic star
+  system (star class M/K/G/F, planets on Titius–Bode-ish spacing, frost-line rules:
+  lava/desert/rock inside, gas/ice giants with moons + occasional rings outside).
+  **The name IS the share code** — same name, same system, on any computer, forever
+  (same trick as rocket share codes; tell a friend "Snakestar" and they fly YOUR system).
+- **Role keys, not names:** every system keys its star `"sun"`, its guaranteed-launchable
+  homeworld `"earth"` (solid, g0 7–11, chuteable air — property-TESTED across 250 seeds
+  in `tests/stargen_test.mjs`), and the homeworld's moon `"moon"` (placed at 35–55% of
+  the home's actual SOI — a red-dwarf home's SOI is small, fixed "60 radii like ours"
+  escaped it; that was a real generator bug the tests caught). So launches, TWR, transfer
+  windows, landings, teleports, satellites, and "fly home" all work UNCHANGED out there.
+- **Swap machinery:** `state.setSystem()` swaps BODIES/PLANET_KEYS in place (same object
+  identity), `SYSTEM.rev` invalidates caches (physics' body list), `returnToSol()`
+  restores a pristine snapshot exactly. `Render.rebuildWorld()` (new API) rebuilds all
+  body meshes/rings/dots; generated worlds get procedural faces from their stargen
+  `face` descriptor (seeded per system+body), stars tint their own glow by class.
+  NASA's Earth textures only load for the REAL Earth (`!b.gen`).
+- **UI:** 🌌 Starmap button (MODE panel) → name input + visited-systems list
+  (localStorage) + "Return to the Solar System". Target picker rebuilds per system
+  (home's moon first, planets outward, moons indented, home last). Planets use the real
+  exoplanet convention: "Snakestar b, c, d…" — the star itself is "a", teach him that!
+- **Navigator knows where it is:** game-state now carries `system` (generated flag, real
+  names, and a note telling it to teach generator astronomy — frost line, year lengths —
+  instead of claiming Apollo landed there). Arrival brief teaches the same + the share trick.
+- **Verified:** 162 node checks green (8 suites); browser end-to-end: Sol → "Snakestar"
+  → build + launch from "Hyven" (orange dwarf, 6 planets) → map view → teleport to
+  "Snakestar c" → Return to Sol, no console errors.
+- **Phase B (not built):** the honest travel mechanic — real solar escape, point at a
+  star, the clock pays the real decades. **Phase C:** hand him the generator's dials as
+  a modding rung. Both sketched in the 2026-07-05 planning chat with Mom.
+
 **New 2026-07-05 later — FANCIER ROCKET PARTS (Mom picked it from the tier list).
 All in render.js `makePartObject` + a `partMat` painted-texture block above it; parts.js
 data, physics, stacking, and the frozen APIs untouched. Every part still fits exactly

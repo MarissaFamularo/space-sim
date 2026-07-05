@@ -1,14 +1,25 @@
 // ui.js — PM-owned. Live readouts + mode/flight controls. Reads SimState + Stats.
 
-import { BODIES } from "./state.js";
+import { BODIES, PLANET_KEYS, SYSTEM } from "./state.js";
 
-// Destinations for the target picker, in trip-difficulty order. Moons of other planets
-// show indented under their planet (capture at the planet first, then hop to the moon).
-const TARGETS = ["moon", "mercury", "venus", "mars", "phobos", "deimos",
-  "jupiter", "io", "europa", "ganymede", "callisto",
-  "saturn", "titan", "uranus", "neptune", "pluto", "earth"];
-const MOON_OF = { phobos: "mars", deimos: "mars",
-  io: "jupiter", europa: "jupiter", ganymede: "jupiter", callisto: "jupiter", titan: "saturn" };
+// Destinations for the target picker, derived from the ACTIVE system (the Starmap can
+// swap it): home's moon first (the tutorial trip), then the other planets outward with
+// their moons indented under them (capture at the planet first, then hop), home last.
+function buildTargets() {
+  const targets = [], moonOf = {};
+  const planets = PLANET_KEYS.filter((k) => BODIES[k].parent === "sun")
+    .sort((a, b) => BODIES[a].orbitRadius - BODIES[b].orbitRadius);
+  const moonsOf = (p) => PLANET_KEYS.filter((k) => BODIES[k].parent === p)
+    .sort((a, b) => BODIES[a].orbitRadius - BODIES[b].orbitRadius);
+  for (const m of moonsOf("earth")) targets.push(m);
+  for (const p of planets) {
+    if (p === "earth") continue;
+    targets.push(p);
+    for (const m of moonsOf(p)) { targets.push(m); moonOf[m] = p; }
+  }
+  targets.push("earth");
+  return { targets, moonOf };
+}
 
 // Distances read better in the right unit: km up close, million-km across the system.
 function fmtDist(m) {
@@ -23,10 +34,12 @@ function fmtWarp(w) {
 
 export const UI = {
   els: {},
-  init({ onLaunch, onReset, onModeChange, onToggleMap, onToggleArrow, onTargetChange, onTeleport }) {
+  // handlers: onLaunch, onReset, onModeChange, onToggleMap, onToggleArrow,
+  // onTargetChange, onTeleport, onStarmapTravel, onStarmapHome, getVisitedSystems.
+  init(handlers) {
     this.els.readouts = document.getElementById("readout-list");
     this.els.controls = document.getElementById("control-list");
-    this.handlers = { onLaunch, onReset, onModeChange, onToggleMap, onToggleArrow, onTargetChange, onTeleport };
+    this.handlers = handlers;
     this._renderControls();
   },
   // Show flight-only controls in flight, hide them in build (keeps the MODE box short).
@@ -42,20 +55,22 @@ export const UI = {
     mk("🚀 Launch", () => this.handlers.onLaunch && this.handlers.onLaunch());
     mk("Reset", () => this.handlers.onReset && this.handlers.onReset());
 
+    // Which system are we in? (The Starmap changes this.)
+    const sysLabel = document.createElement("div");
+    this.els.sysLabel = sysLabel;
+    sysLabel.style.cssText = "font-size:11px;color:#9fb3da;margin:6px 0 0;";
+    sysLabel.textContent = "🌌 " + SYSTEM.name;
+    c.appendChild(sysLabel);
+
     // 🎯 Target picker + ✨ Teleport — visible in BOTH modes: pick a world, fly or jump.
     const targetRow = document.createElement("div");
     targetRow.style.cssText = "margin-top:8px;display:flex;align-items:center;gap:6px;font-size:12px;color:#9fb3da;";
     targetRow.appendChild(document.createTextNode("🎯"));
     const sel = document.createElement("select");
+    this.els.targetSel = sel;
     sel.style.cssText = "flex:1;background:#0a1020;color:#e8eefc;border:1px solid #24304d;" +
       "border-radius:5px;padding:3px 4px;font-size:12px;";
-    for (const key of TARGETS) {
-      const opt = document.createElement("option");
-      opt.value = key;
-      opt.textContent = (MOON_OF[key] ? "  · " : "") + BODIES[key].name + (key === "earth" ? " (home)" : "");
-      sel.appendChild(opt);
-    }
-    sel.value = "moon";
+    this.rebuildTargets();
     sel.onchange = () => this.handlers.onTargetChange && this.handlers.onTargetChange(sel.value);
     targetRow.appendChild(sel);
     c.appendChild(targetRow);
@@ -66,6 +81,14 @@ export const UI = {
     tpBtn.style.cssText = "margin-top:6px;width:100%;";
     tpBtn.onclick = () => this.handlers.onTeleport && this.handlers.onTeleport(sel.value);
     c.appendChild(tpBtn);
+
+    // 🌌 Starmap — type any name, get THAT star system. The name is the share code.
+    const smBtn = document.createElement("button");
+    smBtn.textContent = "🌌 Starmap";
+    smBtn.title = "Travel to another star system — any name you invent is a real system";
+    smBtn.style.cssText = "margin-top:6px;width:100%;";
+    smBtn.onclick = () => this._toggleStarmap();
+    c.appendChild(smBtn);
 
     // Flight-only controls — hidden in build mode.
     const fc = document.createElement("div");
@@ -117,6 +140,85 @@ export const UI = {
     soon.style.cssText = "font-size:10px;color:#7f8bb0;margin-top:3px;";
     c.appendChild(soon);
   },
+  // (Re)fill the target picker from the ACTIVE system — called after Starmap jumps.
+  rebuildTargets() {
+    const sel = this.els.targetSel;
+    if (!sel) return;
+    const { targets, moonOf } = buildTargets();
+    sel.innerHTML = "";
+    for (const key of targets) {
+      const opt = document.createElement("option");
+      opt.value = key;
+      opt.textContent = (moonOf[key] ? "  · " : "") + BODIES[key].name + (key === "earth" ? " (home)" : "");
+      sel.appendChild(opt);
+    }
+    sel.value = targets.includes("moon") ? "moon" : targets[0];
+    if (this.els.sysLabel) this.els.sysLabel.textContent = "🌌 " + SYSTEM.name;
+  },
+  currentTarget() { return this.els.targetSel ? this.els.targetSel.value : "moon"; },
+
+  _toggleStarmap() {
+    if (this.els.starmap) { this.els.starmap.remove(); this.els.starmap = null; return; }
+    const panel = document.createElement("div");
+    this.els.starmap = panel;
+    panel.className = "panel";
+    panel.style.cssText = "position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);" +
+      "width:320px;z-index:20;";
+    const h = document.createElement("h3");
+    h.textContent = "🌌 Starmap";
+    panel.appendChild(h);
+    const blurb = document.createElement("div");
+    blurb.style.cssText = "font-size:12px;color:#9fb3da;line-height:1.5;margin-bottom:8px;";
+    blurb.innerHTML = "Name a star — <i>any</i> name — and that system exists. The same " +
+      "name is always the same system, for everyone: names are share codes.";
+    panel.appendChild(blurb);
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:6px;";
+    const input = document.createElement("input");
+    input.placeholder = "Name a star… (e.g. Snakestar)";
+    input.style.cssText = "flex:1;background:#0a1020;border:1px solid #24304d;color:#e8eefc;" +
+      "border-radius:6px;padding:6px 8px;font-size:13px;";
+    const go = document.createElement("button");
+    go.textContent = "Fly!";
+    const fire = () => {
+      const v = input.value.trim();
+      if (!v) return;
+      this._toggleStarmap();
+      this.handlers.onStarmapTravel && this.handlers.onStarmapTravel(v);
+    };
+    go.onclick = fire;
+    input.onkeydown = (e) => { if (e.key === "Enter") fire(); };
+    row.appendChild(input); row.appendChild(go);
+    panel.appendChild(row);
+
+    const visited = (this.handlers.getVisitedSystems && this.handlers.getVisitedSystems()) || [];
+    if (visited.length) {
+      const vh = document.createElement("div");
+      vh.style.cssText = "font-size:11px;color:#9fb3da;margin:10px 0 4px;";
+      vh.textContent = "Places you've been:";
+      panel.appendChild(vh);
+      for (const v of visited.slice(0, 8)) {
+        const b = document.createElement("button");
+        b.textContent = "⭐ " + v.seed;
+        b.style.cssText = "display:block;width:100%;margin-top:4px;text-align:left;font-size:12px;";
+        b.onclick = () => { this._toggleStarmap(); this.handlers.onStarmapTravel && this.handlers.onStarmapTravel(v.seed); };
+        panel.appendChild(b);
+      }
+    }
+    const home = document.createElement("button");
+    home.textContent = "🏠 Return to the Solar System";
+    home.style.cssText = "margin-top:10px;width:100%;";
+    home.onclick = () => { this._toggleStarmap(); this.handlers.onStarmapHome && this.handlers.onStarmapHome(); };
+    panel.appendChild(home);
+    const close = document.createElement("button");
+    close.textContent = "✕ Close";
+    close.style.cssText = "margin-top:6px;width:100%;font-size:12px;";
+    close.onclick = () => this._toggleStarmap();
+    panel.appendChild(close);
+    document.getElementById("app").appendChild(panel);
+    input.focus();
+  },
+
   // stats: from computeStats (build mode). sim: SimState (flight mode).
   renderStats(stats, sim) {
     const row = (k, v) => `<div class="stat"><span>${k}</span><b>${v}</b></div>`;

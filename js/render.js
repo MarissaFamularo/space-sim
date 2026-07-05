@@ -15,7 +15,7 @@ import { EffectComposer } from "../vendor/postprocessing/EffectComposer.js";
 import { RenderPass } from "../vendor/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "../vendor/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "../vendor/postprocessing/OutputPass.js";
-import { BODIES, PLANET_KEYS, bodyStateAt, dominantBody } from "./state.js";
+import { BODIES, PLANET_KEYS, SYSTEM, bodyStateAt, dominantBody } from "./state.js";
 import { PARTS } from "./mods.js"; // merged catalog: stock + the kid's mods
 import { Physics } from "./physics.js"; // pure math only (satellite propagation)
 
@@ -29,7 +29,7 @@ let composer = null;      // post chain: render -> bloom -> tone map/sRGB (Outpu
 // the Sun, engine plumes, reentry plasma, city lights. Normal surfaces never bloom.
 const BLOOM = { strength: 0.55, radius: 0.4, threshold: 1.0 };
 
-const ALL_KEYS = ["sun", ...PLANET_KEYS];
+let ALL_KEYS = ["sun", ...PLANET_KEYS]; // recomputed by buildWorldObjects on system swap
 let bodyGroups = {};       // key -> THREE.Group (planet mesh + halo + rings), positioned per frame
 let orbitRings = {};       // key -> LineLoop around its parent (positioned at parent per frame)
 let mapDots = {};          // key -> { dot, label } markers for map view
@@ -74,9 +74,6 @@ let mode = "build";        // "build" | "flight"
 
 // Floating origin (world coords, float64). All scene positions subtract this.
 const ORIGIN = { x: 0, y: 0 };
-const EARTH = BODIES.earth;
-const R = EARTH.radius;
-
 // Per-body looks: color, optional stripes (gas bands), rings, atmosphere halo color.
 const BODY_STYLE = {
   sun:     { color: 0xffd75e, star: true },
@@ -98,6 +95,13 @@ const BODY_STYLE = {
   uranus:  { color: 0x9ad4d6, halo: 0x9ad4d6 },
   neptune: { color: 0x3f66d4, halo: 0x5f86e4 },
 };
+
+// Style lookup: generated bodies carry their own style (from stargen); Sol bodies
+// use the hand-tuned BODY_STYLE table above; anything else gets a gray fallback.
+function styleFor(key) {
+  const b = BODIES[key];
+  return (b && b.style) || BODY_STYLE[key] || { color: 0x999999 };
+}
 
 // ---- Simple mouse-drag orbit camera for build mode ----
 const buildCam = {
@@ -201,7 +205,7 @@ function makePlanetCanvas(key) {
   const cv = document.createElement("canvas");
   cv.width = W; cv.height = H;
   const ctx = cv.getContext("2d");
-  const rng = mulberry32(hashStr(key));
+  const rng = mulberry32(hashStr((BODIES[key] && BODIES[key].gen ? SYSTEM.key + "/" : "") + key));
   const fill = (c) => { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); };
   // Blobby landmass / patch: a random walk of overlapping circles (wraps horizontally).
   const blob = (cx, cy, r, color, n = 26, alpha = 1) => {
@@ -378,7 +382,80 @@ function makePlanetCanvas(key) {
       break;
     }
     case "deimos": { fill("#9d9186"); craters(50, "#756b60", "#c2b6a8", 6); break; }
-    default: return null;
+    default: {
+      // Generated worlds: painted from their stargen `face` descriptor with the same
+      // brushes the Sol planets use. Seeded per system + body: same face every visit.
+      const face = BODIES[key] && BODIES[key].face;
+      if (!face) return null;
+      switch (face.kind) {
+        case "terra": {
+          fill(face.base);
+          for (let i = 0; i < 6; i++) blob(rng() * W, H * (0.15 + rng() * 0.65), 22 + rng() * 16, face.accent, 28);
+          for (let i = 0; i < 4; i++) blob(rng() * W, H * (0.3 + rng() * 0.4), 12, face.accent2, 14, 0.8);
+          caps("#eef4ff", 0.06 + rng() * 0.08);
+          streaks(["#ffffff"], 26 + Math.floor(rng() * 14), 160, 8);
+          break;
+        }
+        case "lava": {
+          fill(face.base);
+          streaks([face.accent, face.accent2], 42, 140, 3, 24); // glowing rivers
+          for (let i = 0; i < 18; i++) {
+            const x = rng() * W, y = H * (0.1 + rng() * 0.8), r = 2 + rng() * 7;
+            ctx.fillStyle = face.accent; ctx.globalAlpha = 0.9;
+            ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = 1;
+          }
+          craters(30, "#241010", face.accent, 6);
+          break;
+        }
+        case "desert": {
+          fill(face.base);
+          streaks([face.accent, face.accent2], 34, 240, 10, 8);
+          for (let i = 0; i < 4; i++) blob(rng() * W, H * (0.25 + rng() * 0.5), 16, face.accent, 18, 0.5);
+          if (rng() > 0.5) caps("#f0e8e0", 0.05);
+          craters(25, face.accent, face.accent2, 5);
+          break;
+        }
+        case "ice": {
+          fill(face.base);
+          for (let i = 0; i < 26; i++) { // cracked shell, europa-style
+            ctx.strokeStyle = face.accent2; ctx.globalAlpha = 0.3 + rng() * 0.3;
+            ctx.lineWidth = 0.8 + rng() * 1.6;
+            const x0 = rng() * W, y0 = rng() * H;
+            ctx.beginPath(); ctx.moveTo(x0, y0);
+            ctx.bezierCurveTo(x0 + (rng() - 0.5) * 300, y0 + (rng() - 0.5) * 120,
+                              x0 + (rng() - 0.5) * 300, y0 + (rng() - 0.5) * 120,
+                              x0 + (rng() - 0.5) * 420, y0 + (rng() - 0.5) * 160);
+            ctx.stroke();
+          }
+          ctx.globalAlpha = 1;
+          blob(rng() * W, H * (0.3 + rng() * 0.4), 20, face.accent, 20, 0.4);
+          break;
+        }
+        case "gas":
+        case "gasish": {
+          const palette = face.bands || [face.base, face.accent, face.accent2];
+          bands(palette, 3 + rng() * 4);
+          streaks(palette, 24, 280, 9, 6);
+          if (face.spot) { // every giant deserves its Great Spot
+            ctx.fillStyle = palette[palette.length - 1]; ctx.globalAlpha = 0.85;
+            ctx.beginPath();
+            ctx.ellipse(W * (0.2 + rng() * 0.6), H * (0.3 + rng() * 0.4),
+                        18 + rng() * 14, 9 + rng() * 7, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          }
+          break;
+        }
+        default: { // rocky, and anything stargen invents later
+          fill(face.base);
+          for (let i = 0; i < 5; i++) blob(rng() * W, H * (0.2 + rng() * 0.6), 20, face.accent, 20, 0.7);
+          craters(70 + Math.floor(rng() * 60), face.accent, face.accent2, 8);
+          break;
+        }
+      }
+      break;
+    }
   }
   return cv;
 }
@@ -394,7 +471,8 @@ function refinePlanetCanvas(cv, key) {
   ctx.drawImage(cv, 0, 0, W, H);
 
   // Gas/cloud worlds get a whisper of mottling; rocky worlds get real texture.
-  const gassy = ["jupiter", "saturn", "uranus", "neptune", "venus", "titan"].includes(key);
+  const gassy = ["jupiter", "saturn", "uranus", "neptune", "venus", "titan"].includes(key) ||
+    !!(BODIES[key] && BODIES[key].face && /gas/.test(BODIES[key].face.kind));
   const amp = gassy ? 0.07 : 0.16;
 
   const rng = mulberry32(hashStr(key + "-detail"));
@@ -504,9 +582,8 @@ function init(canvasEl) {
     BLOOM.strength, BLOOM.radius, BLOOM.threshold));
   composer.addPass(new OutputPass());
 
-  // Build every body: the Sun, the planets, the Moon.
-  for (const key of ALL_KEYS) bodyGroups[key] = makeBodyGroup(key);
-  for (const key of PLANET_KEYS) orbitRings[key] = makeOrbitRing(key);
+  // Build every body: the star, the planets, the moons.
+  buildWorldObjects();
 
   // Simple launchpad (build mode).
   launchpad = makeLaunchpad();
@@ -595,21 +672,6 @@ function init(canvasEl) {
   mapMarker.visible = false;
   scene.add(mapMarker);
 
-  // Map dots + name labels for every body (the real spheres are sub-pixel at system zoom).
-  for (const key of ALL_KEYS) {
-    const style = BODY_STYLE[key];
-    const dot = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 16, 12),
-      new THREE.MeshBasicMaterial({ color: style.color })
-    );
-    dot.frustumCulled = false;
-    dot.visible = false;
-    scene.add(dot);
-    const label = makeTextSprite(BODIES[key].name, "#" + style.color.toString(16).padStart(6, "0"));
-    scene.add(label);
-    mapDots[key] = { dot, label };
-  }
-
   // Direction arrows.
   const UP = new THREE.Vector3(0, 1, 0);
   progradeArrow = new THREE.ArrowHelper(UP, new THREE.Vector3(), 1, 0x6effa0, 0.35, 0.25);
@@ -625,11 +687,70 @@ function init(canvasEl) {
   attachBuildControls();
 }
 
+// =====================================================================
+// World (re)building — the active system's meshes. Called at init, and again by
+// Render.rebuildWorld() after a Starmap jump swaps the BODIES catalog in place.
+// =====================================================================
+function buildWorldObjects() {
+  ALL_KEYS = ["sun", ...PLANET_KEYS];
+  for (const key of ALL_KEYS) bodyGroups[key] = makeBodyGroup(key);
+  for (const key of PLANET_KEYS) orbitRings[key] = makeOrbitRing(key);
+  // Map dots + name labels for every body (the real spheres are sub-pixel at system zoom).
+  for (const key of ALL_KEYS) {
+    const style = styleFor(key);
+    const dot = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 16, 12),
+      new THREE.MeshBasicMaterial({ color: style.color })
+    );
+    dot.frustumCulled = false;
+    dot.visible = false;
+    scene.add(dot);
+    const label = makeTextSprite(BODIES[key].name, "#" + new THREE.Color(style.color).getHexString());
+    scene.add(label);
+    mapDots[key] = { dot, label };
+  }
+}
+
+function disposeWorldObject(obj) {
+  scene.remove(obj);
+  obj.traverse((o) => {
+    if (o.geometry) o.geometry.dispose();
+    const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of mats) {
+      for (const slot of ["map", "emissiveMap", "alphaMap"]) if (m[slot]) m[slot].dispose();
+      m.dispose();
+    }
+  });
+}
+
+function rebuildWorld() {
+  if (!scene) return;
+  for (const key of Object.keys(bodyGroups)) disposeWorldObject(bodyGroups[key]);
+  for (const key of Object.keys(orbitRings)) disposeWorldObject(orbitRings[key]);
+  for (const key of Object.keys(mapDots)) {
+    disposeWorldObject(mapDots[key].dot);
+    disposeWorldObject(mapDots[key].label);
+  }
+  bodyGroups = {}; orbitRings = {}; mapDots = {};
+  // Face/ground textures are per-system ("earth" is a different world out there).
+  for (const k of Object.keys(_texCache)) delete _texCache[k];
+  for (const k of Object.keys(_groundTexCache)) delete _groundTexCache[k];
+  if (groundPatch) {
+    scene.remove(groundPatch);
+    groundPatch.geometry.dispose();
+    groundPatch.material.dispose();
+    groundPatch = null; groundPatchKey = null;
+  }
+  earthClouds = null;          // died with its planet's group
+  mapBase = 0; mapFrame = 0;   // the map auto-fit re-learns the new system's scale
+  buildWorldObjects();
+}
+
 // One body: sphere (+ stripes for gas giants), optional atmosphere halo, optional rings.
 // Group positioned per frame at bodyStateAt(key) - ORIGIN. Hidden in build mode.
 function makeBodyGroup(key) {
   const b = BODIES[key];
-  const style = BODY_STYLE[key];
+  const style = styleFor(key);
   const g = new THREE.Group();
 
   const detail = key === "earth" ? [96, 64] : [48, 32];
@@ -638,7 +759,9 @@ function makeBodyGroup(key) {
   if (style.star) {
     // The Sun glows by itself — it IS the light source. Color pushed past white (HDR)
     // so the bloom pass flares it into something you squint at, like the real thing.
-    mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xfff0c0).multiplyScalar(2.5) });
+    mat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(style.color).lerp(new THREE.Color(0xffffff), 0.45).multiplyScalar(2.5),
+    });
   } else if (tex) {
     // Painted face; emissiveMap = same texture so the night side shows it dimly
     // (flat-color emissive would wash the detail out).
@@ -658,7 +781,7 @@ function makeBodyGroup(key) {
   // Earth gets the real thing: NASA Blue Marble day map, city lights at night, and a
   // slowly drifting cloud shell. Loads async; if the files are missing (someone zipped
   // just the js/), the painted canvas face above stays — graceful either way.
-  if (key === "earth") loadEarthTextures(mat, g, b);
+  if (key === "earth" && !b.gen) loadEarthTextures(mat, g, b);
 
   if (style.star) {
     // Soft additive glow sprite so the Sun reads as blinding, not a yellow ball.
@@ -666,9 +789,10 @@ function makeBodyGroup(key) {
     cv.width = cv.height = 128;
     const ctx = cv.getContext("2d");
     const grad = ctx.createRadialGradient(64, 64, 8, 64, 64, 64);
-    grad.addColorStop(0, "rgba(255,235,170,0.9)");
-    grad.addColorStop(0.4, "rgba(255,200,90,0.35)");
-    grad.addColorStop(1, "rgba(255,180,60,0)");
+    const glowRgb = style.glow || "255,215,94"; // star-class tint (red dwarfs glow red)
+    grad.addColorStop(0, "rgba(255,240,208,0.9)");
+    grad.addColorStop(0.4, `rgba(${glowRgb},0.35)`);
+    grad.addColorStop(1, `rgba(${glowRgb},0)`);
     ctx.fillStyle = grad; ctx.fillRect(0, 0, 128, 128);
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: new THREE.CanvasTexture(cv), blending: THREE.AdditiveBlending,
@@ -1895,7 +2019,7 @@ function groundTexture(key) {
   cv.width = cv.height = 256;
   const ctx = cv.getContext("2d");
   const rng = mulberry32(hashStr(key + "-ground"));
-  const style = BODY_STYLE[key] || { color: 0x888888 };
+  const style = styleFor(key);
   const base = new THREE.Color(style.color).multiplyScalar(0.82);
   ctx.fillStyle = "#" + base.getHexString();
   ctx.fillRect(0, 0, 256, 256);
@@ -1970,7 +2094,7 @@ function updateSurfaceExtras(sim, dom) {
       const Rb = dom.body.radius;
       const cx = dom.center.x - ORIGIN.x, cy = dom.center.y - ORIGIN.y;
       const phi = Math.atan2(dom.rel.y, dom.rel.x);
-      const style = BODY_STYLE[dom.body.key];
+      const style = styleFor(dom.body.key);
       if (style) rockField.material.color.set(style.color).multiplyScalar(0.55);
       rockField.material.emissive.copy(rockField.material.color);
       const bodySeed = hashStr(dom.body.key);
@@ -2280,7 +2404,7 @@ function updateOrbitLine(sim) {
     if (peMarker) peMarker.visible = false;
     return;
   }
-  const bodyR = o.bodyRadius || R;
+  const bodyR = o.bodyRadius || BODIES.earth.radius;
   // Focus (body center) in SCENE coords: world minus the floating origin.
   const fx = (o.center ? o.center.x : 0) - ORIGIN.x;
   const fy = (o.center ? o.center.y : 0) - ORIGIN.y;
@@ -2488,6 +2612,7 @@ function debug() {
 // =====================================================================
 export const Render = Object.freeze({
   init,
+  rebuildWorld,
   buildCraftMesh,
   setMode,
   update,

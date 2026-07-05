@@ -17,7 +17,7 @@
 //   If either is missing/zero, step() runs gravity-only (coast).
 //   Fuel is tracked as sim.craft.fuelRemaining (t); at 0, thrust is forced to 0.
 
-import { BODIES, PLANET_KEYS, bodyStateAt, dominantBody } from "./state.js";
+import { BODIES, PLANET_KEYS, SYSTEM, bodyStateAt, dominantBody } from "./state.js";
 
 // --- small vector helpers (plain {x,y}) ---
 function mag(v) { return Math.hypot(v.x, v.y); }
@@ -40,8 +40,17 @@ const HEAT_TAU = 4;       // seconds to relax toward equilibrium (up and down)
 const CHUTE_CDA = 1200;      // m^2 effective drag area per parachute
 const CHUTE_MAX_SPEED = 250; // m/s (relative to the air) — faster and it streams uselessly
 
-// All body keys including the Sun, for gravity + collision sweeps.
-const ALL_KEYS = ["sun", ...PLANET_KEYS];
+// All body keys including the star, for gravity + collision sweeps. PLANET_KEYS is
+// swapped in place when a Starmap jump changes the active system, so the flat list is
+// re-derived whenever SYSTEM.rev moves (cached: this feeds the hot integrator loop).
+let _allKeys = null, _allKeysRev = -1;
+function allKeys() {
+  if (_allKeysRev !== SYSTEM.rev) {
+    _allKeys = ["sun", ...PLANET_KEYS];
+    _allKeysRev = SYSTEM.rev;
+  }
+  return _allKeys;
+}
 
 // Heading unit vector for a given angle (0 = +Y, CCW positive).
 function headingVec(angle) {
@@ -70,7 +79,7 @@ function airDensity(altitude, atmosphere) {
 // gravity, air, and collision checks. [{key, body, pos, vel}]
 function allBodyStates(t) {
   const out = [];
-  for (const key of ALL_KEYS) {
+  for (const key of allKeys()) {
     const st = bodyStateAt(key, t);
     out.push({ key, body: BODIES[key], pos: st.pos, vel: st.vel });
   }

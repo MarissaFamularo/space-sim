@@ -50,20 +50,19 @@ const REAL = {
   pluto:   { radius: 1.1883e6, g0: 0.62,  parent: "sun",   a: 5.9064e12, solid: true,  atmo: null, phase0: 2.9 },
 };
 
-// Build the scaled BODIES table. Two passes: parents before children (sun -> planets -> moon)
-// so omega and SOI can read the parent's mu.
-function buildBodies(scale) {
+// Build a scaled BODIES table from REAL-style defs. Parents must come before children
+// in `order` so omega and SOI can read the parent's mu. Exported so the star-system
+// generator (stargen.js) uses THE SAME math — one source of truth for mu/omega/SOI.
+// Extra def fields the generator uses: name (display), style/face (render hints), gen.
+export function buildCatalog(defs, order, scale = SCALE) {
   const out = {};
-  const order = ["sun", "mercury", "venus", "earth", "moon", "mars", "phobos", "deimos",
-                 "jupiter", "io", "europa", "ganymede", "callisto",
-                 "saturn", "titan", "uranus", "neptune", "pluto"];
   for (const key of order) {
-    const d = REAL[key];
+    const d = defs[key];
     const radius = d.radius * scale;
     const mu = d.g0 * radius * radius; // keep REAL surface gravity; size sets mu
     const body = {
       key,
-      name: key[0].toUpperCase() + key.slice(1),
+      name: d.name || key[0].toUpperCase() + key.slice(1),
       radius, mu, g0: d.g0, mass: mu / G,
       solid: d.solid,
       atmosphere: d.atmo ? { height: d.atmo.height * scale, seaLevelDensity: d.atmo.seaLevelDensity } : null,
@@ -72,6 +71,9 @@ function buildBodies(scale) {
       phase0: d.phase0,
       omega: 0, soiRadius: 0,
     };
+    if (d.style) body.style = d.style;
+    if (d.face) body.face = d.face;
+    if (d.gen) body.gen = true;
     if (d.parent) {
       const p = out[d.parent];
       body.omega = Math.sqrt(p.mu / (body.orbitRadius ** 3)); // circular two-body rate, CCW
@@ -90,11 +92,48 @@ function buildBodies(scale) {
   return out;
 }
 
-export const BODIES = buildBodies(SCALE);
+const SOL_ORDER = ["sun", "mercury", "venus", "earth", "moon", "mars", "phobos", "deimos",
+                   "jupiter", "io", "europa", "ganymede", "callisto",
+                   "saturn", "titan", "uranus", "neptune", "pluto"];
 
-// Every body except the Sun, ordered for target pickers / map labels.
+// THE ACTIVE SYSTEM. BODIES and PLANET_KEYS are swapped IN PLACE by setSystem() so
+// every module's existing `import { BODIES }` keeps working — same object identity,
+// new contents. The star is ALWAYS keyed "sun", the homeworld (launch pad, TWR
+// reference, "fly home" logic) is ALWAYS keyed "earth", and the homeworld's first
+// moon is ALWAYS keyed "moon" (the transfer tutorial works in every system). Display
+// names differ; keys are stable roles, not names.
+export const BODIES = buildCatalog(REAL, SOL_ORDER);
+
+// Every body except the star, ordered for target pickers / map labels.
 export const PLANET_KEYS = ["mercury", "venus", "earth", "moon", "mars", "phobos", "deimos",
   "jupiter", "io", "europa", "ganymede", "callisto", "saturn", "titan", "uranus", "neptune", "pluto"];
+
+// Active-system metadata. `rev` bumps on every swap — modules that cache anything
+// derived from BODIES/PLANET_KEYS (physics' body list, render's world meshes) key
+// their cache on it.
+export const SYSTEM = { key: "sol", name: "The Solar System", seed: null, rev: 0 };
+
+// Pristine Sol snapshot for returnToSol() — deep-copied so no one can mutate it.
+const SOL_SNAPSHOT = JSON.parse(JSON.stringify(BODIES));
+const SOL_KEYS = [...PLANET_KEYS];
+
+export function setSystem(catalog, planetKeys, meta = {}) {
+  for (const k of Object.keys(BODIES)) delete BODIES[k];
+  for (const k of Object.keys(catalog)) BODIES[k] = catalog[k];
+  PLANET_KEYS.length = 0;
+  PLANET_KEYS.push(...planetKeys);
+  SYSTEM.key = meta.key || "custom";
+  SYSTEM.name = meta.name || "Unknown System";
+  SYSTEM.seed = meta.seed ?? null;
+  SYSTEM.rev++;
+}
+
+export function returnToSol() {
+  setSystem(JSON.parse(JSON.stringify(SOL_SNAPSHOT)), SOL_KEYS,
+    { key: "sol", name: "The Solar System", seed: null });
+}
+
+export function isSol() { return SYSTEM.key === "sol"; }
 
 // World (Sun-centered) position/velocity of a body's CENTER at sim time t (seconds).
 // Recursive through the parent chain: Moon = Earth's state + Moon's circle around Earth.

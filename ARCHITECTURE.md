@@ -158,6 +158,32 @@ parent chain). `PLANET_KEYS` lists every body except the Sun.
 
 ---
 
+## The active system (CONTRACT REVISION 2026-07-05 — the Starmap)
+
+The world is no longer always Sol. `state.js` still exports `BODIES` and `PLANET_KEYS`,
+but they describe the ACTIVE system and are swapped **in place** (same object/array
+identity — every module's existing import keeps working) by:
+
+```js
+setSystem(catalog, planetKeys, meta)  // swap in a generated system (stargen.generateSystem)
+returnToSol()                         // restore the pristine Sol snapshot exactly
+SYSTEM                                // { key, name, seed, rev } — rev++ on every swap;
+                                      //   cache anything derived from BODIES keyed on rev
+isSol()                               // is the active system the real one?
+buildCatalog(defs, order, scale?)     // the one mu/omega/SOI builder (Sol AND stargen use it)
+```
+
+**Role keys are stable across every system:** the star is ALWAYS keyed `"sun"`, the
+homeworld (pad, TWR reference, "fly home") is ALWAYS keyed `"earth"`, and the homeworld's
+guaranteed moon is ALWAYS keyed `"moon"`. Display names differ (`BODIES.earth.name` might
+be "Hyven"); NEVER show a hardcoded "Earth"/"Sun" string — read `.name`. `stargen.js`
+guarantees every generated home is launchable (solid, g0 7–11, chute-worthy air) and every
+generated system passes the flyability property tests in `tests/stargen_test.mjs`.
+
+After a swap the sim must be rebuilt (`newSimState`), the render world rebuilt
+(`Render.rebuildWorld()`), and the target picker refilled (`UI.rebuildTargets()`) —
+`main.js arriveInSystem()` is the one place that does this dance.
+
 ## Module APIs (frozen — build to these exactly)
 
 ### physics.js — `export const Physics`
@@ -192,6 +218,9 @@ exported `Physics._selfTest()` that logs a known circular-orbit check. Keep it d
 Owns ALL Three.js. Builder and main call these; they never touch Three directly.
 ```js
 Render.init(canvasEl)                       // set up scene, camera, lights, starfield, Earth sphere.
+Render.rebuildWorld()                       // CONTRACT REVISION 2026-07-05 (Starmap): dispose + rebuild
+                                            //   every body mesh/orbit ring/map dot from the ACTIVE
+                                            //   BODIES catalog. Call after state.setSystem()/returnToSol().
 Render.buildCraftMesh(craft)                // (re)build the rocket mesh from parts (bottom→top stack).
                                             //   returns nothing; stores internally. Call on any craft change.
 Render.setMode("build"|"flight")            // build: orbit-camera around craft on a launchpad.

@@ -8,7 +8,7 @@
 // fine for a local, single-machine prototype on localhost. If this is ever shared or put
 // online, move the key to a small server proxy so the browser never holds it.
 
-import { BODIES } from "./state.js";
+import { BODIES, SYSTEM as ACTIVE_SYSTEM, isSol } from "./state.js";
 import { modsSummary } from "./mods.js"; // which parts he's modded/made — for the coding-mentor
 
 const API_URL = "https://api.anthropic.com/v1/messages";
@@ -142,6 +142,17 @@ export const Copilot = {
       const mods = modsSummary();
       if (mods.length) s.mods = mods;
     } catch { /* never let a mods hiccup break the Navigator */ }
+    // Which star system are we in? The Starmap generates new ones (seeded by name,
+    // shareable like a rocket code) — the Navigator must not claim Apollo landed HERE.
+    s.system = isSol()
+      ? { name: "The Solar System", generated: false }
+      : {
+          name: ACTIVE_SYSTEM.name, generated: true, seed: ACTIVE_SYSTEM.seed,
+          star: BODIES.sun.name, homeWorld: BODIES.earth.name, homeMoon: BODIES.moon.name,
+          note: "a PROCEDURALLY GENERATED system — seeded by its name, so the same name is the same system for everyone (shareable like a rocket code). The keys 'earth'/'moon' in this state are ROLES: the home world here is really called " +
+            BODIES.earth.name + " and its moon " + BODIES.moon.name +
+            ". Real-mission facts (Apollo, Voyager…) belong to the real Solar System only. HERE, teach the generator's real astronomy instead: rocky/lava worlds near the star, gas and ice past the frost line, closer orbits mean faster years.",
+        };
     // This world's REAL numbers (not the real Earth) — so the Navigator gives game-true advice.
     if (sim.body && sim.body.mu) {
       const atmoTop = (sim.body.atmosphere && sim.body.atmosphere.height) || 0;
