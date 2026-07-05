@@ -74,6 +74,7 @@ export function buildCatalog(defs, order, scale = SCALE) {
     if (d.style) body.style = d.style;
     if (d.face) body.face = d.face;
     if (d.gen) body.gen = true;
+    if (d.blackHole) body.blackHole = true;
     if (d.parent) {
       const p = out[d.parent];
       body.omega = Math.sqrt(p.mu / (body.orbitRadius ** 3)); // circular two-body rate, CCW

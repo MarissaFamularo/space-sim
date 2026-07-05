@@ -74,6 +74,26 @@ friendly errors, localStorage persistence).
   session: speed/prograde/altitude readouts are now measured vs the dominant body (parked
   on the Moon reads 0 m/s, not the Moon's orbital speed).
 
+**New 2026-07-05 latest+1 — ⚫ SURPRISE BLACK HOLES (his ask, via Mom).**
+- ~7% of Starmap names (deterministic roll in stargen) get a BLACK HOLE instead of a
+  star; any name containing "blackhole" summons one on purpose (undocumented in-game —
+  let him discover it, or let the Navigator hint). `sys.blackHole` / `BODIES.sun.blackHole`.
+- Real where it counts: sized by the actual Schwarzschild radius (~3 km per solar mass,
+  6–30 solar masses), planets orbit it like any star (gravity only cares about mass —
+  that's the lesson), habitable zone pinned near 1 AU (lit by the DISK, not the hole —
+  black holes emit nothing). Home is still guaranteed launchable; all flyability
+  property tests cover BH systems too (25/400 random seeds roll one).
+- Render (`addBlackHoleDressing`): truly-black sphere, big painted accretion disk
+  (additive, HDR so it blooms, spiral lanes carved out, spun by game time in
+  updateFlight), photon ring for close approaches, violet map-dot accent; BH systems
+  get a dimmer colder key light ("lit by the disk"). NOTE: agent-verified error-free +
+  all mechanics browser-tested, but a proper beauty shot of the disk at the right map
+  zoom wasn't captured — check it looks right in real play; disk look lives in one
+  function if it needs taste adjustments.
+- Flying in = "⚫ CROSSED THE EVENT HORIZON" (not "melted"), with the Navigator teaching
+  one-way-ness + that orbiting is perfectly safe; arrival brief rewritten for BH systems;
+  Navigator game-state knows (incl. "time dilation is real, we don't simulate it (yet)").
+
 **New 2026-07-05 latest — 🌌 THE STARMAP: infinite seeded star systems (Phase A of the
 interstellar plan; Mom's ask: "a code so that no matter where he goes, a new system
 appears"). This is the project's FIRST revision to the frozen contract — see the new

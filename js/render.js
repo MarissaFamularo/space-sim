@@ -56,6 +56,7 @@ let craftGroup = null;
 let craftHeight = 0;
 
 let earthClouds = null;    // drifting cloud shell (child of Earth's group, async-loaded)
+let bhDisk = null;         // black hole accretion disk (spun in updateFlight)
 
 // Engine exhaust plume: rebuilt with the craft mesh, rides the stack's bottom.
 let plume = null;          // { group, core, outer, glow, light, points, pdata, r }
@@ -693,6 +694,13 @@ function init(canvasEl) {
 // =====================================================================
 function buildWorldObjects() {
   ALL_KEYS = ["sun", ...PLANET_KEYS];
+  bhDisk = null; // re-created by makeBodyGroup if this system has one
+  // Black hole systems are lit by the accretion disk: dimmer, colder key light.
+  if (sunLight) {
+    const bh = !!(BODIES.sun && BODIES.sun.blackHole);
+    sunLight.intensity = bh ? 1.15 : 2.0;
+    sunLight.color.set(bh ? 0xd8e2ff : 0xffffff);
+  }
   for (const key of ALL_KEYS) bodyGroups[key] = makeBodyGroup(key);
   for (const key of PLANET_KEYS) orbitRings[key] = makeOrbitRing(key);
   // Map dots + name labels for every body (the real spheres are sub-pixel at system zoom).
@@ -755,8 +763,12 @@ function makeBodyGroup(key) {
 
   const detail = key === "earth" ? [96, 64] : [48, 32];
   let mat;
-  const tex = style.star ? null : planetTexture(key);
-  if (style.star) {
+  const tex = (style.star || b.blackHole) ? null : planetTexture(key);
+  if (b.blackHole) {
+    // A black hole is the one thing here that is TRULY black — no light, no texture,
+    // no tone mapping. Just a hole in the starfield. Everything you "see" is the disk.
+    mat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+  } else if (style.star) {
     // The Sun glows by itself — it IS the light source. Color pushed past white (HDR)
     // so the bloom pass flares it into something you squint at, like the real thing.
     mat = new THREE.MeshBasicMaterial({
@@ -783,7 +795,9 @@ function makeBodyGroup(key) {
   // just the js/), the painted canvas face above stays — graceful either way.
   if (key === "earth" && !b.gen) loadEarthTextures(mat, g, b);
 
-  if (style.star) {
+  if (b.blackHole) {
+    addBlackHoleDressing(g, b);
+  } else if (style.star) {
     // Soft additive glow sprite so the Sun reads as blinding, not a yellow ball.
     const cv = document.createElement("canvas");
     cv.width = cv.height = 128;
@@ -895,6 +909,77 @@ function ringTexture() {
   _ringTex = new THREE.CanvasTexture(cv);
   _ringTex.colorSpace = THREE.SRGBColorSpace;
   return _ringTex;
+}
+
+// Black hole dressing: the spinning accretion disk (drawn far larger than the hole,
+// like every real black-hole picture — the M87 photo is all disk), a photon ring for
+// anyone brave enough to fly close, and a cool glow. HDR colors so the bloom flares it.
+function addBlackHoleDressing(g, b) {
+  // Disk size: readable from the innermost planet, not physical scale.
+  let aMin = Infinity;
+  for (const k of PLANET_KEYS) {
+    if (BODIES[k].parent === "sun") aMin = Math.min(aMin, BODIES[k].orbitRadius);
+  }
+  const outer = Math.max(b.radius * 300, isFinite(aMin) ? aMin * 0.035 : b.radius * 5000);
+
+  // Painted disk: white-hot inner edge cooling to deep orange-violet, with spiral
+  // streaks so the spin reads. Planar UVs on RingGeometry map it like a picture.
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 256;
+  const ctx = cv.getContext("2d");
+  const rng = mulberry32(hashStr("bh-disk"));
+  const grad = ctx.createRadialGradient(128, 128, 24, 128, 128, 128);
+  grad.addColorStop(0.0, "rgba(255,250,235,0.95)");
+  grad.addColorStop(0.25, "rgba(255,190,110,0.8)");
+  grad.addColorStop(0.6, "rgba(220,110,60,0.45)");
+  grad.addColorStop(0.85, "rgba(150,90,160,0.18)");
+  grad.addColorStop(1.0, "rgba(120,80,180,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 256);
+  ctx.globalCompositeOperation = "destination-out"; // carve dark spiral lanes
+  for (let i = 0; i < 26; i++) {
+    const a0 = rng() * Math.PI * 2, r0 = 26 + rng() * 100;
+    ctx.strokeStyle = "rgba(0,0,0," + (0.25 + rng() * 0.3) + ")";
+    ctx.lineWidth = 1.5 + rng() * 3;
+    ctx.beginPath();
+    for (let t = 0; t < 1.6; t += 0.1) {
+      const r = r0 + t * 18, a = a0 + t * 1.5;
+      const x = 128 + Math.cos(a) * r, y = 128 + Math.sin(a) * r;
+      t === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  ctx.globalCompositeOperation = "source-over";
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  bhDisk = new THREE.Mesh(
+    new THREE.RingGeometry(outer * 0.16, outer, 64),
+    new THREE.MeshBasicMaterial({
+      map: tex, transparent: true, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+      color: new THREE.Color(1.5, 1.25, 1.0), // pushed past white -> the disk blooms
+    })
+  );
+  bhDisk.rotation.x = 0.45; // same readable tilt as Saturn's rings
+  g.add(bhDisk);
+
+  // Photon ring: a thin white-hot circle hugging the horizon — you only see it up
+  // close, which is exactly when you should be turning around.
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(b.radius * 2.6, b.radius * 0.3, 8, 48),
+    new THREE.MeshBasicMaterial({
+      color: new THREE.Color(1.8, 1.7, 1.6), blending: THREE.AdditiveBlending,
+      transparent: true, opacity: 0.9, depthWrite: false,
+    })
+  );
+  g.add(ring);
+
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: plumeGlowTexture(), blending: THREE.AdditiveBlending,
+    transparent: true, depthWrite: false, opacity: 0.5,
+  }));
+  glow.scale.setScalar(outer * 2.2);
+  g.add(glow);
 }
 
 // Circle tracing a body's orbit, centered on its PARENT (positioned per frame).
@@ -1956,6 +2041,9 @@ function updateFlight(sim) {
 
   // Earth's clouds drift with game time (time-warp spins the weather — a feature).
   if (earthClouds) earthClouds.rotation.y = (t * 0.0012) % (Math.PI * 2);
+
+  // The accretion disk spins (fast near a black hole — truthfully, much faster).
+  if (bhDisk) bhDisk.rotation.set(0.45, 0, (t * 0.05) % (Math.PI * 2));
 
   // Phase 5: surface detail + deployed rover + satellites.
   updateSurfaceExtras(sim, dom);

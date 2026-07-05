@@ -86,21 +86,48 @@ export function generateSystem(seedName) {
   const norm = seed.toLowerCase();
   const rng = mulberry32(hashStr("system:" + norm));
 
-  // --- The star ---
-  let roll = rng(), sc = STAR_CLASSES[0];
-  for (const c of STAR_CLASSES) { if (roll < c.w) { sc = c; break; } roll -= c.w; }
-  const mass = range(rng, sc.m[0], sc.m[1]);       // solar masses
-  const sradius = range(rng, sc.r[0], sc.r[1]);    // solar radii
-  const hab = AU * Math.pow(mass, 1.75);           // habitable-zone center (~sqrt(L), L~m^3.5)
-  const frost = 2.7 * hab;                         // frost line scales with the star
-  const defs = {
-    sun: {
+  // --- The star… or, sometimes, a BLACK HOLE. ⚫ ---
+  // ~7% of names hide one (deterministic — certain names just HAVE one, forever), and
+  // any name containing "blackhole" summons one on purpose. The hole itself is tiny and
+  // truly black (we size it by the real Schwarzschild radius, ~3 km per solar mass);
+  // what glows is the spinning accretion disk. Planets orbit it exactly like a star —
+  // gravity doesn't care what the mass IS, only how much there is. Fall past the
+  // horizon and you don't melt — you just never come back.
+  const wantsBH = norm.replace(/[^a-z0-9]/g, "").includes("blackhole");
+  const isBlackHole = wantsBH || rng() < 0.07;
+
+  let sc, mass, hab, starLabel, starClass;
+  const defs = {};
+  if (isBlackHole) {
+    mass = range(rng, 6, 30); // solar masses (stellar black holes are real at this size)
+    const rs = mass * 2950;   // Schwarzschild radius: 2GM/c^2 ≈ 2.95 km per solar mass
+    const MU_SUN_REAL = 274 * R_SUN * R_SUN; // the real Sun's mu, from the same math
+    // Habitable zone is lit by the accretion DISK, not the hole (black holes emit
+    // nothing themselves) — so it sits at a modest fixed range instead of scaling
+    // with that enormous mass.
+    hab = AU * range(rng, 0.55, 1.4);
+    starLabel = "black hole"; starClass = "BH";
+    defs.sun = {
+      name: seed, radius: rs, g0: (mass * MU_SUN_REAL) / (rs * rs),
+      parent: null, a: 0, solid: false, atmo: null, phase0: 0, gen: true,
+      blackHole: true,
+      style: { color: 0xb08aff, blackHole: true, glow: "170,195,255" }, // violet map accent
+    };
+  } else {
+    let roll = rng();
+    sc = STAR_CLASSES[0];
+    for (const c of STAR_CLASSES) { if (roll < c.w) { sc = c; break; } roll -= c.w; }
+    mass = range(rng, sc.m[0], sc.m[1]);          // solar masses
+    const sradius = range(rng, sc.r[0], sc.r[1]); // solar radii
+    hab = AU * Math.pow(mass, 1.75);              // habitable-zone center (~sqrt(L), L~m^3.5)
+    starLabel = sc.label; starClass = sc.cls;
+    defs.sun = {
       name: seed, radius: sradius * R_SUN, g0: 274 * mass / (sradius * sradius),
       parent: null, a: 0, solid: false, atmo: null, phase0: 0, gen: true,
       style: { color: sc.color, star: true, glow: sc.glow },
-      starClass: sc.cls,
-    },
-  };
+    };
+  }
+  const frost = 2.7 * hab; // frost line scales with the light, however it's made
   const order = ["sun"];
   const planetKeys = [];
 
@@ -231,8 +258,9 @@ export function generateSystem(seedName) {
     key: "gen:" + norm,
     name: seed,
     seed,
-    starClass: sc.cls,
-    starLabel: sc.label,
+    blackHole: isBlackHole,
+    starClass,
+    starLabel,
     homeName: bodies.earth.name,
     moonName: bodies.moon.name,
     planetCount: count,

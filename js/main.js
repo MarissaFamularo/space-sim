@@ -363,13 +363,24 @@ function travelToSystem(seed) {
   rememberVisit(sys);
   arriveInSystem();
   const home = BODIES.earth;
-  copilotSay("🌌 <b>Welcome to the " + sys.name + " system!</b> Your ship is on the pad of <b>" +
-    sys.homeName + "</b> (gravity " + home.g0.toFixed(1) + " vs Earth's 9.8), under a " +
-    sys.starLabel + " with <b>" + sys.planetCount + " planets</b>. Your moon here is <b>" +
-    sys.moonName + "</b> — same trip as ever: orbit, burn prograde, time the arrival. " +
-    "Worlds close to the star are rock and lava; past the frost line it's gas and ice — " +
-    "that's real astronomy, and it's why this system looks the way it does. " +
-    "Tell a friend the name <b>" + sys.seed + "</b> and they'll find the exact same system!");
+  if (sys.blackHole) {
+    copilotSay("🌌⚫ <b>Whoa — the " + sys.name + " system has no star. It's a BLACK HOLE.</b> " +
+      "Your ship is on the pad of <b>" + sys.homeName + "</b> (gravity " + home.g0.toFixed(1) +
+      " vs Earth's 9.8), one of <b>" + sys.planetCount + " planets</b> orbiting the hole — " +
+      "which is completely safe, by the way: outside the event horizon a black hole pulls " +
+      "exactly like a star of the same mass. The glow you see is the <b>accretion disk</b> — " +
+      "the hole itself makes no light at all. Just never fly INTO it: past the horizon, " +
+      "not even light comes back. Your moon here is <b>" + sys.moonName +
+      "</b>. Tell a friend the name <b>" + sys.seed + "</b> and they'll find this exact black hole!");
+  } else {
+    copilotSay("🌌 <b>Welcome to the " + sys.name + " system!</b> Your ship is on the pad of <b>" +
+      sys.homeName + "</b> (gravity " + home.g0.toFixed(1) + " vs Earth's 9.8), under a " +
+      sys.starLabel + " with <b>" + sys.planetCount + " planets</b>. Your moon here is <b>" +
+      sys.moonName + "</b> — same trip as ever: orbit, burn prograde, time the arrival. " +
+      "Worlds close to the star are rock and lava; past the frost line it's gas and ice — " +
+      "that's real astronomy, and it's why this system looks the way it does. " +
+      "Tell a friend the name <b>" + sys.seed + "</b> and they'll find the exact same system!");
+  }
 }
 
 function travelHome() {
@@ -548,7 +559,7 @@ function updateBanner() {
       const g = BODIES[sim.crashedInto];
       where = "🌀 SANK INTO " + (g ? g.name.toUpperCase() : "THE") + "'S CLOUDS — GAS GIANTS HAVE NO GROUND";
     } else if (sim.burnedUp && sim.crashedInto === "sun") {
-      where = "☀️ MELTED BY THE SUN";
+      where = BODIES.sun.blackHole ? "⚫ CROSSED THE EVENT HORIZON" : "☀️ MELTED BY THE SUN";
     } else if (sim.burnedUp) {
       where = "🔥 BURNED UP ON REENTRY";
     } else if (sim.crashedInto && sim.crashedInto !== "earth") {
@@ -685,7 +696,11 @@ function flightCallouts() {
       const g = BODIES[sim.crashedInto];
       copilotSay("🌀 The ship sank into <b>" + (g ? g.name : "the planet") + "'s</b> clouds and was crushed — gas giants have no surface at all, just air that gets thicker and thicker forever. " + bail + " Orbit them, admire them… just don't try to park on them!");
     } else if (sim.burnedUp && sim.crashedInto === "sun") {
-      copilotSay("☀️💥 You flew into the SUN. It's 5,500°C at the surface — nothing survives that. " + bail + " Fun fact: it actually takes MORE fuel to fall into the Sun than to escape the solar system!");
+      if (BODIES.sun.blackHole) {
+        copilotSay("⚫ You crossed the <b>event horizon</b> — the line where not even light is fast enough to climb back out. Nothing that crosses it ever returns; that's what makes it a black hole and not just a very heavy star. " + bail + " Everything OUTSIDE the horizon is just ordinary gravity though — you can orbit a black hole all day, exactly like a star. Next time, stay in orbit and admire the glowing disk!");
+      } else {
+        copilotSay("☀️💥 You flew into the SUN. It's 5,500°C at the surface — nothing survives that. " + bail + " Fun fact: it actually takes MORE fuel to fall into the Sun than to escape the solar system!");
+      }
     } else if (sim.burnedUp) {
       copilotSay("🔥💥 The ship <b>burned up on reentry</b> — too fast and too steep, and the air-friction heat won. " + bail + " Next time skim the top of the air so it slows you a little at a time — real capsules survive with heat shields and a precise entry angle.");
     } else if (sim.crashedInto && sim.crashedInto !== "earth") {

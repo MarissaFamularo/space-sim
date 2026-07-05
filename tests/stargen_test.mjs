@@ -73,6 +73,18 @@ check("no adjacent planet SOIs overlap", soiDisjoint === total, soiDisjoint + "/
 check("every omega finite and positive", omegasOk === total, omegasOk + "/" + total);
 check("every moon between 2 radii and 0.6 SOI of its planet", moonsInsideParent === total, moonsInsideParent + "/" + total);
 
+// --- Black holes: sometimes a name hides one ⚫ ---
+const bh = generateSystem("my little blackhole");
+check("'blackhole' in the name summons one", bh.blackHole === true && bh.bodies.sun.blackHole === true);
+check("black hole is tiny (Schwarzschild-sized, scaled)", bh.bodies.sun.radius < 20000);
+check("black hole home is still launchable", bh.bodies.earth.solid && bh.bodies.earth.g0 >= 7 &&
+  bh.bodies.earth.g0 <= 11 && !!bh.bodies.earth.atmosphere);
+check("black hole moon inside home SOI", bh.bodies.moon.orbitRadius < bh.bodies.earth.soiRadius * 0.7);
+check("deterministic like any system", JSON.stringify(generateSystem("my little blackhole")) === JSON.stringify(bh));
+let bhCount = 0;
+for (let i = 0; i < 400; i++) if (generateSystem("surprise-" + i).blackHole) bhCount++;
+check("surprise rate is a surprise, not a plague (2–14% of 400 seeds)", bhCount >= 8 && bhCount <= 56, bhCount + "/400");
+
 // --- Swap integration: state machinery drives the live catalog ---
 const solEarthMu = BODIES.earth.mu;
 const solKeys = [...PLANET_KEYS];

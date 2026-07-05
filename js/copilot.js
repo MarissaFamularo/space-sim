@@ -151,7 +151,8 @@ export const Copilot = {
           star: BODIES.sun.name, homeWorld: BODIES.earth.name, homeMoon: BODIES.moon.name,
           note: "a PROCEDURALLY GENERATED system — seeded by its name, so the same name is the same system for everyone (shareable like a rocket code). The keys 'earth'/'moon' in this state are ROLES: the home world here is really called " +
             BODIES.earth.name + " and its moon " + BODIES.moon.name +
-            ". Real-mission facts (Apollo, Voyager…) belong to the real Solar System only. HERE, teach the generator's real astronomy instead: rocky/lava worlds near the star, gas and ice past the frost line, closer orbits mean faster years.",
+            ". Real-mission facts (Apollo, Voyager…) belong to the real Solar System only. HERE, teach the generator's real astronomy instead: rocky/lava worlds near the star, gas and ice past the frost line, closer orbits mean faster years." +
+            (BODIES.sun.blackHole ? " THE CENTER OF THIS SYSTEM IS A BLACK HOLE (sized by its real Schwarzschild radius): orbiting it is perfectly safe — outside the event horizon its gravity works exactly like a star's — but crossing the horizon is one-way, even for light. The glow is the accretion disk; the hole emits nothing. If asked about time slowing near it: yes, that's real (gravitational time dilation), and this game doesn't simulate it (yet)." : ""),
         };
     // This world's REAL numbers (not the real Earth) — so the Navigator gives game-true advice.
     if (sim.body && sim.body.mu) {
