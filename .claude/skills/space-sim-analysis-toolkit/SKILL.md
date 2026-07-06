@@ -2,14 +2,16 @@
 name: space-sim-analysis-toolkit
 description: >
   First-principles analysis recipes for the space-sim repo (/home/user/space-sim) — the
-  "prove it, don't just eyeball it" toolkit. Load this skill when you need to PREDICT a
-  number before you run, then check the sim against your prediction: sanity-check a Δv / TWR
-  / orbit / transfer figure by hand, audit integrator energy drift, derive a landing
-  survivability envelope, justify a new part's numbers with the rocket equation, or apply
-  the house "hypothesis predicts numbers BEFORE running" discipline. Each recipe is
-  formula → worked example with REAL numbers from this repo → the sim check that should
-  agree → tolerance. It ships scripts/drift_audit.mjs. Load it before proposing a balance
-  change, before trusting a surprising readout, or when a reviewer asks "how do you KNOW?".
+  "prove it, don't just eyeball it" toolkit. Load this skill when you need the reproducible
+  PREDICT-THEN-CHECK procedure and scripts: state a number before you run, then confirm it
+  against the sim within a tolerance. Use it to audit integrator energy drift, derive a
+  landing survivability envelope, justify a new part's numbers with the rocket equation, or
+  apply the house "hypothesis predicts numbers BEFORE running" discipline. (For what a
+  number SHOULD be and which formula the code runs — the derivations themselves — load
+  `orbital-mechanics-reference` instead; this skill is the workflow, that one is the theory.)
+  Each recipe is formula → worked example with REAL numbers from this repo → the sim check
+  that should agree → tolerance. It ships scripts/drift_audit.mjs. Load it before proposing a
+  balance change, before trusting a surprising readout, or when a reviewer asks "how do you KNOW?".
   Keywords: predict before run, hypothesis, sanity check, rocket equation, energy drift,
   integrator audit, survivability envelope, first principles, prove it, worked example,
   tolerance, back-of-envelope, TWR floor, terminal velocity.
@@ -57,15 +59,20 @@ This skill owns: predict-before-run discipline and the reusable analysis recipes
    confirmed. Disagreement = either your math or the code is wrong; find out which before
    moving on.
 
-Reference worked numbers (scaled universe, `SCALE=0.1`, computed 2026-07-06 — re-run the
-one-liner in Provenance to refresh):
+Quick reference (scaled universe, `SCALE=0.1`, computed 2026-07-06 — re-run the one-liner in
+Provenance to refresh). The **canonical, maintained worked-numbers table lives in
+`orbital-mechanics-reference` §7** (backed by its `worked_numbers.mjs`); this compact copy is
+here only so the recipes below are self-contained. **`v_circ` here is at a flat 1.35 R** — for
+a thick-atmosphere body the *actual* parking orbit sits higher (see Recipe 1), so Titan's real
+low-orbit speed is 453 m/s, not the 508 shown; `orbital-mechanics` §7 lists it at the parking
+radius. When the two tables seem to disagree, that radius basis is why.
 
-| Body | R (km) | g0 (m/s²) | mu (m³/s²) | v_circ @1.35R | v_esc @surface |
+| Body | R (km) | g0 (m/s²) | mu (m³/s²) | v_circ @flat 1.35R | v_esc @surface |
 |---|---|---|---|---|---|
 | Earth | 637.1 | 9.81 | 3.98e12 | 2152 m/s | 3536 m/s |
 | Moon | 173.7 | 1.62 | 4.89e10 | 457 m/s | 750 m/s |
 | Mars | 338.9 | 3.71 | 4.26e11 | 965 m/s | 1586 m/s |
-| Titan | 257.5 | 1.35 | 8.96e10 | 508 m/s | 834 m/s |
+| Titan | 257.5 | 1.35 | 8.96e10 | 508 m/s (453 at parking radius) | 834 m/s |
 
 ---
 
@@ -76,11 +83,15 @@ one-liner in Provenance to refresh):
 ```bash
 node -e 'import("./js/state.js").then(({BODIES:B})=>{const b=B.mars,r=b.radius*1.35;
 console.log("v_circ",Math.sqrt(b.mu/r).toFixed(0),"m/s  T",(2*Math.PI*Math.sqrt(r**3/b.mu)/60).toFixed(0),"min")})'
-# -> v_circ 965 m/s  T ~58 min
+# -> v_circ 965 m/s  T ~50 min
 ```
 **Sim check:** `Physics.parkingOrbit("mars", 0)` returns `.speed`; a `teleport_test.mjs`
-lap prints the achieved orbit. **Tolerance:** < 2% (teleport laps assert ~1%). Io is the
-known exception at ~10% — Jupiter's tide, real, accepted by the test.
+lap prints the achieved orbit. **Tolerance:** < 2% (teleport laps assert ~1%). **Two
+expected exceptions:** Io drifts ~10% (Jupiter's tide, real, accepted by the test), and any
+**thick-atmosphere body** (Titan) parks HIGHER than 1.35 R — `parkingOrbit` uses
+`max(1.35 R, R + 3·atmo height)`, so its real low-orbit speed is *lower* than the flat-1.35 R
+number (Titan: 453 m/s at the parking radius, not 508 m/s). Sanity-check atmospheric bodies
+against the parking radius, not 1.35 R.
 
 ## Recipe 2 — Δv-to-orbit estimate (with loss reasoning)
 
@@ -118,7 +129,8 @@ signal.
 
 **Formula:** terminal velocity under chute = balance of drag vs weight in the LOCAL air
 (each atmosphere moves with its planet); survivable touchdown is
-`LAND_SPEED`/`LAND_TOTAL` (5/12 m/s), or `LEGS_*` (12/18) with legs (physics.js:25–28).
+`LAND_SPEED`/`LAND_TOTAL` (5/12 m/s), or `LEGS_*` (12/18) with legs (physics.js:25–28;
+maintained catalog: `space-sim-constants-and-storage` A.3).
 **Predict, then reproduce the known results:** Titan's air is thicker than Earth's → a
 chute alone lands softly (Huygens); the Moon has no air → a chute does nothing (crashes).
 Both are asserted in `chute_test.mjs` / `planets_test.mjs`. Compute the terminal velocity

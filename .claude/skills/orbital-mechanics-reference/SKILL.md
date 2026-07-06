@@ -210,6 +210,10 @@ scaled top, Mars 0.020, Venus 65, Titan 5.3).
 | Landing survivability | Touchdown survives if descent rate ≤ LAND_SPEED and total surface-relative speed ≤ LAND_TOTAL; landing legs raise both | `LAND_SPEED=5`, `LAND_TOTAL=12`, `LEGS_LAND_SPEED=12`, `LEGS_LAND_TOTAL=18` m/s (lines 25-28) |
 | Non-solid bodies | Sun/gas giants: contact = crash always (`burnedUp` for the Sun, `sankIntoClouds` for giants) | step ~269-274 |
 
+*This table explains the model; the maintained value catalog for these constants (with
+drift-check commands) is `space-sim-constants-and-storage` A.3 — if a number here and there
+ever disagree, that skill wins.*
+
 Pedagogical contrasts these constants deliberately produce (all node-tested): chute alone
 lands you on Earth; chute never opens in vacuum and is useless on the Moon (chute_test);
 Mars's thin air means chute alone is NOT enough — you need engines too, the sky-crane

@@ -41,8 +41,10 @@ interview; non-negotiable — see `space-sim-change-control` for the full set):
 - **Rule #2 — never break his saves.** localStorage schemas and rocket share-codes
   must stay compatible. Migrate `v1 → v2` if the shape must change; never silently
   reinterpret existing data. Invalid entries must fail SAFE at load.
-- **Rule #3 — physics stays real.** The only permitted lie is the documented
-  `SCALE = 0.1`. Tuning a physics constant into fantasy territory violates this rule.
+- **Rule #3 — physics stays real.** The only permitted lie *in the simulation* is the
+  documented `SCALE = 0.1`. Tuning a physics constant into fantasy territory violates this
+  rule. (Honestly-labeled ✨ magic shortcuts — teleport, Starmap fold — are a separate
+  permitted category; see `space-sim-change-control` Rule 3 / `space-sim-pedagogy-and-content`.)
 
 ---
 

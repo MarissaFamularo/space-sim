@@ -203,22 +203,20 @@ Checklist:
 
 ## The evidence ladder
 
-What "verified" means here, weakest to strongest — claim only the rung you actually stood on:
+`space-sim-change-control` **owns** this vocabulary — it defines the four canonical rungs
+(`code-verified → node-tested → agent browser-verified → kid play-test`) and requires every
+status report to name the rung each claim sits on. Use those exact terms; do not invent
+your own. This section only situates *this skill's* work (the node suites) on that ladder:
 
-1. **Syntax:** `cp js/foo.js /tmp/foo.mjs && node --check /tmp/foo.mjs` (HANDOFF's recipe; the
-   copy is needed because `--check` won't treat a bare `.js` as a module).
-2. **Node suites green** — proves physics/state/mods/stargen logic. This skill's territory.
-3. **Browser verification** — boot without console errors, scripted flight, screenshots. Proves
-   render/UI integration. → `space-sim-browser-verification`.
-4. **Owner play-test in a real browser** — proves it works on the actual machine/config.
-5. **The kid** — the final gate. HANDOFF, verbatim: "the kid's reaction to Saturn is the real
-   acceptance test." Agent-verified is explicitly labeled as the *lower* rung in HANDOFF's own
-   status lines ("User browser play-test still pending — everything below is agent-verified").
+| Rung | Name (change-control's terms) | This skill's role |
+|---|---|---|
+| 1 | **code-verified** | You read/traced the logic; nothing ran it end-to-end. The headless syntax check `cp js/foo.js /tmp/foo.mjs && node --check /tmp/foo.mjs` is a *sub-step* of this rung — it proves the file parses, not that it works. |
+| 2 | **node-tested** | A `tests/*.mjs` suite exercises it and passes. **This is this skill's territory** — pure logic (physics, state, mods, stargen, staging). |
+| 3 | **agent browser-verified** | The real game ran headlessly (scripted flight, screenshots, console clean). → `space-sim-browser-verification`. The node suites prove zero pixels — never report a rung-2 pass as if it covered render/UI. |
+| 4 | **kid play-test** | The final gate, the owner's to call. HANDOFF, verbatim: "the kid's reaction to Saturn is the real acceptance test." Agent-verified is explicitly the *lower* rung in HANDOFF's own status lines ("everything below is agent-verified"). |
 
-Rungs 1–3 are yours to climb every time. Never report rung-2 evidence as if it covered rung 3
-(the suites prove zero pixels), and never mark a feature "done" past rung 3 — the gates above it
-belong to the owner. `space-sim-change-control` is the authority on what each change class
-requires.
+Climb rungs 1–3 yourself; never mark behavior "done" above rung 3 — that gate belongs to the
+owner. `space-sim-change-control` is the authority on which rung each change class requires.
 
 ## Provenance and maintenance
 

@@ -244,13 +244,19 @@ teleport 26, transfer 14 — run `node tests/<name>_test.mjs` from repo root).
 - **STATUS:** OPEN (documented trap, as of 2026-07-06). Do not "fix" server.py without
   the owner — it is HER launcher, tuned to her machine. See `space-sim-dev-loop`.
 
-### 16. Doc drift: warp tiers and test counts
-- **SYMPTOM:** Docs disagree with code on the top time-warp tier and the test count.
-- **FACTS (verified 2026-07-06):** `main.js:23` —
-  `const WARPS = [1, 5, 25, 100, 1000, 10000, 100000, 500000, 2000000]` (top tier
-  2,000,000×, added for Pluto runs). But HANDOFF.md:38, ARCHITECTURE.md:90, and
-  space-game-design.md:187 all still say **500,000×**. HANDOFF's test-count line
-  ("all green, 141 total") also lags: actual is 171 checks across 8 suites.
+### 16. Doc drift: warp tiers, test counts, and station-teleport distance
+- **SYMPTOM:** Docs disagree with code on several numbers.
+- **FACTS (verified 2026-07-06):**
+  - **Warp top tier:** `main.js:23` `WARPS` tops at **2,000,000×** (added for Pluto runs),
+    but HANDOFF.md:38, ARCHITECTURE.md:90, and space-game-design.md:187 all still say
+    **500,000×**. (The array value is catalogued in `space-sim-constants-and-storage` A.2.)
+  - **Test count:** HANDOFF's "all green, 141 total" (and a later 162) lags; actual is
+    **171 checks** across 8 suites.
+  - **Station-teleport distance:** HANDOFF.md:82-83 still says station teleport "parks you
+    **250 m** off the port… the final approach is his to fly," but the code now arrives at
+    **~35 m, already DOCKED** (`main.js` ~318-323, commit `bfe363b` — see battle #5 above).
+    A stale `copilotSay` string near `main.js:257` also still says "final 250 meters" — a
+    candidate in-code cleanup, not just a doc fix.
 - **ROOT CAUSE:** Fast-moving sessions updated code without a doc sweep.
 - **STATUS:** OPEN as of 2026-07-06. Rule of thumb this drift teaches: **for any number,
   code wins; docs are testimony.** Doc-maintenance procedure belongs to

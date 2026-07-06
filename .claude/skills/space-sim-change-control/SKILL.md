@@ -106,11 +106,17 @@ that stops round-tripping breaks rockets he's already sent to friends. Schema
 contents catalogued in `space-sim-constants-and-storage`.
 
 ### Rule 3 — Physics stays REAL
-The only permitted lie is the documented `SCALE = 0.1` (state.js:13): radii and
-orbit distances ×0.1, surface gravities kept real (`mu = g0·r²`). Everything else —
-gravity superposition, the rocket equation, transfer windows, drag — behaves like
-the real universe, and the game must always teach BOTH numbers (the game figure so
-he succeeds here, the real figure so he learns the truth). **Rationale:** the
+The only permitted lie *inside the physics simulation* is the documented `SCALE = 0.1`
+(state.js:13): radii and orbit distances ×0.1, surface gravities kept real
+(`mu = g0·r²`). Everything else — gravity superposition, the rocket equation, transfer
+windows, drag — behaves like the real universe, and the game must always teach BOTH
+numbers (the game figure so he succeeds here, the real figure so he learns the truth).
+Honestly-**labeled magic** shortcuts (✨ Teleport, the Starmap fold) are a *separate,
+permitted category* — they drop you into a REAL parking orbit / real system and are
+disclosed in-game as "a practice shortcut, not physics," so they don't fudge the
+engine. Do not reject a legitimately-labeled magic feature as a Rule-3 violation; the
+honesty ladder that distinguishes real / scaled-but-taught / labeled-magic lives in
+`space-sim-pedagogy-and-content` Rule 3. **Rationale:** the
 product's whole bar (HANDOFF: "the physics is genuinely real and the kid learns
 real-world facts, not game trivia"). **Violating it breaks:** every fact the game
 has taught him becomes suspect; a convenient fudge in one place (a magic capture

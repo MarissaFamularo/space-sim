@@ -187,7 +187,7 @@ Line numbers as of 2026-07-06 (re-grep commands at the bottom).
 ### 8. "NO ENGINE" on a kid-plausible sky-crane stack
 - **Cause:** stack rover / decoupler / crane / tank / pod — the old staging
   rule made the bottom rover its own engineless stage 0. Fixed in
-  `builder.js reflowStages` (`builder.js:546-559`): rover(s) at the very
+  `builder.js reflowStages` (`builder.js:549-559`): rover(s) at the very
   BOTTOM are cargo, and a decoupler directly above them is the release latch,
   not a stage split.
 - **If it recurs:** a new part type at the bottom of a stack probably isn't
@@ -232,8 +232,9 @@ Two gates, both at `js/main.js` — check both:
   integrates less sim-time than requested and sets `sim.warpLimited = true`
   (`physics.js:188-192`) — the UI appends ⏳ to the warp row (`ui.js:255`).
 - **Triage:** check `sim.warpLimited` first. Warp tiers live at `main.js:23`
-  (`WARPS = [1, 5, 25, 100, 1000, 10000, 100000, 500000, 2000000]` — note
-  HANDOFF.md:38 still says 500,000; known doc drift, the code is right).
+  (`WARPS`, top tier **2,000,000×** — the full array is catalogued in
+  `space-sim-constants-and-storage` A.2; note HANDOFF.md:38 still says 500,000,
+  a known doc drift — the code is right).
 - **Discriminate integrator error vs real physics:** drop warp to 1× and let
   the same arc run. Drift persists at small steps → it's real dynamics (see
   #13). Drift only at high warp with `warpLimited` false → suspect a step-size

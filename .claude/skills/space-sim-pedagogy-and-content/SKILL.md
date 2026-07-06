@@ -145,7 +145,7 @@ Shipped enforcement (mods.js header, lines 9–16 — treat as law for any new k
   point at the exact field/line, finish bounds with a physics fact ("even a Saturn V stage
   weighs less than 500 t empty"), suggest the likely typo ("missing comma at the end of the
   line above"), never scold. Bounds read as facts, not rules.
-- Crashes are consequence-free for the crew: main.js:621 — the Connie "boinged away safely
+- Crashes are consequence-free for the crew: main.js:622 — the Connie "boinged away safely
   in the escape bubble — Connies always do." Uncrewed crashes: "probes take the risks so
   Connies don't have to" (main.js:764). The rocket is the only thing at stake.
 - Corollary from HANDOFF "Not done yet" #2: the mod editor is the built-in pressure valve
