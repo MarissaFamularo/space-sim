@@ -60,10 +60,20 @@ fi
 # if the npm playwright version expects a different browser revision.
 
 # --- 5. Serve the copy ----------------------------------------------------------------
+# Kill any previous server on this port (pidfile AND pattern — a stale listener would
+# silently mask a failed bind and serve who-knows-what).
 if [ -f "$WORK/server.pid" ]; then kill "$(cat "$WORK/server.pid")" 2>/dev/null || true; fi
-( cd "$COPY" && nohup python3 -m http.server "$PORT" --bind 127.0.0.1 \
-    > "$WORK/server.log" 2>&1 & echo $! > "$WORK/server.pid" )
+pkill -f "python3 -m http.server $PORT" 2>/dev/null || true
+sleep 0.5
+cd "$COPY"
+# NOTE: no `cd X && nohup ... &` compound here — backgrounding a compound list makes $!
+# the wrapper subshell's pid, not python's, and teardown then kills the wrong process.
+nohup python3 -m http.server "$PORT" --bind 127.0.0.1 > "$WORK/server.log" 2>&1 &
+echo $! > "$WORK/server.pid"
+cd - >/dev/null
 sleep 1
+kill -0 "$(cat "$WORK/server.pid")" 2>/dev/null \
+  || { echo "FAIL: server died on start (port busy? see $WORK/server.log)"; exit 1; }
 curl -sf "http://127.0.0.1:$PORT/index.html" >/dev/null \
   || { echo "FAIL: server not answering on $PORT (see $WORK/server.log)"; exit 1; }
 echo "OK: serving scratch copy at http://127.0.0.1:$PORT (pid $(cat "$WORK/server.pid"))"
