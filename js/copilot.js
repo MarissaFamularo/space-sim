@@ -197,10 +197,14 @@ export const Copilot = {
     btn.onclick = () => {
       // The value goes straight into localStorage in THIS browser — it never leaves the page
       // except on calls to Anthropic. We don't prefill, so the existing key isn't shown.
-      const k = window.prompt(
-        "Paste your Anthropic API key.\n\nIt's stored only in this browser on this computer — never in the game's files and never sent anywhere except Anthropic.",
-        ""
-      );
+      // Some embedded/kiosk browsers block prompt() entirely — fail soft, not with a banner.
+      let k = null;
+      try {
+        k = window.prompt(
+          "Paste your Anthropic API key.\n\nIt's stored only in this browser on this computer — never in the game's files and never sent anywhere except Anthropic.",
+          ""
+        );
+      } catch { return; }
       if (k === null) return;
       const t = k.trim();
       if (t) { setKey(t); refresh(); }

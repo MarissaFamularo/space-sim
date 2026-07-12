@@ -166,7 +166,8 @@ function showSettings(parentEl) {
   nBtn.style.cssText = "width:100%;margin:0 0 16px;font-size:14px;";
   nBtn.textContent = hasNav ? "🔑 Navigator key is set — change it" : "🔑 Add the Navigator's key";
   nBtn.onclick = () => {
-    const k = window.prompt("Paste the Anthropic API key for the Navigator.\n\nIt's stored only in this browser on this computer.", "");
+    let k = null; // some embedded browsers block prompt() — fail soft
+    try { k = window.prompt("Paste the Anthropic API key for the Navigator.\n\nIt's stored only in this browser on this computer.", ""); } catch { return; }
     if (k === null) return;
     const t = k.trim();
     if (t) { try { localStorage.setItem(NAV_KEY, t); } catch {} showSettings(parentEl); }

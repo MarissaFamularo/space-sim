@@ -44,30 +44,55 @@ export const UI = {
     this.els.controls = document.getElementById("control-list");
     this.handlers = handlers;
     this._renderControls();
-    this._wireModeCollapse();
+    // Panels fold to just their title bar (his report: they cover things / eat view).
+    // Click the header to toggle; the choice is remembered between sessions.
+    this._wireCollapse("controls", "spacesim.modeBoxCollapsed", ["control-list"]);
+    this._wireCollapse("copilot", "spacesim.navBoxCollapsed", ["copilot-log", "copilot-row"],
+      { shrinkWidth: true, notify: "copilot-log" });
   },
-  // The MODE box can cover the bottom of the parts list while building — click its
-  // header to fold it down to just the title bar. Remembered between sessions.
-  _wireModeCollapse() {
-    const panel = document.getElementById("controls");
+  // Generic collapsible panel: panelId's <h3> becomes the toggle; childIds hide when
+  // folded. opts.shrinkWidth lets the panel narrow to its title; opts.notify watches
+  // that element for new children while folded and shows a gold ● (so a collapsed
+  // Navigator can't silently swallow a "you're in orbit!" callout).
+  _wireCollapse(panelId, storageKey, childIds, opts = {}) {
+    const panel = document.getElementById(panelId);
     const h = panel && panel.querySelector("h3");
     if (!h || h.dataset.collapsible) return;
     h.dataset.collapsible = "1";
-    h.style.cssText += "cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:0;";
+    h.style.cssText += "cursor:pointer;user-select:none;";
     const chev = document.createElement("span");
-    chev.style.cssText = "font-size:11px;color:#9fb3da;font-weight:600;text-transform:none;letter-spacing:0;";
+    chev.style.cssText = "float:right;font-size:11px;color:#9fb3da;font-weight:600;" +
+      "text-transform:none;letter-spacing:0;margin-left:10px;";
     h.appendChild(chev);
-    const KEY = "spacesim.modeBoxCollapsed";
-    const apply = (collapsed) => {
-      this.els.controls.style.display = collapsed ? "none" : "";
-      h.style.marginBottom = collapsed ? "0" : "8px";
-      chev.textContent = collapsed ? "▸ open" : "▾ hide";
-      try { localStorage.setItem(KEY, collapsed ? "1" : ""); } catch {}
+    let collapsed = false, unseen = false;
+    const apply = () => {
+      for (const id of childIds) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = collapsed ? "none" : "";
+      }
+      h.style.marginBottom = collapsed ? "0" : "";
+      if (opts.shrinkWidth) panel.style.width = collapsed ? "auto" : "";
+      if (!collapsed) unseen = false;
+      chev.innerHTML = collapsed
+        ? "▸ open" + (unseen ? " <span style='color:#ffd24a'>●</span>" : "")
+        : "▾ hide";
+      try { localStorage.setItem(storageKey, collapsed ? "1" : ""); } catch {}
     };
-    let collapsed = false;
-    try { collapsed = localStorage.getItem(KEY) === "1"; } catch {}
-    apply(collapsed);
-    h.onclick = () => { collapsed = !collapsed; apply(collapsed); };
+    try { collapsed = localStorage.getItem(storageKey) === "1"; } catch {}
+    apply();
+    h.addEventListener("click", (e) => {
+      // Only the header itself (or the chevron) toggles — buttons that live in the
+      // header, like the Navigator's 🔑, keep doing their own job.
+      if (e.target !== h && e.target !== chev) return;
+      collapsed = !collapsed;
+      apply();
+    });
+    if (opts.notify) {
+      const watched = document.getElementById(opts.notify);
+      if (watched) new MutationObserver(() => {
+        if (collapsed && !unseen) { unseen = true; apply(); }
+      }).observe(watched, { childList: true });
+    }
   },
   // Show flight-only controls in flight, hide them in build (keeps the MODE box short).
   setMode(mode) {
