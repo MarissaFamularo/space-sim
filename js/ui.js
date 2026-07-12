@@ -44,6 +44,30 @@ export const UI = {
     this.els.controls = document.getElementById("control-list");
     this.handlers = handlers;
     this._renderControls();
+    this._wireModeCollapse();
+  },
+  // The MODE box can cover the bottom of the parts list while building — click its
+  // header to fold it down to just the title bar. Remembered between sessions.
+  _wireModeCollapse() {
+    const panel = document.getElementById("controls");
+    const h = panel && panel.querySelector("h3");
+    if (!h || h.dataset.collapsible) return;
+    h.dataset.collapsible = "1";
+    h.style.cssText += "cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:0;";
+    const chev = document.createElement("span");
+    chev.style.cssText = "font-size:11px;color:#9fb3da;font-weight:600;text-transform:none;letter-spacing:0;";
+    h.appendChild(chev);
+    const KEY = "spacesim.modeBoxCollapsed";
+    const apply = (collapsed) => {
+      this.els.controls.style.display = collapsed ? "none" : "";
+      h.style.marginBottom = collapsed ? "0" : "8px";
+      chev.textContent = collapsed ? "▸ open" : "▾ hide";
+      try { localStorage.setItem(KEY, collapsed ? "1" : ""); } catch {}
+    };
+    let collapsed = false;
+    try { collapsed = localStorage.getItem(KEY) === "1"; } catch {}
+    apply(collapsed);
+    h.onclick = () => { collapsed = !collapsed; apply(collapsed); };
   },
   // Show flight-only controls in flight, hide them in build (keeps the MODE box short).
   setMode(mode) {
