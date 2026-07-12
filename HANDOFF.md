@@ -51,6 +51,18 @@ teleport → deploy → dock → centrifuge walk → spacewalk w/ tether → sun
 space-plane build with wings). Zero console errors. Contract changes recorded in
 ARCHITECTURE.md "CONTRACT REVISION 2026-07-12".
 
+**Also 2026-07-12 (his ask): 🌟 FAMOUS SYSTEMS.** The universe is pre-populated with
+hand-built legends (js/famous.js, resolved before the seeded generator; aliases like
+"kerbin"/"KSP"/"avatar" all land on the canonical name): **The Kerbol System** — all of
+KSP at TRUE canon scale (defs are canon ×10, so SCALE=0.1 lands exactly: Kerbin 600 km,
+canon mu/SOI/year, Jool's five moons, Eve's brutal thick air) — and **The Pandora
+System** (Avatar): home is a MOON of gas giant Polyphemus around Alpha Centauri A, with
+Hell's Gate Station overhead. First system where "earth" doesn't orbit the star —
+buildTargets and tripDaysFromEarth were generalized for it. Famous systems appear in
+the Starmap panel and pre-lit on the galaxy map; custom arrival briefs; Navigator
+taught the homages + real-vs-fiction lines. tests/famous_test.mjs (41 checks; 222 total
+across 10 suites). Browser-verified end-to-end.
+
 **Flags for the next session**:
 - The Tracking Center "YOUR FLEET" header also lists the built-in Sol stations (Harbor/
   Selene/Kestrel) — arguably fine (it's "everything up there"), rename to "IN ORBIT" if he minds.
