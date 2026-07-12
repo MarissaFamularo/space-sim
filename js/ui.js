@@ -163,7 +163,7 @@ export const UI = {
     for (const st of STATIONS) { // stations: teleport right next to them, then dock
       const opt = document.createElement("option");
       opt.value = "station:" + st.id;
-      opt.textContent = (st.abandoned ? "⚠ " : "🛰 ") + st.name;
+      opt.textContent = (st.abandoned ? "⚠ " : "🛰 ") + st.name + (st.yours ? " (yours!)" : "");
       sel.appendChild(opt);
     }
     sel.value = targets.includes("moon") ? "moon" : targets[0];
@@ -268,6 +268,8 @@ export const UI = {
       }
       if ((sim.craft.legCount || 0) > 0) html += row("Landing legs", "🦵 ok under 12 m/s");
       if ((sim.craft.dockCount || 0) > 0) html += row("Docking port", "🛰 ready");
+      if ((sim.craft.wingCount || 0) > 0) html += row("Wings", "✈ lift (needs air)");
+      if ((sim.craft.stationCount || 0) > 0) html += row("Station hub", "🛰 deployable in orbit");
       if (sim.satellites && sim.satellites.length) html += row("Satellites", "🛰 " + sim.satellites.length + " in orbit");
       if (sim.stationNear) {
         html += row(sim.stationNear.abandoned ? "⚠ " + sim.stationNear.name : "🛰 " + sim.stationNear.name,

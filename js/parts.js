@@ -166,4 +166,63 @@ export const PARTS = [
     height: 0.8, radius: 0.5, shape: "fin",
     attachTop: true, attachBottom: true,
   },
+
+  // ---- Space Plane Hangar parts (facility:"hangar" — they live in that building) ----
+  {
+    // A sleek crewed nose for space planes. Same job as the Acorn, pointier.
+    id: "cockpit_swift",
+    type: "command",
+    name: "Swift Plane Cockpit",
+    dryMass: 0.9,
+    height: 1.3, radius: 0.6, shape: "cone",
+    attachTop: false, attachBottom: true,
+    facility: "hangar",
+  },
+  {
+    // WINGS make LIFT: tilt the nose a little off your direction of travel inside an
+    // atmosphere and the air pushes you sideways — that's the whole trick of flying.
+    // (Real lift = air bent downward pushes the wing up. No air, no lift — wings do
+    // nothing in space or on the Moon!)
+    id: "wing_delta",
+    type: "wing",
+    name: "Delta Wings",
+    dryMass: 0.25,
+    height: 0.9, radius: 0.9, shape: "wing",
+    attachTop: true, attachBottom: true,
+    facility: "hangar",
+  },
+  {
+    // The heart of a space station. A build carrying one can be DEPLOYED as a real,
+    // permanent station once it's in a stable orbit — then fly another ship out,
+    // dock, and go aboard.
+    id: "station_hub",
+    type: "station",
+    name: "Station Hub",
+    dryMass: 1.4,
+    height: 1.6, radius: 0.9, shape: "hub",
+    attachTop: true, attachBottom: true,
+    facility: "hangar",
+  },
+  {
+    // Roomy crew module for stations — more space to float around in.
+    id: "habitat_module",
+    type: "station",
+    name: "Habitat Module",
+    dryMass: 1.0,
+    height: 2.2, radius: 0.9, shape: "cylinder",
+    attachTop: true, attachBottom: true,
+    facility: "hangar",
+  },
+  {
+    // Spin a wheel and the floor pushes on your feet — CENTRIFUGE GRAVITY, the only
+    // honest way to make gravity in space (2001, and every serious station design).
+    // A deployed station with one has gravity inside: your Connie WALKS instead of floats.
+    id: "centrifuge_ring",
+    type: "centrifuge",
+    name: "Centrifuge Ring",
+    dryMass: 1.8,
+    height: 1.0, radius: 1.7, shape: "ring",
+    attachTop: true, attachBottom: true,
+    facility: "hangar",
+  },
 ];

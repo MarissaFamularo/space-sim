@@ -1626,10 +1626,13 @@ function buildCraftMesh(craft) {
   group.add(plume.group);
 
   craftGroup = group;
+  craftSpinners.length = 0; // centrifuge wheels etc — spun each frame in update()
+  group.traverse((o) => { if (o.userData && o.userData.spin) craftSpinners.push(o); });
   scene.add(group);
 
   if (snapGhost) snapGhost.visible = false;
 }
+const craftSpinners = [];
 
 function resolveDefs(craft) {
   const out = [];
@@ -2083,6 +2086,94 @@ function makePartObject(def, h, r) {
       grp.scale.setScalar(Math.max(0.6, r));
       return grp;
     }
+    case "wing": {
+      // Delta Wings for the Hangar: a structural sleeve (same trick as the fins —
+      // the fuselage must read continuous) with big swept lifting surfaces.
+      const grp = new THREE.Group();
+      const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.65, r * 0.65, h, 24), tankMat());
+      grp.add(sleeve);
+      const s = new THREE.Shape();
+      s.moveTo(0, h * 0.55);
+      s.lineTo(r * 2.6, -h * 0.1);
+      s.lineTo(r * 2.75, -h * 0.42);
+      s.lineTo(0, -h * 0.55);
+      s.closePath();
+      const geo = new THREE.ExtrudeGeometry(s, {
+        depth: 0.07, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.04, bevelSegments: 2,
+      });
+      geo.translate(0, 0, -0.035);
+      const wingMat = MAT ? MAT.tank : mat;
+      for (const side of [1, -1]) {
+        const wing = new THREE.Mesh(geo, wingMat);
+        wing.position.x = side * r * 0.5;
+        if (side < 0) wing.rotation.y = Math.PI;
+        grp.add(wing);
+        // red leading-edge stripe so they read as wings, not slabs
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(r * 2.0, 0.06, 0.09), MAT ? MAT.fin : mat);
+        stripe.position.set(side * (r * 0.5 + r * 1.15), h * 0.28, 0);
+        stripe.rotation.z = side * -0.24;
+        grp.add(stripe);
+      }
+      return grp;
+    }
+    case "hub": {
+      // Station Hub: a fat core with four radial docking stubs and a blinking beacon —
+      // the part that makes a build count as a SPACE STATION.
+      const grp = new THREE.Group();
+      grp.add(lathe([
+        [0.001, 0], [r * 0.7, 0.04], [r, 0.22], [r, 0.78], [r * 0.7, 0.96], [0.001, 1],
+      ], h, tankMat()));
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2;
+        const stub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.28, r * 0.34, r * 0.7, 12),
+          MAT ? MAT.decoupler : mat);
+        stub.position.set(Math.cos(a) * r * 1.05, 0, Math.sin(a) * r * 1.05);
+        stub.rotation.z = Math.PI / 2;
+        stub.rotation.y = -a;
+        grp.add(stub);
+        const ringM = new THREE.Mesh(new THREE.TorusGeometry(r * 0.26, 0.035, 8, 18),
+          MAT ? MAT.engine : mat);
+        ringM.position.set(Math.cos(a) * r * 1.42, 0, Math.sin(a) * r * 1.42);
+        ringM.rotation.y = -a + Math.PI / 2;
+        grp.add(ringM);
+      }
+      const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 1.4, 0.3) })); // HDR: blooms
+      beacon.position.y = h * 0.58;
+      grp.add(beacon);
+      return grp;
+    }
+    case "ring": {
+      // Centrifuge Ring: a spinning habitat wheel on spokes — the ONLY honest way to
+      // make gravity in space (the physics lesson is in the interior + Navigator).
+      const grp = new THREE.Group();
+      const axle = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.22, r * 0.22, h, 16), foilMat());
+      grp.add(axle);
+      const wheel = new THREE.Group();
+      const torus = new THREE.Mesh(new THREE.TorusGeometry(r, h * 0.22, 12, 40), tankMat());
+      torus.rotation.x = Math.PI / 2;
+      wheel.add(torus);
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2;
+        const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, r, 8),
+          MAT ? MAT.decoupler : mat);
+        spoke.position.set(Math.cos(a) * r * 0.5, 0, Math.sin(a) * r * 0.5);
+        spoke.rotation.z = Math.PI / 2;
+        spoke.rotation.y = -a;
+        wheel.add(spoke);
+      }
+      // Lit habitat windows around the rim — someone could LIVE out there.
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2;
+        const win = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.05),
+          new THREE.MeshBasicMaterial({ color: 0xfff2c8 }));
+        win.position.set(Math.cos(a) * r, h * 0.1, Math.sin(a) * r);
+        wheel.add(win);
+      }
+      wheel.userData.spin = 0.5; // rad/s — buildCraftMesh tags it; updateFlight spins it
+      grp.add(wheel);
+      return grp;
+    }
     default: {
       const geo = new THREE.CylinderGeometry(r, r, h, 24);
       return new THREE.Mesh(geo, mat);
@@ -2186,6 +2277,8 @@ function update(sim) {
 
   updateBurnMarker(sim);
 
+  if (eva) updateEva(); // the Connie outside, moving through the frozen scene
+
   if (composer && fancyGraphics) composer.render();
   else renderer.render(scene, camera);
 }
@@ -2283,6 +2376,8 @@ function updateFlight(sim) {
 
   // The accretion disk spins (fast near a black hole — truthfully, much faster).
   if (bhDisk) bhDisk.rotation.set(0.45, 0, (t * 0.05) % (Math.PI * 2));
+  // Centrifuge wheels turn with game time — steady spin, that's the gravity trick.
+  for (const sp of craftSpinners) sp.rotation.y = (t * sp.userData.spin) % (Math.PI * 2);
 
   // Phase 5: surface detail + deployed rover + satellites + stations.
   updateSurfaceExtras(sim, dom);
@@ -2604,12 +2699,12 @@ function ensureStation(st) {
   m.group.visible = false;
   scene.add(m.group);
   const dot = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6),
-    new THREE.MeshBasicMaterial({ color: st.abandoned ? 0x8a93a8 : 0x7fe8a8 }));
+    new THREE.MeshBasicMaterial({ color: st.abandoned ? 0x8a93a8 : st.yours ? 0xffd24a : 0x7fe8a8 }));
   dot.frustumCulled = false;
   dot.visible = false;
   scene.add(dot);
-  const label = makeTextSprite((st.abandoned ? "⚠ " : "🛰 ") + st.name,
-    st.abandoned ? "#8a93a8" : "#7fe8a8");
+  const label = makeTextSprite((st.abandoned ? "⚠ " : "🛰 ") + st.name + (st.yours ? " ⭐" : ""),
+    st.abandoned ? "#8a93a8" : st.yours ? "#ffd24a" : "#7fe8a8");
   scene.add(label);
   stationPool[st.id] = { ...m, dot, label, abandoned: !!st.abandoned };
   return stationPool[st.id];
@@ -3282,7 +3377,13 @@ function enterStation(info, cb) {
   document.getElementById("app").appendChild(hintEl);
 
   interior = { scene: iScene, cam, connie, vel: { x: 0, y: 0 }, consoles, alien,
-               keys: {}, hintEl, cb, len, rad, drifters, last: 0 };
+               keys: {}, hintEl, cb, len, rad, drifters, last: 0, spin: !!info.spin };
+  if (info.spin) {
+    // Centrifuge station: the ring's spin presses you to the floor — gravity you can
+    // stand on. Same room, different physics; the hint teaches the difference.
+    hintEl.textContent = "🐍🌀 " + info.name + " — the ring is SPINNING, you have gravity! ← → walk · ↑ jump · E to return";
+    connie.position.set(-len * 0.3, -(rad - 0.95), 0); // start standing, not floating
+  }
   window.addEventListener("keydown", interiorKeyDown);
   window.addEventListener("keyup", interiorKeyUp);
   if (_renderPass) { _renderPass.scene = iScene; _renderPass.camera = cam; }
@@ -3304,26 +3405,43 @@ function exitStation() {
   interiorFlicker = null;
 }
 
-function isInside() { return !!interior; }
+// True while any "person mode" owns time and the keys: aboard a station OR out on EVA.
+// main.js freezes physics and ignores flight keys whenever this is true.
+function isInside() { return !!interior || !!eva; }
 
 function updateInterior() {
   const it = interior;
   const now = performance.now() / 1000;
   const dt = it.last ? Math.min(now - it.last, 0.05) : 0.016;
   it.last = now;
-  // Zero-g drift: arrows nudge, motion coasts, walls bounce softly.
-  const A = 2.2;
-  if (it.keys.ArrowLeft) it.vel.x -= A * dt;
-  if (it.keys.ArrowRight) it.vel.x += A * dt;
-  if (it.keys.ArrowUp) it.vel.y += A * dt;
-  if (it.keys.ArrowDown) it.vel.y -= A * dt;
-  it.vel.x *= 0.995; it.vel.y *= 0.995;
   const c = it.connie;
-  c.position.x += it.vel.x * dt;
-  c.position.y += it.vel.y * dt;
   const mx = it.len / 2 - 0.8, my = it.rad - 0.9;
-  if (Math.abs(c.position.x) > mx) { c.position.x = Math.sign(c.position.x) * mx; it.vel.x *= -0.4; }
-  if (Math.abs(c.position.y) > my) { c.position.y = Math.sign(c.position.y) * my; it.vel.y *= -0.4; }
+  if (it.spin) {
+    // Centrifuge gravity: walk on the floor, jump, come back DOWN — spin gravity is
+    // real gravity as far as your boots can tell (that's the whole lesson).
+    const onFloor = c.position.y <= -my + 0.03;
+    const want = (it.keys.ArrowRight ? 2.0 : 0) - (it.keys.ArrowLeft ? 2.0 : 0);
+    it.vel.x += (want - it.vel.x) * Math.min(1, (onFloor ? 9 : 1.2) * dt);
+    if (it.keys.ArrowUp && onFloor) it.vel.y = 2.6;
+    it.vel.y -= 3.4 * dt;
+    c.position.x += it.vel.x * dt;
+    c.position.y += it.vel.y * dt;
+    if (c.position.x > mx || c.position.x < -mx) { c.position.x = Math.sign(c.position.x) * mx; it.vel.x = 0; }
+    if (c.position.y < -my) { c.position.y = -my; it.vel.y = 0; }
+    if (c.position.y > my) { c.position.y = my; it.vel.y *= -0.4; }
+  } else {
+    // Zero-g drift: arrows nudge, motion coasts, walls bounce softly.
+    const A = 2.2;
+    if (it.keys.ArrowLeft) it.vel.x -= A * dt;
+    if (it.keys.ArrowRight) it.vel.x += A * dt;
+    if (it.keys.ArrowUp) it.vel.y += A * dt;
+    if (it.keys.ArrowDown) it.vel.y -= A * dt;
+    it.vel.x *= 0.995; it.vel.y *= 0.995;
+    c.position.x += it.vel.x * dt;
+    c.position.y += it.vel.y * dt;
+    if (Math.abs(c.position.x) > mx) { c.position.x = Math.sign(c.position.x) * mx; it.vel.x *= -0.4; }
+    if (Math.abs(c.position.y) > my) { c.position.y = Math.sign(c.position.y) * my; it.vel.y *= -0.4; }
+  }
   c.rotation.z = Math.max(-0.5, Math.min(0.5, -it.vel.x * 0.4)); // lean into the drift
   c.rotation.x = Math.max(-0.4, Math.min(0.4, it.vel.y * 0.25));
 
@@ -3346,6 +3464,135 @@ function updateInterior() {
   }
   if (composer && fancyGraphics) composer.render();
   else renderer.render(it.scene, it.cam);
+}
+
+// =====================================================================
+// EVA ANYWHERE (his ask): press E undocked and the Connie herself goes OUTSIDE —
+// floating on a tether in space, or walking/hopping on the ground when landed.
+// Physics/time freeze while she's out (same rule as station interiors), so this is
+// pure render state: the Connie moves in the frozen scene around the parked ship.
+// =====================================================================
+let eva = null; // { kind, connie, tether, up, walk, h, vw, vh, ox, oy, vx, vy, g, keys, hintEl, cb, last }
+
+function evaKeyDown(e) {
+  if (!eva) return;
+  eva.keys[e.key] = true;
+  if (e.key === "e" || e.key === "E" || e.key === "Escape") {
+    const cb = eva.cb;
+    exitEva();
+    if (cb && cb.onExit) cb.onExit();
+  }
+}
+function evaKeyUp(e) { if (eva) eva.keys[e.key] = false; }
+
+function enterEva(sim, cb) {
+  if (interior || eva) return;
+  const kind = sim.status === "landed" ? "ground" : "space";
+  const connie = makeConnie();
+  connie.scale.setScalar(1.0);
+  scene.add(connie);
+
+  let up = { x: 0, y: 1 }, g = 9.81;
+  if (kind === "ground" && sim.landed && BODIES[sim.landed.body]) {
+    const bs = bodyStateAt(sim.landed.body, sim.time || 0);
+    const rl = Math.hypot(sim.craft.pos.x - bs.pos.x, sim.craft.pos.y - bs.pos.y) || 1;
+    up = { x: (sim.craft.pos.x - bs.pos.x) / rl, y: (sim.craft.pos.y - bs.pos.y) / rl };
+    g = BODIES[sim.landed.body].g0 || 1;
+  }
+
+  // Space EVA gets a visible tether back to the ship (astronauts are ALWAYS clipped on).
+  let tether = null;
+  if (kind === "space") {
+    const tg = new THREE.BufferGeometry();
+    tg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
+    tether = new THREE.Line(tg, new THREE.LineBasicMaterial({ color: 0xf0e6c8 }));
+    tether.frustumCulled = false;
+    scene.add(tether);
+  }
+
+  const hintEl = document.createElement("div");
+  hintEl.style.cssText = "position:absolute;bottom:70px;left:50%;transform:translateX(-50%);" +
+    "background:rgba(12,18,34,0.86);border:1px solid #24304d;border-radius:8px;color:#9fb3da;" +
+    "padding:6px 14px;font:600 13px system-ui,sans-serif;z-index:15;";
+  hintEl.textContent = kind === "ground"
+    ? "🐍 EVA — ← → walk · ↑ hop · E back inside"
+    : "🐍 SPACEWALK — arrows nudge (you coast!) · the tether keeps you safe · E back inside";
+  document.getElementById("app").appendChild(hintEl);
+
+  eva = { kind, connie, tether, up, g, cb, hintEl, keys: {}, last: 0,
+          walk: 3.2, h: 0, vw: 0, vh: 0,           // ground: along-surface + height
+          ox: 5, oy: 3, vx: 0.4, vy: 0.15 };       // space: free drift offsets
+  window.addEventListener("keydown", evaKeyDown);
+  window.addEventListener("keyup", evaKeyUp);
+}
+
+function exitEva() {
+  if (!eva) return;
+  window.removeEventListener("keydown", evaKeyDown);
+  window.removeEventListener("keyup", evaKeyUp);
+  eva.hintEl.remove();
+  scene.remove(eva.connie);
+  disposeGroup(eva.connie);
+  if (eva.tether) {
+    scene.remove(eva.tether);
+    eva.tether.geometry.dispose();
+    eva.tether.material.dispose();
+  }
+  eva = null;
+}
+
+function updateEva() {
+  const ev = eva;
+  const now = performance.now() / 1000;
+  const dt = ev.last ? Math.min(now - ev.last, 0.05) : 0.016;
+  ev.last = now;
+  const base = craftGroup ? craftGroup.position : _s3.set(0, 0, 0);
+  const c = ev.connie;
+
+  if (ev.kind === "ground") {
+    // Walk along the surface tangent, hop against the REAL local gravity — the same
+    // g0 the lander fought. Weak-world hops go high and come down slowly (Phobos!).
+    const onFloor = ev.h <= 0.001;
+    const want = (ev.keys.ArrowRight ? 2.2 : 0) - (ev.keys.ArrowLeft ? 2.2 : 0);
+    ev.vw += (want - ev.vw) * Math.min(1, (onFloor ? 8 : 1.5) * dt);
+    if (ev.keys.ArrowUp && onFloor) ev.vh = Math.min(4.5, 1.6 + ev.g * 0.35);
+    ev.vh -= ev.g * dt;
+    ev.h = Math.max(0, ev.h + ev.vh * dt);
+    if (ev.h === 0 && ev.vh < 0) ev.vh = 0;
+    ev.walk = Math.max(-70, Math.min(70, ev.walk + ev.vw * dt));
+    const tx = -ev.up.y, ty = ev.up.x;
+    c.position.set(
+      base.x + tx * ev.walk + ev.up.x * (0.55 + ev.h),
+      base.y + ty * ev.walk + ev.up.y * (0.55 + ev.h), 0.6);
+    c.quaternion.setFromUnitVectors(_v1.set(0, 1, 0), _v2.set(ev.up.x, ev.up.y, 0));
+    c.rotateZ(Math.max(-0.4, Math.min(0.4, -ev.vw * 0.12))); // lean into the walk
+  } else {
+    // Zero-g drift: a nudge coasts forever; past the tether length it tugs you home.
+    const A = 1.6, LEASH = 42;
+    if (ev.keys.ArrowLeft) ev.vx -= A * dt;
+    if (ev.keys.ArrowRight) ev.vx += A * dt;
+    if (ev.keys.ArrowUp) ev.vy += A * dt;
+    if (ev.keys.ArrowDown) ev.vy -= A * dt;
+    ev.ox += ev.vx * dt;
+    ev.oy += ev.vy * dt;
+    const d = Math.hypot(ev.ox, ev.oy);
+    if (d > LEASH) {
+      const pull = (d - LEASH) * 0.5;
+      ev.vx -= (ev.ox / d) * pull * dt * 4;
+      ev.vy -= (ev.oy / d) * pull * dt * 4;
+    }
+    c.position.set(base.x + ev.ox, base.y + ev.oy, 0.6);
+    c.rotation.z = Math.max(-0.6, Math.min(0.6, -ev.vx * 0.25));
+    c.rotation.x = Math.max(-0.5, Math.min(0.5, ev.vy * 0.2));
+    if (ev.tether) {
+      const p = ev.tether.geometry.attributes.position.array;
+      p[0] = base.x; p[1] = base.y + 0.5; p[2] = 0.4;
+      p[3] = c.position.x; p[4] = c.position.y; p[5] = c.position.z;
+      ev.tether.geometry.attributes.position.needsUpdate = true;
+    }
+  }
+  // Only ONE Connie outside at a time — the landed decoration stands down during EVA.
+  if (connieMesh) connieMesh.visible = false;
 }
 
 // ---- Disposal helper ----
@@ -3390,6 +3637,8 @@ export const Render = Object.freeze({
   setGalaxy,
   enterStation,
   exitStation,
+  enterEva,
+  exitEva,
   isInside,
   buildCraftMesh,
   setMode,

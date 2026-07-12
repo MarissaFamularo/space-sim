@@ -78,7 +78,7 @@ function roster() {
   });
   for (const st of STATIONS) {
     const ss = stationState(st, t);
-    if (ss) out.push({ kind: "station", id: st.id, icon: st.abandoned ? "⚠" : "🛰", name: st.name,
+    if (ss) out.push({ kind: "station", id: st.id, icon: st.abandoned ? "⚠" : st.yours ? "⭐" : "🛰", name: st.name,
                        pos: ss.pos, sub: (st.abandoned ? "derelict · " : "") + "orbiting " + BODIES[st.body].name +
                        " · lap " + fmtPeriod(ss.period), station: st });
   }

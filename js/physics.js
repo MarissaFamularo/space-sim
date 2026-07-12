@@ -40,6 +40,17 @@ const HEAT_TAU = 4;       // seconds to relax toward equilibrium (up and down)
 const CHUTE_CDA = 1200;      // m^2 effective drag area per parachute
 const CHUTE_MAX_SPEED = 250; // m/s (relative to the air) — faster and it streams uselessly
 
+// --- Wings (Delta Wings part, the Space Plane Hangar) ---
+// Real lift-lite: lift acts perpendicular to the airflow, proportional to dynamic
+// pressure and the angle of attack (nose tilt off the direction of travel), and it
+// STALLS — past WING_CL_MAX more tilt gives no more lift, exactly like a real wing.
+// No air, no lift: wings do nothing in space or over the Moon (that's the lesson).
+const WING_AREA = 24;        // m^2 of lifting surface per Delta Wings part
+                             // (two pairs hold a 3 t plane level at ~120 m/s low over Earth)
+const WING_CL_SLOPE = 2.0;   // lift coefficient per sin(angle of attack)
+const WING_CL_MAX = 1.3;     // stall limit
+const WING_ACC_CAP = 60;     // m/s^2 (~6 g) — keeps big warp substeps stable
+
 // All body keys including the star, for gravity + collision sweeps. PLANET_KEYS is
 // swapped in place when a Starmap jump changes the active system, so the flat list is
 // re-derived whenever SYSTEM.rev moves (cached: this feeds the hot integrator loop).
@@ -237,12 +248,27 @@ export const Physics = {
           sim.chuteOpen = true;
         }
         if (rspeed > 0) {
-          const CdA = 2.0 + chuteCdA; // m^2 (hull drag + open parachute, if any)
+          // Wings add a little drag of their own (nothing is free in aerodynamics).
+          const wingDrag = 0.5 * (c.wingCount || 0);
+          const CdA = 2.0 + chuteCdA + wingDrag; // m^2 (hull + chute + wings)
           const dragMag = 0.5 * airInfo.rho * rspeed * rspeed * CdA; // Newtons
           let ad = dragMag / massKg;
           ad = Math.min(ad, (0.9 * rspeed) / h); // may slow but never reverse in one step
           acc.x -= (rvx / rspeed) * ad;
           acc.y -= (rvy / rspeed) * ad;
+        }
+        // Wings: LIFT, perpendicular to the airflow, signed by the angle of attack
+        // (tilt the nose off your direction of travel and the air pushes you sideways).
+        if ((c.wingCount || 0) > 0 && rspeed > 1) {
+          const hv = headingVec(angle);
+          const ux = rvx / rspeed, uy = rvy / rspeed;
+          const sinAoA = ux * hv.y - uy * hv.x; // + when the nose is CCW of the airflow
+          const cl = Math.max(-WING_CL_MAX, Math.min(WING_CL_MAX, WING_CL_SLOPE * sinAoA));
+          const liftMag = 0.5 * airInfo.rho * rspeed * rspeed * WING_AREA * c.wingCount * cl;
+          let al = liftMag / massKg;
+          al = Math.max(-WING_ACC_CAP, Math.min(WING_ACC_CAP, al));
+          acc.x += -uy * al; // 90° CCW of the airflow direction
+          acc.y += ux * al;
         }
       }
 

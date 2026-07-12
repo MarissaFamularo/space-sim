@@ -3,7 +3,7 @@
 // and wires the copilot. Integrates physics.js + render.js + builder.js per the contract.
 
 import { PARTS } from "./mods.js";
-import { BODIES, SYSTEM, STATIONS, isSol, setSystem, returnToSol, newCraft, newSimState, computeStats, findPart, bodyStateAt } from "./state.js";
+import { BODIES, SYSTEM, STATIONS, isSol, setSystem, returnToSol, newCraft, newSimState, computeStats, findPart, bodyStateAt, dominantBody } from "./state.js";
 import { generateSystem, galaxyPos } from "./stargen.js";
 import { Physics } from "./physics.js";
 import { Render } from "./render.js";
@@ -56,7 +56,7 @@ const WORLD_FACTS = {
 // ---- propulsion for a given stage (integration owns this; physics reads the live fields) ----
 function activeStage(craft, stageNum) {
   let thrust = 0, veSum = 0, engines = 0, stageFuel = 0, remainingMass = 0, chutes = 0, docks = 0;
-  let legs = 0, solar = 0, rovers = 0;
+  let legs = 0, solar = 0, rovers = 0, wings = 0, stationParts = 0, centrifuges = 0;
   for (const inst of craft.parts) {
     const def = findPart(PARTS, inst.partId);
     if (!def) continue;
@@ -67,6 +67,9 @@ function activeStage(craft, stageNum) {
       if (def.type === "legs") legs++;
       if (def.type === "solar") solar++;
       if (def.type === "rover") rovers++;
+      if (def.type === "wing") wings++;
+      if (def.type === "station") stationParts++;
+      if (def.type === "centrifuge") centrifuges++;
     }
     if (inst.stage === stageNum) {
       if (def.type === "engine") { thrust += def.thrust || 0; veSum += def.exhaustVelocity || 0; engines++; }
@@ -74,7 +77,7 @@ function activeStage(craft, stageNum) {
     }
   }
   return { thrust, exhaustVelocity: engines ? veSum / engines : 0, stageFuel, remainingMass,
-           chutes, legs, solar, rovers, docks };
+           chutes, legs, solar, rovers, docks, wings, stationParts, centrifuges };
 }
 function maxStage(craft) {
   return craft.parts.reduce((m, i) => Math.max(m, i.stage || 0), 0);
@@ -92,6 +95,9 @@ function loadStage(stageNum) {
   sim.craft.legCount = s.legs;      // physics: legs raise the safe touchdown speed
   sim.craft.solarCount = s.solar;
   sim.craft.roverCount = s.rovers;
+  sim.craft.wingCount = s.wings;    // physics: wings make LIFT in atmosphere
+  sim.craft.stationCount = s.stationParts;   // a Station Hub aboard = deployable station
+  sim.craft.centrifugeCount = s.centrifuges; // spin gravity for the deployed station
   sim.stageWeightKN = s.remainingMass * BODIES.earth.g0;
   sim.cantLiftOff = s.thrust <= sim.stageWeightKN;
 }
@@ -202,6 +208,69 @@ function deploySatellite(hasPower) {
       ? "Its solar panels keep it awake for years — just like the real satellites doing GPS, weather, and phone calls over Earth right now."
       : "Heads up: it has no solar panels, so its battery will run down — real satellites always carry power. Next one, tuck Solar Panels into the same stage!"));
   return true;
+}
+
+// ---- 🛰 PLAYER STATIONS: build one in the Hangar (a Station Hub makes it count),
+// get it to a stable orbit (fly or ✨ Teleport), hit Deploy — and it's up there for
+// good: dockable, boardable, tracked, persisted. A Centrifuge Ring aboard gives the
+// deployed station GRAVITY inside (the spin trick — his ask).
+const LS_PSTATIONS = "spacesim.playerStations.v1";
+function loadPlayerStations() {
+  try {
+    const a = JSON.parse(localStorage.getItem(LS_PSTATIONS) || "[]");
+    return Array.isArray(a) ? a.filter((s) => s && s.id && s.body && isFinite(s.altR)) : [];
+  } catch { return []; }
+}
+function savePlayerStations() { try { localStorage.setItem(LS_PSTATIONS, JSON.stringify(PLAYER_STATIONS)); } catch {} }
+const PLAYER_STATIONS = loadPlayerStations();
+function systemKeyNow() { return isSol() ? "sol" : String(SYSTEM.seed || SYSTEM.key || "").toLowerCase(); }
+// Fold this system's player stations into the live STATIONS list (docking, targets,
+// tracking, and render all read STATIONS — one list, everything works).
+function injectPlayerStations() {
+  for (const ps of PLAYER_STATIONS) {
+    if (ps.system !== systemKeyNow() || !BODIES[ps.body]) continue;
+    if (!STATIONS.some((s) => s.id === ps.id)) {
+      STATIONS.push({ id: ps.id, name: ps.name, body: ps.body, altR: ps.altR,
+                      phase0: ps.phase0, yours: true, centrifuge: !!ps.centrifuge });
+    }
+  }
+}
+injectPlayerStations(); // Sol at boot; arriveInSystem() re-injects after Starmap jumps
+
+function deployStation() {
+  if (!(sim.mode === "flight" && sim.orbit && sim.orbit.isOrbit && (sim.craft.stationCount || 0) > 0)) return;
+  const t = sim.time || 0;
+  const dom = dominantBody(sim.craft.pos, t);
+  if (!dom.body || dom.body.key === "sun") {
+    copilotSay("Stations like to orbit a planet or a moon — get captured around one first, then deploy.");
+    return;
+  }
+  const b = dom.body;
+  const r = Math.hypot(dom.rel.x, dom.rel.y);
+  if (r < b.radius * 1.05) return;
+  const n = Math.sqrt(b.mu / (r * r * r));
+  const th = Math.atan2(dom.rel.y, dom.rel.x);
+  const hasSpin = (sim.craft.centrifugeCount || 0) > 0;
+  const rec = {
+    id: "yours_" + (PLAYER_STATIONS.length + 1) + "_" + systemKeyNow(),
+    name: craft.name && craft.name !== "My Rocket" ? craft.name : "Konnie Station " + (PLAYER_STATIONS.length + 1),
+    body: b.key, altR: r / b.radius, phase0: th - n * t,
+    centrifuge: hasSpin, system: systemKeyNow(),
+  };
+  PLAYER_STATIONS.push(rec);
+  if (PLAYER_STATIONS.length > 16) PLAYER_STATIONS.splice(0, PLAYER_STATIONS.length - 16);
+  savePlayerStations();
+  STATIONS.push({ id: rec.id, name: rec.name, body: rec.body, altR: rec.altR,
+                  phase0: rec.phase0, yours: true, centrifuge: rec.centrifuge });
+  UI.rebuildTargets();
+  copilotSay("🛰🎉 <b>" + rec.name + " is DEPLOYED, orbiting " + b.name + " — permanently!</b> " +
+    "Orbits are free forever, so it'll still be circling next time you play. The real ISS was " +
+    "assembled in orbit piece by piece over more than 10 years. " +
+    (hasSpin
+      ? "Your <b>Centrifuge Ring</b> is spinning — the floor of the ring pushes on your feet as it turns, and that push feels exactly like gravity. Fly out with a Docking Port, dock, and press <b>E</b> to WALK around inside!"
+      : "It's zero-g inside — add a <b>Centrifuge Ring</b> to your next station and the spin makes gravity you can walk on. Fly out with a Docking Port, dock, and press <b>E</b> to float aboard.") +
+    " Find it anytime in the 📡 Tracking Center or the 🎯 picker.");
+  enterBuild(); // the ship IS the station now; the blueprint stays for the next one
 }
 
 // A rover set free while landed: it drives off and leaves tracks (render draws it).
@@ -460,6 +529,7 @@ function travelHome() {
 function arriveInSystem() {
   Render.rebuildWorld();
   refreshGalaxy();
+  injectPlayerStations(); // your deployed stations live in their home system
   UI.rebuildTargets();
   sim = newSimState(BODIES.earth);
   sim.target = "moon";
@@ -541,7 +611,12 @@ window.addEventListener("keydown", (e) => {
   if (Render.isInside()) return; // the station interior owns the keys while aboard
   keys[e.key] = true;
   if (e.repeat) return;
-  if (e.key === "e" || e.key === "E") boardStation();
+  if (e.key === "e" || e.key === "E") {
+    // E, in priority order: board a docked station; otherwise EVA — your Connie goes
+    // OUTSIDE, floating in space or standing on the ground (his ask). E again returns.
+    if (sim.stationNear && sim.stationNear.docked) boardStation();
+    else startEva();
+  }
   if (e.key === " ") { e.preventDefault(); doStage(); }
   if (e.key === "z" || e.key === "Z") sim.craft.throttle = 1;
   if (e.key === "x" || e.key === "X") sim.craft.throttle = 0;
@@ -580,6 +655,21 @@ banner.style.cssText = "position:absolute;top:120px;left:50%;transform:translate
   "font:700 30px system-ui,sans-serif;padding:14px 28px;border-radius:12px;display:none;" +
   "text-align:center;pointer-events:none;box-shadow:0 6px 30px rgba(0,0,0,.5);";
 document.body.appendChild(banner);
+
+// ---- 🛰 Deploy button: shows in a stable orbit with a Station Hub aboard ----
+const deployBtn = document.createElement("button");
+deployBtn.style.cssText = "position:absolute;bottom:64px;left:50%;transform:translateX(-50%);z-index:8;" +
+  "font:700 15px system-ui,sans-serif;padding:10px 20px;border-radius:10px;display:none;" +
+  "background:linear-gradient(180deg,#2f6fdc,#1d47a0);color:#fff;border:1px solid #5b8dee;" +
+  "cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,.45);";
+deployBtn.textContent = "🛰 Deploy as Space Station";
+deployBtn.onclick = deployStation;
+document.body.appendChild(deployBtn);
+function updateDeployBtn() {
+  deployBtn.style.display =
+    sim.mode === "flight" && sim.status === "orbit" && sim.orbit && sim.orbit.isOrbit &&
+    (sim.craft.stationCount || 0) > 0 ? "block" : "none";
+}
 
 const mapHint = document.createElement("div");
 mapHint.style.cssText = "position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:8;" +
@@ -840,6 +930,37 @@ function awardScience(kind) {
   copilotSay(fact + " <b>+" + pts + " Science</b> (total " + SCIENCE + ").");
 }
 
+// ---- EVA anywhere (his ask): E in space or on the ground sends the Connie OUT ----
+function startEva() {
+  if (Render.isInside()) return;
+  if (sim.mode !== "flight" || sim.status === "crashed") return;
+  if (!sim.crew) {
+    copilotSay("🛰 Nobody's aboard to go outside — this is a robot probe! Fly a crewed pod and a Connie can EVA.");
+    return;
+  }
+  const landed = sim.status === "landed";
+  if (!landed) {
+    // Mid-air in an atmosphere is not a spacewalk, it's skydiving — hold on tight.
+    const here = BODIES[sim.soi ? sim.soi.toLowerCase() : ""];
+    if (here && here.atmosphere && sim.altitude < here.atmosphere.height) {
+      copilotSay("🌬️ Too much wind out there — you're still inside " + here.name +
+        "'s air! Get above the atmosphere (or land first), then press E to go outside.");
+      return;
+    }
+  }
+  const crew = sim.crew.name;
+  Render.enterEva(sim, {
+    onExit: () => copilotSay(landed
+      ? "🚀 " + crew + " climbs back into the capsule. Boots dusted, memories made."
+      : "🚀 " + crew + " pulls back along the tether and is safely inside. Real spacewalks end the same way — slow and careful, hand over hand."),
+  });
+  copilotSay(landed
+    ? "🐍👢 <b>" + crew + " is out on the surface!</b> Walk with ← →, hop with ↑ — feel how " +
+      (sim.landed && BODIES[sim.landed.body] ? "gravity of " + (BODIES[sim.landed.body].g0).toFixed(1) + " m/s²" : "the local gravity") +
+      " changes your jumps. Press <b>E</b> to climb back in."
+    : "🐍🌌 <b>" + crew + " is on a SPACEWALK!</b> Nudge with the arrow keys — one push and you coast forever, that's zero-g. Drift too far and the safety tether tugs you home (real astronauts are ALWAYS clipped on — except Bruce McCandless in 1984, who flew a jetpack 100 meters out, the scariest free-flight ever). Press <b>E</b> to come back inside.");
+}
+
 // Boarding: docked + press E -> the Connie floats around INSIDE (render owns the room).
 function boardStation() {
   if (Render.isInside() || !sim.stationNear || !sim.stationNear.docked) return;
@@ -853,15 +974,18 @@ function boardStation() {
     for (let i = 0; i < h.length; i++) { x ^= h.charCodeAt(i); x = Math.imul(x, 16777619); }
     return ((x >>> 0) % 1000) / 1000;
   })(seedKey + ":resident");
-  const hasAlien = !isSol() && !st.abandoned && alienRoll < 0.45;
+  const hasAlien = !isSol() && !st.abandoned && !st.yours && alienRoll < 0.45;
   Render.enterStation(
-    { name: st.name, abandoned: !!st.abandoned, alien: hasAlien, seedKey },
+    { name: st.name, abandoned: !!st.abandoned, alien: hasAlien, seedKey,
+      spin: !!st.centrifuge }, // your centrifuge station: gravity inside!
     { onScience: awardScience,
       onExit: () => copilotSay("🚀 Back aboard your ship — still docked, tanks " +
         (st.abandoned ? "empty as ever (this old wreck has nothing left)." : "topped off. Undock with a gentle throttle when you're ready.")) });
   copilotSay(st.abandoned
     ? "🚪🔦 <b>You float into " + st.name + ".</b> It's dark. One red light still blinks. Junk drifts everywhere — nobody's been here for years. Find the old log screen… and be gentle with this place."
-    : hasAlien
+    : st.centrifuge
+      ? "🚪🌀 <b>Welcome aboard " + st.name + " — and you can STAND UP!</b> The centrifuge ring is spinning, and the floor pushing on your boots as it turns feels exactly like gravity. That's real physics (it's why every serious station design has a spinning ring). Walk with ← →, jump with ↑ — and notice science screens still glow the same."
+      : hasAlien
       ? "🚪👽 <b>You float into " + st.name + "… and someone is HOME.</b> Big eyes, gentle hum, very friendly. Drift over and see what it's studying!"
       : "🚪 <b>Welcome aboard " + st.name + "!</b> Float with the arrow keys — in zero-g you push once and coast. Glowing screens are experiments waiting for a scientist. That's you.");
 }
@@ -890,7 +1014,8 @@ function updateStationsSim() {
   for (const st of STATIONS) {
     const ss = stationStateAt(st, t);
     if (!ss) continue;
-    view.push({ id: st.id, name: st.name, body: st.body, abandoned: !!st.abandoned, pos: ss.pos });
+    view.push({ id: st.id, name: st.name, body: st.body, abandoned: !!st.abandoned,
+                yours: !!st.yours, pos: ss.pos });
     const inSpace = sim.mode === "flight" && (sim.status === "flying" || sim.status === "orbit");
     if (inSpace) {
       const dist = Math.hypot(sim.craft.pos.x - ss.pos.x, sim.craft.pos.y - ss.pos.y);
@@ -1002,6 +1127,7 @@ function frame(t) {
   updateBanner();
   updateMapHint();
   updateDescentHud();
+  updateDeployBtn();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
