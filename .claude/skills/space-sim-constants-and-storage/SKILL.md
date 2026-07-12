@@ -198,6 +198,7 @@ to a sane default — a mangled localStorage must never kill the boot.
 | `spacesim.science.v1` | integer as a string, e.g. `"85"` | main.js `awardScience()` (main.js:810) | main.js boot (main.js:791-793) | `parseInt(...) \|\| 0` |
 | `spacesim.visitedSystems.v1` | `[{ seed, star, planets }]`, max 12, most-recent first | main.js `rememberVisit()` (main.js:395-399) | main.js `loadVisited()` (main.js:392-394), feeds the galaxy map | `JSON.parse \|\| []` in try/catch |
 | `spacesim_anthropic_key` | raw API key string (no JSON) | copilot.js `setKey()` (copilot.js:55) via the in-app 🔑 button | copilot.js `getKey()` (copilot.js:54); `hasKey()` = length > 10 | try/catch → `""` (Navigator falls back to offline stub). NEVER log, echo, or commit this value. |
+| `spacesim.wishlist.v1` | `[{ when: "YYYY-MM-DD", idea }]`, max 40, ideas capped 160 chars, case-insensitive deduped (2026-07-12) | copilot.js `saveWish()` — from `[[WISH: …]]` markers the model appends (online) or idea-shaped messages in the offline stub | copilot.js `loadWishes()`: the snapshot's `wishlist` field (last 15) + the offline "what's in the wish book?" reply | `JSON.parse \|\| []` in try/catch; his IDEAS — treat like saves (Rule 2) |
 
 Schema details worth knowing before you touch anything:
 

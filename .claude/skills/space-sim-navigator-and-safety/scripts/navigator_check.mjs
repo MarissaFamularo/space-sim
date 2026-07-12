@@ -65,5 +65,14 @@ check(!!fs.orbit && fs.orbit.aroundBody === "Earth", "orbit block present");
 check(!!fs.world && fs.world.realEarth.orbitSpeed_ms === 7800, "world.realEarth teaches the real number");
 check(!!fs.moon && fs.flight.chute.aboard === 1, "moon block + chute status present");
 
+// ---- 3. Wish Book (2026-07-12) ----
+check(src.includes("THE WISH BOOK"), "SYSTEM prompt teaches the Wish Book");
+const h = Copilot.harvestWishes("Love that spark!\n[[WISH: a submarine for Europa's ocean]]");
+check(h.wishes.length === 1 && h.wishes[0] === "a submarine for Europa's ocean" && !h.text.includes("WISH"),
+  "harvestWishes extracts and strips the [[WISH: …]] marker");
+const h2 = Copilot.harvestWishes("No markers here.");
+check(h2.wishes.length === 0 && h2.text === "No markers here.",
+  "harvestWishes leaves plain replies alone");
+
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : "\n" + fails + " CHECK(S) FAILED");
 process.exit(fails === 0 ? 0 : 1);

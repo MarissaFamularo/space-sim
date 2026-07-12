@@ -14,6 +14,7 @@ import { modsSummary } from "./mods.js"; // which parts he's modded/made — for
 const API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-opus-4-8"; // ← swap to "claude-haiku-4-5" for ~5x cheaper, faster replies
 const LS_KEY = "spacesim_anthropic_key";
+const WISH_KEY = "spacesim.wishlist.v1"; // 📖 the Wish Book — his game-improvement ideas
 const MAX_TOKENS = 500;
 
 const SYSTEM = `You are the friendly AI Navigator inside a kid's space-flight game called KONNIE SPACE PROGRAM (a simpler Kerbal Space Program — the crew are brave snakes called Connies, and the game is named for them). You are talking to a sharp 8-year-old who is learning rocketry, orbital mechanics, and a little coding.
@@ -52,6 +53,7 @@ How to talk:
 - TRANSFER TIMING: in a stable Earth orbit, GAME STATE flight.transferWindow shows the Moon-burn phasing: degToGo counts down the degrees of orbit left until the right moment, and when open is true the moment is NOW — the map shows a gold "Burn" marker at the spot and the gold arrow swings onto prograde, so "point at gold and burn" starts the trip. Teach it like Apollo's translunar injection: you fire prograde when the Moon LEADS you by just the right angle, so ship and Moon arrive at the same place at the same time (burning early or late means the Moon isn't there when you are).
 - CODING MENTOR — this matters most: the player can OPEN ANY PART'S CODE with the {} button in the parts list. Parts are JSON, the exact format the game itself reads, so every stock part is a worked example. GAME STATE "mods" lists parts he has changed or invented, with their key numbers — talk about HIS edits specifically ("your engine's thrust is 400 now — check what happened to TWR"). Teach the first rungs gently: numbers are DIALS that reality reads (change thrust, the rocket leaps — that's the whole magic); copying a part and renaming it makes it his own creation. Broken edits are LESSONS, never failures: the game can't crash from a bad edit, it just shows a friendly message — a missing comma is a five-second lesson about why computers need exact punctuation. Explain and encourage, point at the field or line that's wrong if you can tell, but NEVER type out a whole part definition for him — show at most one example line and let HIM do the typing. The struggle is where the learning lives.
 - THE CREW: the game's astronauts are CONNIES — brave little snakes in bubble astronaut helmets (the player designed them!). GAME STATE flight.crew is the Connie flying this mission; call them by name. Every Connie is named as a fun pun on a REAL astronaut — crew.hero says who — and when a moment fits (launch, orbit, landing), you can share one quick true fact about that real astronaut. Connies are NEVER hurt: if the rocket crashes, the Connie always pops out safely in an escape bubble. Keep crashes light and funny — the rocket is what's at stake, never the crew.
+- THE WISH BOOK — the player's ideas notebook. When the player shares an IDEA, WISH, or SUGGESTION for improving the GAME ITSELF ("you should add…", "I wish the game had…", "it would be cool if…"), respond warmly as usual — love the spark, and if the real world has something like it, say so — then end your reply with the idea on its own line in EXACTLY this form: [[WISH: the idea in a short phrase]]. The game strips that line off and writes the idea into the Wish Book; the marker itself is never shown, so don't mention the strange brackets. Only do this for game-improvement ideas (not questions, not mission plans), at most one [[WISH: …]] per reply. GAME STATE "wishlist" holds the Wish Book so far — when someone asks what's in the wish book, what ideas he's had, or what he wants built next, read the ideas out warmly with their dates and celebrate the collection. Never claim the book is empty if wishlist has entries, and never make up entries that aren't there.
 Use real physics correctly, and always tie the game numbers back to the real ones.`;
 
 let history = []; // [{role, content}] — short rolling conversation memory
@@ -59,12 +61,41 @@ let history = []; // [{role, content}] — short rolling conversation memory
 function getKey() { try { return localStorage.getItem(LS_KEY) || ""; } catch { return ""; } }
 function setKey(k) { try { localStorage.setItem(LS_KEY, k); } catch {} }
 function hasKey() { return getKey().length > 10; }
+
+// ---- 📖 The Wish Book ----
+// When he tells the Navigator an idea for improving the game, it gets written down here,
+// so Mom can ask "what's in the wish book?" later instead of catching ideas in real time.
+// Two capture paths: online, the model appends a [[WISH: …]] marker (stripped before
+// display, saved by harvestWishes); offline, the stub catches idea-shaped messages.
+function loadWishes() {
+  try { return JSON.parse(localStorage.getItem(WISH_KEY)) || []; } catch { return []; }
+}
+function saveWish(idea) {
+  const t = String(idea || "").trim().slice(0, 160);
+  if (!t) return false;
+  const list = loadWishes();
+  if (list.some((w) => w.idea.toLowerCase() === t.toLowerCase())) return false; // already in the book
+  list.push({ when: new Date().toISOString().slice(0, 10), idea: t });
+  try { localStorage.setItem(WISH_KEY, JSON.stringify(list.slice(-40))); } catch { return false; }
+  return true;
+}
+// Pull [[WISH: …]] markers out of a model reply. Pure string work (node-testable):
+// returns { text: marker-free reply, wishes: [summaries] }.
+function harvestWishes(text) {
+  const wishes = [];
+  const clean = String(text || "").replace(/\[\[\s*WISH:\s*([^\]]+)\]\]/gi, (_, w) => {
+    wishes.push(w.trim());
+    return "";
+  }).trim();
+  return { text: clean, wishes };
+}
 const r0 = (n) => Math.round(n);
 const r1 = (n) => Math.round(n * 10) / 10;
 const r2 = (n) => Math.round(n * 100) / 100;
 
 export const Copilot = {
   hasKey,
+  harvestWishes, // pure [[WISH: …]] parser — exported for the node drift check
 
   // Structured, kid-relevant game state. UI + this file read it.
   snapshot(sim, stats) {
@@ -161,6 +192,12 @@ export const Copilot = {
       const mods = modsSummary();
       if (mods.length) s.mods = mods;
     } catch { /* never let a mods hiccup break the Navigator */ }
+    // 📖 The Wish Book: his saved improvement ideas, so the Navigator can read them back
+    // ("what's in the wish book?") — often Mom asking what to build with him next.
+    try {
+      const wishes = loadWishes();
+      if (wishes.length) s.wishlist = wishes.slice(-15);
+    } catch { /* never let the wish book break the Navigator */ }
     // Which star system are we in? The Starmap generates new ones (seeded by name,
     // shareable like a rocket code) — the Navigator must not claim Apollo landed HERE.
     s.system = isSol()
@@ -217,6 +254,19 @@ export const Copilot = {
     const snap = this.snapshot(sim, stats);
 
     if (!hasKey()) {
+      // 📖 The Wish Book works even with no key: reading it back…
+      if (/wish ?book|wish ?list|(what|which)[^?]*(idea|build next)/i.test(question)) {
+        const wishes = loadWishes();
+        if (!wishes.length) return "📖 The Wish Book is empty so far — tell me an idea for the game (start with \"idea:\") and I'll write it down!";
+        return "📖 The Wish Book so far: " + wishes.map((w, i) => (i + 1) + ". " + w.idea + " (" + w.when + ")").join("  ") + " — " + wishes.length + " idea" + (wishes.length > 1 ? "s" : "") + " and counting!";
+      }
+      // …and writing idea-shaped messages into it.
+      const ideaTag = question.match(/^\s*idea[:,]\s*(.+)/i);
+      if (ideaTag || /\b(i wish|you should add|the game should|it would be cool if|can you add)\b/i.test(question)) {
+        return saveWish(ideaTag ? ideaTag[1] : question)
+          ? "📖✨ Wrote it in the Wish Book! Ask me \"what's in the wish book?\" anytime to hear every idea."
+          : "📖 That one's already in the Wish Book — great minds!";
+      }
       if (snap.rocket && snap.rocket.twr < 1 && sim.mode === "build")
         return "Your thrust-to-weight is below 1.0, so this rocket can't lift off yet — add an engine or drop some weight. (Tap the 🔑 button up top and add your Anthropic API key to chat with me for real!)";
       return "I'm in offline mode right now. Tap the 🔑 button at the top of this panel and paste your Anthropic API key — then I can see your ship and really help!";
@@ -245,9 +295,15 @@ export const Copilot = {
       }
       const data = await res.json();
       if (data.stop_reason === "refusal") { history.pop(); return "Let's keep our focus on the mission — ask me about your rocket or space!"; }
-      const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+      const raw = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+      // 📖 Harvest [[WISH: …]] markers: save each idea, strip the marker, and confirm
+      // only when something was actually written (game-level truth, not model promise).
+      const { text, wishes } = harvestWishes(raw);
       history.push({ role: "assistant", content: text });
-      return text || "(I didn't have anything to say there — try asking another way.)";
+      let out = text;
+      if (wishes.filter(saveWish).length)
+        out += (out ? "\n" : "") + "📖✨ (Wrote it in the Wish Book — ask \"what's in the wish book?\" anytime!)";
+      return out || "(I didn't have anything to say there — try asking another way.)";
     } catch (e) {
       history.pop();
       return "I couldn't connect — are you online? (Your key stays safe on your computer.) Try again.";

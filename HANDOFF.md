@@ -9,6 +9,34 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-12 later still): 📖 THE WISH BOOK (Mom's ask: "keep a list of his ideas")
+
+He tells the Navigator ideas in real time; Mom wants to ask for them later. Shipped, all
+in js/copilot.js (safety block untouched — navigator_check grew to 18 checks, green):
+- **Capture, online**: new WISH BOOK paragraph in the SYSTEM prompt — when the kid shares
+  a game-improvement idea, the model replies warmly and appends `[[WISH: short phrase]]`;
+  `ask()` harvests the marker (new pure `harvestWishes()`, exported + node-tested), strips
+  it from the display AND history, saves via `saveWish()`, and appends a deterministic
+  "📖✨ (Wrote it in the Wish Book…)" confirmation ONLY when something was actually
+  written — game-level truth, not a model promise.
+- **Capture, offline**: no key needed — the stub catches "idea: …", "I wish…", "you
+  should add…", "it would be cool if…", "can you add…" and writes the message directly.
+- **Storage**: `spacesim.wishlist.v1` — `[{when: "YYYY-MM-DD", idea}]`, 160-char ideas,
+  case-insensitive dedupe, capped 40 (new versioned key; Rule 2 clean). Catalogued in the
+  constants-and-storage skill; snapshot schema row added to the navigator skill.
+- **Read-back**: snapshot gains `wishlist` (last 15) so the online Navigator can answer
+  "what's in the wish book?" / "what does he want built?"; the offline stub answers the
+  same question keylessly with the numbered, dated list.
+**Verified**: navigator_check 18/18 (safety phrases + ordering intact, marker parse
+round-trip); all 10 node suites still green; browser-verified offline path end-to-end
+(fresh copy, cleared key: "idea: lasers that mine asteroids" and "I wish the game had a
+space elevator" both captured to localStorage, "what's in the wish book?" read both back
+numbered with dates; zero console errors). **Flagged**: the ONLINE marker path is
+node-tested but not flown against the live API (no key in the test browser) — first real
+session with his key is the honest test; if the model over- or under-captures, tune the
+WISH BOOK paragraph's trigger examples, not the parser. Mom: ask the Navigator "what's in
+the wish book?" anytime — works even with no API key.
+
 ## Status (2026-07-12 later): 🌟 PANDORA IS A TRIPLE STAR (his ask: "Pandora should be a binary")
 
 He's right, and the real thing is even better — Alpha Centauri is a TRIPLE. Shipped:

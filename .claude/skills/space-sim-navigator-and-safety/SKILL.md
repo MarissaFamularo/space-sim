@@ -169,6 +169,7 @@ one, both to keep tokens down and because raw floats read as noise to the model.
 | `science` | flight + points earned | lifetime science total |
 | `moon` | flight mode | home moon's distance/SOI/radius/gravity + a "how to get here" note |
 | `mods` | any modded/custom parts | from `modsSummary()` (js/mods.js:296): id, name, kind ("modified stock part" / "custom part he made"), and the key numbers (thrust, exhaustVelocity, fuelMass, dryMass) — this powers the coding-mentor role ("your engine's thrust is 400 now — what happened to TWR?") |
+| `wishlist` | Wish Book non-empty (2026-07-12) | last 15 of `spacesim.wishlist.v1` — `{when: "YYYY-MM-DD", idea}`. His game-improvement ideas, captured from `[[WISH: …]]` markers the model appends per the WISH BOOK prompt paragraph (harvested + stripped in `ask()`, saved by `saveWish`, deduped, capped 40) or by the offline stub's idea-shaped-message patterns. Lets anyone ask "what's in the wish book?" — the offline stub answers that question keylessly too |
 | `system` | always | Sol: `{name, generated:false}`. Generated systems: name/seed/star/home-world names + a long note telling the model the `earth`/`moon` keys are ROLES, real-mission facts belong to Sol only, and (if applicable) black-hole physics guidance |
 | `world` | current body has `mu` | `orbitSpeedNeeded_ms`, `approxDeltaVToOrbit_ms` (= v_circ × 1.5), and `realEarth` `{orbitSpeed_ms: 7800, deltaVToOrbit_ms: 9400, ...}` — this pair is the mechanical basis of "teach both numbers" |
 
