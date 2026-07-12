@@ -1,0 +1,192 @@
+// famous.js — FAMOUS STAR SYSTEMS (his ask): the universe comes pre-populated with a
+// few hand-built legendary systems. Type their name in the Starmap (any spelling that
+// makes sense), or find them already shining on the galaxy map. Same rules as every
+// system: the name is the share code, the star is keyed "sun", home is "earth", its
+// moon is "moon" — so every mechanic works unchanged.
+//
+// Pure data + buildCatalog, no THREE, no DOM — node-testable (tests/famous_test.mjs).
+//
+// THE SCALE TRICK (Kerbol): the whole game multiplies radii/distances by SCALE=0.1.
+// KSP's canon worlds are ALREADY tiny (Kerbin: 600 km), so we enter canon values ×10
+// and after scaling the Kerbol system lands at EXACTLY its true in-game size — real
+// KSP orbits, real KSP gravity, real KSP years. The homage is physically exact.
+
+import { buildCatalog } from "./state.js";
+
+const K = 10;        // KSP canon meters ×10 (see scale trick above)
+const AU = 1.496e11; // Avatar system uses real astronomy scale, like Sol
+
+// ---------- THE KERBOL SYSTEM (Kerbal Space Program — the game that inspired this one) ----------
+function kerbolSystem() {
+  const defs = {
+    sun: { name: "Kerbol", radius: 2.616e8 * K, g0: 17.1, parent: null, a: 0, solid: false,
+           atmo: null, phase0: 0, gen: true, style: { color: 0xffd75e, star: true, glow: "255,215,94" } },
+    moho: { name: "Moho", radius: 2.5e5 * K, g0: 2.70, parent: "sun", a: 5.2631e9 * K,
+            solid: true, atmo: null, phase0: 0.9, gen: true,
+            style: { color: 0x8a5c3a }, face: { kind: "lava", base: "#5a3a26", accent: "#8a5c3a", accent2: "#c08a58" } },
+    eve: { name: "Eve", radius: 7.0e5 * K, g0: 16.7, parent: "sun", a: 9.8327e9 * K,
+           solid: true, atmo: { height: 9.0e4 * K, seaLevelDensity: 6.2 }, phase0: 2.2, gen: true,
+           style: { color: 0x7a4a9e, halo: 0x9a6ac0 }, face: { kind: "gasish", base: "#7a4a9e", accent: "#5e3480", accent2: "#9a6ac0" } },
+    gilly: { name: "Gilly", radius: 1.3e4 * K, g0: 0.049, parent: "eve", a: 3.15e7 * K,
+             solid: true, atmo: null, phase0: 4.1, gen: true,
+             style: { color: 0xbfae9a }, face: { kind: "rocky", base: "#bfae9a", accent: "#8a7a62", accent2: "#e0d4c0" } },
+    earth: { name: "Kerbin", radius: 6.0e5 * K, g0: 9.81, parent: "sun", a: 1.35998e10 * K,
+             solid: true, atmo: { height: 7.0e4 * K, seaLevelDensity: 1.225 }, phase0: 0, gen: true, home: true,
+             style: { color: 0x2f8fc0, halo: 0x6fb4ff }, face: { kind: "terra", base: "#1c6cb8", accent: "#3e8a3a", accent2: "#e8e8e8" } },
+    moon: { name: "the Mun", radius: 2.0e5 * K, g0: 1.63, parent: "earth", a: 1.2e7 * K,
+            solid: true, atmo: null, phase0: 1.7, gen: true,
+            style: { color: 0x8d8d92 }, face: { kind: "rocky", base: "#8d8d92", accent: "#65656a", accent2: "#c0c0c8" } },
+    minmus: { name: "Minmus", radius: 6.0e4 * K, g0: 0.491, parent: "earth", a: 4.7e7 * K,
+              solid: true, atmo: null, phase0: 3.9, gen: true,
+              style: { color: 0xbfe8d8 }, face: { kind: "ice", base: "#bfe8d8", accent: "#8ac8b0", accent2: "#e8fff4" } },
+    duna: { name: "Duna", radius: 3.2e5 * K, g0: 2.94, parent: "sun", a: 2.07262e10 * K,
+            solid: true, atmo: { height: 5.0e4 * K, seaLevelDensity: 0.05 }, phase0: 4.8, gen: true,
+            style: { color: 0xc05a38 }, face: { kind: "desert", base: "#c05a38", accent: "#8a3e26", accent2: "#e8e8e8" } },
+    ike: { name: "Ike", radius: 1.3e5 * K, g0: 1.10, parent: "duna", a: 3.2e6 * K,
+           solid: true, atmo: null, phase0: 2.6, gen: true,
+           style: { color: 0x9a9aa2 }, face: { kind: "rocky", base: "#9a9aa2", accent: "#6a6a72", accent2: "#c8c8d0" } },
+    dres: { name: "Dres", radius: 1.38e5 * K, g0: 1.13, parent: "sun", a: 4.08393e10 * K,
+            solid: true, atmo: null, phase0: 1.1, gen: true,
+            style: { color: 0xa8a090 }, face: { kind: "rocky", base: "#a8a090", accent: "#787060", accent2: "#d0c8b8" } },
+    jool: { name: "Jool", radius: 6.0e6 * K, g0: 7.85, parent: "sun", a: 6.87736e10 * K,
+            solid: false, atmo: { height: 2.0e5 * K, seaLevelDensity: 0.3 }, phase0: 5.5, gen: true, gas: true,
+            style: { color: 0x5a9a3a, halo: 0x7ab85a },
+            face: { kind: "gas", bands: ["#5a9a3a", "#3f7a28", "#7ab85a", "#2f6a1e"], spot: true } },
+    laythe: { name: "Laythe", radius: 5.0e5 * K, g0: 7.85, parent: "jool", a: 2.7184e7 * K,
+              solid: true, atmo: { height: 5.0e4 * K, seaLevelDensity: 0.6 }, phase0: 0.6, gen: true,
+              style: { color: 0x2a5c9e, halo: 0x5a8cc8 }, face: { kind: "terra", base: "#2a5c9e", accent: "#4a6a3a", accent2: "#d8e8f0" } },
+    vall: { name: "Vall", radius: 3.0e5 * K, g0: 2.31, parent: "jool", a: 4.3152e7 * K,
+            solid: true, atmo: null, phase0: 2.9, gen: true,
+            style: { color: 0xcfe0ea }, face: { kind: "ice", base: "#d5e4ec", accent: "#9ab8c8", accent2: "#ffffff" } },
+    tylo: { name: "Tylo", radius: 6.0e5 * K, g0: 7.85, parent: "jool", a: 6.85e7 * K,
+            solid: true, atmo: null, phase0: 4.4, gen: true,
+            style: { color: 0xcac0b0 }, face: { kind: "rocky", base: "#cac0b0", accent: "#968c7a", accent2: "#eee6d8" } },
+    bop: { name: "Bop", radius: 6.5e4 * K, g0: 0.589, parent: "jool", a: 1.285e8 * K,
+           solid: true, atmo: null, phase0: 1.4, gen: true,
+           style: { color: 0x8a7a62 }, face: { kind: "rocky", base: "#8a7a62", accent: "#5e523f", accent2: "#b8a888" } },
+    pol: { name: "Pol", radius: 4.4e4 * K, g0: 0.373, parent: "jool", a: 1.7989e8 * K,
+           solid: true, atmo: null, phase0: 5.9, gen: true,
+           style: { color: 0xd8c878 }, face: { kind: "desert", base: "#d8c878", accent: "#a89448", accent2: "#f0e8b0" } },
+    eeloo: { name: "Eeloo", radius: 2.1e5 * K, g0: 1.69, parent: "sun", a: 9.0118e10 * K,
+             solid: true, atmo: null, phase0: 3.3, gen: true,
+             style: { color: 0xd8dce0 }, face: { kind: "ice", base: "#d8dce0", accent: "#a8b0b8", accent2: "#8a6a4a" } },
+  };
+  const order = ["sun", "moho", "eve", "gilly", "earth", "moon", "minmus", "duna", "ike",
+                 "dres", "jool", "laythe", "vall", "tylo", "bop", "pol", "eeloo"];
+  return {
+    key: "gen:kerbol",
+    name: "The Kerbol System",
+    seed: "Kerbol",
+    blackHole: false,
+    starClass: "G",
+    starLabel: "yellow star",
+    homeName: "Kerbin",
+    moonName: "the Mun",
+    planetCount: 7,
+    frostAU: 0.35, // Kerbol's little system is compact; flavor only
+    bodies: buildCatalog(defs, order),
+    planetKeys: order.slice(1),
+    stations: [
+      { id: "st_home", name: "Gene's Station", body: "earth", altR: 2.4, phase0: 0.8 },
+      { id: "st_far", name: "Jool Research Outpost", body: "jool", altR: 3.4, phase0: 2.2 },
+    ],
+    famous: "kerbol",
+    blurb: "🟢 <b>Welcome to the KERBOL SYSTEM — the worlds of Kerbal Space Program, the " +
+      "game that inspired THIS one!</b> And it's the real deal: Kerbin is truly 600 km " +
+      "around with Earth's gravity, the Mun and minty Minmus are waiting, and every orbit " +
+      "runs on the honest KSP numbers. The classic missions all work: land on the Mun, " +
+      "parachute into Eve's thick purple air (getting OFF Eve is the hardest thing in the " +
+      "system — real KSP players fear it), sky-crane onto red Duna, and visit giant green " +
+      "Jool with its five moons — Laythe even has oceans and air. Fly safe, Kerbonaut! 🚀",
+  };
+}
+
+// ---------- THE PANDORA SYSTEM (Avatar) — a home that is a MOON of a gas giant ----------
+function pandoraSystem() {
+  const defs = {
+    sun: { name: "Alpha Centauri A", radius: 8.512e8, g0: 201.4, parent: null, a: 0,
+           solid: false, atmo: null, phase0: 0, gen: true,
+           style: { color: 0xffe89a, star: true, glow: "255,232,154" } },
+    prometheus: { name: "Prometheus", radius: 4.8e6, g0: 6.5, parent: "sun", a: 0.42 * AU,
+                  solid: true, atmo: null, phase0: 2.8, gen: true,
+                  style: { color: 0x8a2f1c, halo: 0xff7a3a }, face: { kind: "lava", base: "#3a1410", accent: "#ff6a2a", accent2: "#ffc24a" } },
+    polyphemus: { name: "Polyphemus", radius: 6.5e7, g0: 14.0, parent: "sun", a: 1.22 * AU,
+                  solid: false, atmo: { height: 1.0e6, seaLevelDensity: 0.25 }, phase0: 0.4, gen: true, gas: true,
+                  style: { color: 0x4a7ac8, halo: 0x6a94d8 },
+                  face: { kind: "gas", bands: ["#4a7ac8", "#3a62a8", "#6a94d8", "#2a4a88"], spot: true } },
+    polyi: { name: "Polyphemus I", radius: 1.9e6, g0: 1.4, parent: "polyphemus", a: 3.2e8,
+             solid: true, atmo: null, phase0: 1.9, gen: true,
+             style: { color: 0x9a9088 }, face: { kind: "rocky", base: "#9a9088", accent: "#6a625a", accent2: "#c8beb2" } },
+    // PANDORA — the homeworld, and it's a MOON. Look up from the pad: Polyphemus
+    // fills the sky. Air thicker than Earth's (great for parachutes) but poisonous —
+    // Connies keep their bubble helmets ON here (the Navigator teaches why).
+    earth: { name: "Pandora", radius: 5.75e6, g0: 7.85, parent: "polyphemus", a: 6.4e8,
+             solid: true, atmo: { height: 8.0e4, seaLevelDensity: 1.55 }, phase0: 0, gen: true, home: true,
+             style: { color: 0x2f9e6a, halo: 0x6fd0a8 }, face: { kind: "terra", base: "#1c7a52", accent: "#2f9e6a", accent2: "#6ac8f0" } },
+    moon: { name: "Little Sister", radius: 1.5e6, g0: 1.7, parent: "earth", a: 3.3e7,
+            solid: true, atmo: null, phase0: 2.4, gen: true,
+            style: { color: 0xb0a8c0 }, face: { kind: "rocky", base: "#b0a8c0", accent: "#7e7690", accent2: "#d8d0e8" } },
+    polyii: { name: "Polyphemus II", radius: 2.4e6, g0: 1.8, parent: "polyphemus", a: 1.35e9,
+              solid: true, atmo: null, phase0: 4.6, gen: true,
+              style: { color: 0xcfe0ea }, face: { kind: "ice", base: "#d5e4ec", accent: "#9ab8c8", accent2: "#b06a4a" } },
+    boreas: { name: "Boreas", radius: 2.5e7, g0: 10.0, parent: "sun", a: 4.1 * AU,
+              solid: false, atmo: { height: 9.0e5, seaLevelDensity: 0.4 }, phase0: 3.6, gen: true, gas: true,
+              style: { color: 0x7fa8c8, halo: 0xa8c8e0 },
+              face: { kind: "gas", bands: ["#7fa8c8", "#5d86a8", "#a8c8e0"], spot: false } },
+  };
+  const order = ["sun", "prometheus", "polyphemus", "polyi", "earth", "moon", "polyii", "boreas"];
+  return {
+    key: "gen:pandora",
+    name: "The Pandora System",
+    seed: "Pandora",
+    blackHole: false,
+    starClass: "G",
+    starLabel: "yellow star (Alpha Centauri A)",
+    homeName: "Pandora",
+    moonName: "Little Sister",
+    planetCount: 3,
+    frostAU: 3.3,
+    bodies: buildCatalog(defs, order),
+    planetKeys: order.slice(1),
+    stations: [
+      { id: "st_home", name: "Hell's Gate Station", body: "earth", altR: 2.3, phase0: 1.2 },
+    ],
+    famous: "pandora",
+    blurb: "🌿 <b>Welcome to the PANDORA system — from the movie Avatar!</b> Here's the " +
+      "wild part: your homeworld is a <b>MOON</b>. Zoom the map out and you'll see Pandora " +
+      "circling the blue gas giant <b>Polyphemus</b>, which circles Alpha Centauri A — and " +
+      "THAT part is real: Alpha Centauri is the true nearest star system to ours, 4.37 " +
+      "light-years away. Real astronomers hunt for moons of giant planets (exomoons) as " +
+      "possible homes for life — none confirmed yet, and looking is real science. " +
+      "Pandora's air is thicker than Earth's — lovely for parachutes, poisonous to breathe, " +
+      "so the Connies keep their bubble helmets sealed. Hell's Gate Station is overhead. 🌌",
+  };
+}
+
+// ---------- Registry ----------
+// Aliases are normalized (lowercase, letters+digits only) so "The Kerbal System",
+// "kerbin", "KSP", "avatar", "Alpha Centauri"… all land on the same canonical system.
+const BUILDERS = { kerbol: kerbolSystem, pandora: pandoraSystem };
+const ALIASES = {
+  kerbol: "kerbol", kerbin: "kerbol", kerbal: "kerbol", ksp: "kerbol",
+  kerbalsystem: "kerbol", kerbolsystem: "kerbol", thekerbolsystem: "kerbol",
+  thekerbalsystem: "kerbol", kerbalspaceprogram: "kerbol",
+  pandora: "pandora", avatar: "pandora", polyphemus: "pandora",
+  alphacentauri: "pandora", alphacentauria: "pandora",
+  pandorasystem: "pandora", avatarsystem: "pandora", thepandorasystem: "pandora",
+};
+
+// Shown in the Starmap panel and pre-lit on the galaxy map.
+export const FAMOUS_LIST = [
+  { seed: "Kerbol", name: "The Kerbol System", hint: "the Kerbal Space Program worlds — Kerbin, the Mun, Jool…", color: 0xffd75e },
+  { seed: "Pandora", name: "The Pandora System", hint: "from Avatar — your home is a moon of a gas giant", color: 0x4a7ac8 },
+];
+
+// null if the name isn't famous — the seeded generator takes over as usual.
+// Rebuilt fresh on every call (never cached): setSystem shares body objects by
+// reference, and Sol deep-copies its snapshot for exactly this reason.
+export function famousSystem(seedName) {
+  const norm = String(seedName).trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const key = ALIASES[norm];
+  return key ? BUILDERS[key]() : null;
+}

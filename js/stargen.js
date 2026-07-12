@@ -17,6 +17,7 @@
 //   - Distance from the star sets the year length (omega falls out of real gravity).
 
 import { buildCatalog } from "./state.js";
+import { famousSystem } from "./famous.js";
 
 // Same seeded RNG family the planet faces use (render.js) — tiny, deterministic.
 function mulberry32(seed) {
@@ -96,6 +97,13 @@ export function galaxyPos(seedName) {
 export function generateSystem(seedName) {
   const seed = String(seedName).trim();
   const norm = seed.toLowerCase();
+
+  // FAMOUS SYSTEMS first: a few legendary names are hand-built, not rolled — the
+  // Kerbol system (KSP), the Pandora system (Avatar), … see famous.js. Any alias
+  // ("kerbin", "avatar") lands on the same canonical system, so shares still work.
+  const fam = famousSystem(seed);
+  if (fam) return fam;
+
   const rng = mulberry32(hashStr("system:" + norm));
 
   // --- The star… or, sometimes, a BLACK HOLE. ⚫ ---

@@ -5,6 +5,7 @@
 import { PARTS } from "./mods.js";
 import { BODIES, SYSTEM, STATIONS, isSol, setSystem, returnToSol, newCraft, newSimState, computeStats, findPart, bodyStateAt, dominantBody } from "./state.js";
 import { generateSystem, galaxyPos } from "./stargen.js";
+import { FAMOUS_LIST } from "./famous.js";
 import { Physics } from "./physics.js";
 import { Render } from "./render.js";
 import { Builder } from "./builder.js";
@@ -351,7 +352,11 @@ function tripDaysFromEarth(key) {
   if (b.parent === "earth") {
     central = BODIES.earth; r1 = BODIES.earth.radius * 1.35; r2 = b.orbitRadius;
   } else {
-    central = BODIES.sun; r1 = BODIES.earth.orbitRadius;
+    central = BODIES.sun;
+    // Home's distance from the STAR — if home is itself a moon of a gas giant
+    // (Pandora!), that's its parent planet's orbit, not its own little circle.
+    const home = BODIES.earth;
+    r1 = home.parent === "sun" ? home.orbitRadius : BODIES[home.parent].orbitRadius;
     r2 = (b.parent === "sun" ? b : BODIES[b.parent]).orbitRadius; // moons: reach their planet
   }
   const a = (r1 + r2) / 2;
@@ -480,6 +485,14 @@ function buildGalaxyList() {
     entries.push({ seed: v.seed, name: sys.name, blackHole: sys.blackHole,
                    color: sys.bodies.sun.style.color, pos: galaxyPos(v.seed) });
   }
+  // The universe comes PRE-POPULATED with the famous systems (his ask) — they shine
+  // on the galaxy map even before the first visit. Dedup vs visited by seed.
+  for (const f of FAMOUS_LIST) {
+    if (!entries.some((e) => e.seed.toLowerCase() === f.seed.toLowerCase())) {
+      entries.push({ seed: f.seed, name: f.name, blackHole: false,
+                     color: f.color, pos: galaxyPos(f.seed) });
+    }
+  }
   const activePos = isSol() ? { x: 0, y: 0 } : galaxyPos(SYSTEM.seed);
   const activeSeed = isSol() ? "@sol" : SYSTEM.seed.toLowerCase();
   return entries
@@ -498,7 +511,10 @@ function travelToSystem(seed) {
   rememberVisit(sys);
   arriveInSystem();
   const home = BODIES.earth;
-  if (sys.blackHole) {
+  if (sys.famous && sys.blurb) {
+    copilotSay(sys.blurb + " (Gravity here: " + home.g0.toFixed(1) + " vs Earth's 9.8. Tell a friend the name <b>" +
+      sys.seed + "</b> and they'll land in this exact system.)");
+  } else if (sys.blackHole) {
     copilotSay("🌌⚫ <b>Whoa — the " + sys.name + " system has no star. It's a BLACK HOLE.</b> " +
       "Your ship is on the pad of <b>" + sys.homeName + "</b> (gravity " + home.g0.toFixed(1) +
       " vs Earth's 9.8), one of <b>" + sys.planetCount + " planets</b> orbiting the hole — " +

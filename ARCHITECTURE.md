@@ -329,3 +329,18 @@ Render.enterStation(info, cb)       // info gains .spin — centrifuge interior:
   button (stable orbit + stationCount>0): circular orbit at the current radius/phase.
 - STATIONS entries may now carry `yours` and `centrifuge` (render tints yours gold;
   boarding a centrifuge station passes `spin:true` to enterStation).
+
+## CONTRACT REVISION 2026-07-12b — Famous star systems
+
+- **js/famous.js** (pure data + buildCatalog, node-tested): hand-built legendary systems
+  the Starmap resolves BEFORE the seeded generator — `famousSystem(seed)` (alias-normalized:
+  "kerbin"/"KSP"/"avatar"/"alpha centauri" → canonical) and `FAMOUS_LIST` (Starmap panel +
+  pre-lit galaxy-map entries). `generateSystem()` checks it first; ordinary seeds unchanged.
+- **The Kerbol System** (KSP homage): canon values entered ×10 so the game's SCALE=0.1
+  lands on TRUE KSP numbers (Kerbin 600 km / mu 3.53e12 / SOI ~84,000 km / canon year).
+- **The Pandora System** (Avatar homage): the homeworld role "earth" is a MOON of a gas
+  giant (parent "polyphemus") — first system to exercise that. Fixes that shipped with it:
+  ui.buildTargets skips "earth" when it appears among a planet's moons (it lists last, as
+  home); main.tripDaysFromEarth measures home's star distance via its parent planet when
+  home doesn't orbit the star directly. Famous systems carry `famous` + `blurb` (custom
+  arrival brief in travelToSystem).

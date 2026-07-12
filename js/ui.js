@@ -1,6 +1,7 @@
 // ui.js — PM-owned. Live readouts + mode/flight controls. Reads SimState + Stats.
 
 import { BODIES, PLANET_KEYS, STATIONS, SYSTEM } from "./state.js";
+import { FAMOUS_LIST } from "./famous.js";
 
 // Destinations for the target picker, derived from the ACTIVE system (the Starmap can
 // swap it): home's moon first (the tutorial trip), then the other planets outward with
@@ -15,7 +16,9 @@ function buildTargets() {
   for (const p of planets) {
     if (p === "earth") continue;
     targets.push(p);
-    for (const m of moonsOf(p)) { targets.push(m); moonOf[m] = p; }
+    // Skip "earth" here: in systems where home is itself a MOON of a gas giant
+    // (Pandora!), it would otherwise show up twice — it always goes last, as home.
+    for (const m of moonsOf(p)) { if (m === "earth") continue; targets.push(m); moonOf[m] = p; }
   }
   targets.push("earth");
   return { targets, moonOf };
@@ -207,6 +210,19 @@ export const UI = {
     input.onkeydown = (e) => { if (e.key === "Enter") fire(); };
     row.appendChild(input); row.appendChild(go);
     panel.appendChild(row);
+
+    // ⭐ Famous systems — the universe comes pre-populated with a few legends.
+    const fh = document.createElement("div");
+    fh.style.cssText = "font-size:11px;color:#9fb3da;margin:10px 0 4px;";
+    fh.textContent = "Famous systems:";
+    panel.appendChild(fh);
+    for (const f of FAMOUS_LIST) {
+      const b = document.createElement("button");
+      b.innerHTML = "🌟 <b>" + f.name + "</b><br><span style='font-size:11px;color:#9fb3da'>" + f.hint + "</span>";
+      b.style.cssText = "display:block;width:100%;margin-top:4px;text-align:left;font-size:12px;line-height:1.35;";
+      b.onclick = () => { this._toggleStarmap(); this.handlers.onStarmapTravel && this.handlers.onStarmapTravel(f.seed); };
+      panel.appendChild(b);
+    }
 
     const visited = (this.handlers.getVisitedSystems && this.handlers.getVisitedSystems()) || [];
     if (visited.length) {
