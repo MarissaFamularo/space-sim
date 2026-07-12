@@ -126,6 +126,13 @@ export const Builder = {
     if (_paletteEl) _paletteEl.style.display = "";
   },
 
+  // Which building's palette to show ("vab" | "hangar"). Contract extension —
+  // recorded in ARCHITECTURE.md alongside init/show/hide.
+  setFacility(f) {
+    _facility = f === "hangar" ? "hangar" : "vab";
+    renderPalette();
+  },
+
   hide() {
     if (_paletteEl) _paletteEl.style.display = "none";
     closeEditor(); // don't leave part code floating over the flight view
@@ -168,11 +175,19 @@ function keyStatLabel(def) {
 // (Re)fill the palette rows: stock parts, then a "My parts" section for his own creations,
 // then a small "Reset all mods" control when any mods exist. Called at init and after
 // every saved edit so the palette always mirrors the live merged catalog.
+// Which building are we building in? "vab" (rockets) or "hangar" (planes / probes /
+// stations). A PartDef may carry facility:"vab"|"hangar" to live in one building only;
+// parts with no facility tag (and all custom parts) show in both.
+let _facility = "vab";
+function facilityAllows(def) {
+  return !def.facility || def.custom || def.facility === _facility;
+}
+
 function renderPalette() {
   if (!_paletteWrap) return;
   _paletteWrap.innerHTML = "";
 
-  const stock = _catalog.filter((d) => !d.custom);
+  const stock = _catalog.filter((d) => !d.custom && facilityAllows(d));
   const customs = _catalog.filter((d) => d.custom);
 
   for (const def of stock) _paletteWrap.appendChild(makePaletteRow(def));

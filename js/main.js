@@ -11,6 +11,8 @@ import { Builder } from "./builder.js";
 import { UI } from "./ui.js";
 import { Copilot } from "./copilot.js";
 import { pickConnie } from "./connies.js";
+import { Menu } from "./menu.js";
+import { Tracking } from "./tracking.js";
 
 const canvas = document.getElementById("scene");
 let craft = newCraft();
@@ -482,12 +484,36 @@ UI.init({
   onStarmapTravel: (seed) => travelToSystem(seed),
   onStarmapHome: () => travelHome(),
   getVisitedSystems: () => loadVisited(),
+  onSpaceCenter: () => Menu.showCenter(),
 });
 wireCopilot();
 Copilot.initSettings();
 refreshGalaxy();
 enterBuild();
-copilotSay("Hi! I'm your navigator. Build a rocket on the left, hit Launch, then use the arrow keys to steer. The whole solar system is out there — pick a target and go. Ask me anything!");
+
+// ---- Konnie Space Program front door: title → space center → a building ----
+Tracking.init({
+  getSim: () => sim,
+  getSatellites: () => SATELLITES,
+  onExit: () => Menu.showCenter(),
+});
+Menu.init({
+  onVAB: () => {
+    Builder.setFacility("vab");
+    enterBuild();
+    copilotSay("🏗 <b>Welcome to the VAB!</b> Stack a pod, a tank, and an engine, watch your TWR and Δv, then hit Launch.");
+  },
+  onHangar: () => {
+    Builder.setFacility("hangar");
+    enterBuild();
+    copilotSay("✈ <b>Welcome to the Space Plane Hangar!</b> This is where planes, probes, and space stations get built — wings glide in air, a Centrifuge Ring spins for gravity, and a Station Hub makes your build deployable as a real station. Build it, then ✨ Teleport it to orbit!");
+  },
+  onTracking: () => Tracking.show(),
+  onSettingsChange: (s) => Render.setQuality(s.graphics),
+});
+Render.setQuality(Menu.getSettings().graphics);
+Menu.showTitle();
+copilotSay("Hi! I'm your navigator, welcome to <b>Konnie Space Program</b>. Pick a building at the Space Center — build in the VAB or the Hangar, or check on your whole fleet in the Tracking Center. Ask me anything!");
 
 // ---- copilot input ----
 function wireCopilot() {
@@ -511,6 +537,7 @@ function wireCopilot() {
 const keys = {};
 window.addEventListener("keydown", (e) => {
   if (e.target && e.target.tagName === "INPUT") return;
+  if (Menu.isOpen() || Tracking.isOpen()) return; // menus own the keys while open
   if (Render.isInside()) return; // the station interior owns the keys while aboard
   keys[e.key] = true;
   if (e.repeat) return;

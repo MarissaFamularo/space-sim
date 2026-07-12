@@ -29,6 +29,7 @@ let _renderPass = null;   // kept so the station-interior scene can borrow the c
 // HDR philosophy: bloom threshold sits at 1.0, so ONLY things pushed past white glow —
 // the Sun, engine plumes, reentry plasma, city lights. Normal surfaces never bloom.
 const BLOOM = { strength: 0.55, radius: 0.4, threshold: 1.0 };
+let fancyGraphics = true;  // Settings "Fast" mode skips the composer (bloom + post) per frame
 
 let ALL_KEYS = ["sun", ...PLANET_KEYS]; // recomputed by buildWorldObjects on system swap
 let bodyGroups = {};       // key -> THREE.Group (planet mesh + halo + rings), positioned per frame
@@ -2185,7 +2186,7 @@ function update(sim) {
 
   updateBurnMarker(sim);
 
-  if (composer) composer.render();
+  if (composer && fancyGraphics) composer.render();
   else renderer.render(scene, camera);
 }
 
@@ -3343,7 +3344,7 @@ function updateInterior() {
       if (it.cb && it.cb.onScience) it.cb.onScience(con.kind);
     }
   }
-  if (composer) composer.render();
+  if (composer && fancyGraphics) composer.render();
   else renderer.render(it.scene, it.cam);
 }
 
@@ -3376,6 +3377,10 @@ function debug() {
   };
 }
 
+// Settings toggle (menu.js "Graphics"): "fast" renders without the composer —
+// no bloom/post — for school laptops. Contract extension recorded in ARCHITECTURE.md.
+function setQuality(q) { fancyGraphics = q !== "fast"; }
+
 // =====================================================================
 // Frozen public API — exactly the methods in ARCHITECTURE.md.
 // =====================================================================
@@ -3394,5 +3399,6 @@ export const Render = Object.freeze({
   setFlightView,
   setArrow,
   zoomMap,
+  setQuality,
   debug,
 });

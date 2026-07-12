@@ -51,6 +51,12 @@ export const UI = {
     c.innerHTML = "";
     const mk = (label, fn) => { const b = document.createElement("button");
       b.textContent = label; b.style.marginRight = "6px"; b.onclick = fn; c.appendChild(b); };
+    // Back to the Konnie Space Center (title/menu/tracking live behind this door).
+    const kscBtn = document.createElement("button");
+    kscBtn.textContent = "🏢 Space Center";
+    kscBtn.style.cssText = "width:100%;margin-bottom:6px;";
+    kscBtn.onclick = () => this.handlers.onSpaceCenter && this.handlers.onSpaceCenter();
+    c.appendChild(kscBtn);
     mk("Build", () => this.handlers.onModeChange && this.handlers.onModeChange("build"));
     mk("🚀 Launch", () => this.handlers.onLaunch && this.handlers.onLaunch());
     mk("Reset", () => this.handlers.onReset && this.handlers.onReset());
