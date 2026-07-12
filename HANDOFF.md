@@ -1,10 +1,67 @@
-# Space Sim — Handoff for the next agent
+# KONNIE SPACE PROGRAM (formerly Space Sim) — Handoff for the next agent
 <!-- Rewritten 2026-07-03 after the overnight Phase-4 build (solar system pulled forward).
-     Phase-5 batch added 2026-07-04 (his wish list: landings, looks, probes, Mars moons). -->
+     Phase-5 batch added 2026-07-04 (his wish list: landings, looks, probes, Mars moons).
+     2026-07-12: renamed KONNIE SPACE PROGRAM; front-door + facilities + EVA batch below. -->
 
 A KSP-inspired browser space game + coding on-ramp, built for a young kid
 (advanced reader, ready to learn to code, space/physics/aerodynamics obsessed, graphics snob).
 This file is the single source an agent needs to pick up the work. Read it first.
+
+---
+
+## Status (2026-07-12): KONNIE SPACE PROGRAM — his six-item wish list, all browser-verified
+
+His ask (via Mom), all shipped this session:
+1. **Formal name: KONNIE SPACE PROGRAM** — title tag, README, Navigator prompt + greeting.
+2. **Title screen** on open (menu.js): starfield, big gradient title, ▶ START / ⚙ Settings.
+   Settings = graphics Fancy/Fast (new `Render.setQuality`; "fast" skips bloom for school
+   laptops, persisted `spacesim.settings.v1`) + Navigator key (same LS slot as the 🔑 button).
+3. **KONNIE SPACE CENTER** screen (menu.js): SVG campus at dusk — 📡 Tracking Center,
+   🏗 VAB, ✈ Space Plane Hangar, each clickable; launchpad/flag/water-tower dressing.
+   In-game "🏢 Space Center" button (MODE panel) returns there; menus swallow flight keys.
+4. **📡 TRACKING CENTER** (tracking.js, 2D canvas — NOT three.js): live map of the whole
+   active system with every world, satellite, station, and the flying ship. Zoom (wheel/
+   buttons/⤢ fit), drag pan, click-to-track (gold ring + info card: height over body, lap
+   time, power), fleet + worlds side list, and a "sky clock" fast-forward (preview-only
+   clock, up to ~17 hr/s) so he can WATCH orbits go around. Positions come from the same
+   pure math the sim flies (bodyStateAt / satellitePos / station elements) — the map can't lie.
+5. **✈ SPACE PLANE HANGAR + parts**: `Builder.setFacility` filters the palette by the new
+   `PartDef.facility` tag. New hangar parts: Swift Plane Cockpit, **Delta Wings** (REAL
+   lift-lite in physics.js: perpendicular to airflow, ∝ dynamic pressure × sin(AoA), stalls
+   past CL 1.3, nothing without air — node-tested: glides hold altitude, zero effect on the
+   Moon, stall capped), Station Hub, Habitat Module, **Centrifuge Ring**. New craft counts
+   wingCount/stationCount/centrifugeCount; HUD rows; mods TYPES gained wing/station/centrifuge.
+6. **🛰 BUILD-YOUR-OWN SPACE STATIONS**: a Station Hub makes a build deployable — reach a
+   stable orbit (fly or ✨ Teleport) and a "🛰 Deploy as Space Station" button appears;
+   deploy freezes it on a circular orbit at the current radius, PERMANENTLY
+   (`spacesim.playerStations.v1`, folded into STATIONS per system: dockable, boardable,
+   in the 🎯 picker "(yours!)", gold in map + Tracking Center). **Centrifuge Ring aboard ⇒
+   the interior has GRAVITY**: enterStation spin mode — the Connie walks/jumps on the floor
+   instead of floating (browser-verified: built hub+habitat+ring+solar+dock, teleported,
+   deployed "Rocket One", flew a crewed dock ship out, docked, boarded, stood up).
+7. **EVA ANYWHERE (E)** — his favorite: E undocked in space = SPACEWALK (arrow-key nudges,
+   zero-g coasting, visible tether that tugs back past ~42 m, McCandless lesson); E landed =
+   boots on the ground (walk/hop at the world's REAL g0). Physics/time freeze (same rule as
+   interiors, `Render.isInside()` covers both). Guards: no EVA from probes (nobody aboard),
+   none inside an atmosphere mid-flight (Navigator explains). E returns to the ship.
+
+**Verified**: all 9 node suites green (181 checks, incl. new tests/hangar_test.mjs);
+browser end-to-end with screenshots (title → center → tracking zoom/track → hangar build →
+teleport → deploy → dock → centrifuge walk → spacewalk w/ tether → sunlit Moon ground EVA →
+space-plane build with wings). Zero console errors. Contract changes recorded in
+ARCHITECTURE.md "CONTRACT REVISION 2026-07-12".
+
+**Flags for the next session**:
+- The Tracking Center "YOUR FLEET" header also lists the built-in Sol stations (Harbor/
+  Selene/Kestrel) — arguably fine (it's "everything up there"), rename to "IN ORBIT" if he minds.
+- Settings "Fast" mode is code-verified only (composer skip) — worth one glance on the school laptop.
+- Wings give lift but there's no runway/horizontal-takeoff mode — planes still launch
+  vertically or teleport; a real runway takeoff is a natural next ask.
+- Deployed stations all reuse the generic station mesh (ring included) — rendering the
+  actual built stack as the station mesh would be a lovely follow-up.
+- ✨ Teleport to a world always parks at the same spot for a given time — deploy two
+  stations around one world back-to-back and they start nearly co-located (they drift
+  apart only if radii differ). Cosmetic, not a bug.
 
 - **Vision & full plan:** `space-game-design.md`
 - **Architecture & data contracts:** `ARCHITECTURE.md` (updated for the heliocentric world)

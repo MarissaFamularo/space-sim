@@ -278,3 +278,54 @@ Copilot snapshot additions (Phase 2/3): `flight.transferWindow: {open, degToGo}`
 ## How to run (for the user)
 From `space-sim/`: `python3 -m http.server 8000` then open `http://localhost:8000`.
 (ES modules need http://, not file://.)
+
+---
+
+## CONTRACT REVISION 2026-07-12 — Konnie Space Program (front door, facilities, EVA)
+
+The game is formally named **KONNIE SPACE PROGRAM**. Two new PM-owned modules and a few
+recorded API extensions; every previously-frozen surface is otherwise unchanged.
+
+### New modules (both DOM-only, own no game state)
+- **menu.js** — `Menu.init({onVAB,onHangar,onTracking,onSettingsChange})`, `showTitle()`,
+  `showCenter()`, `hideAll()`, `isOpen()`, `getSettings()`. Title screen → Konnie Space
+  Center (SVG campus, three buildings). Settings persist in localStorage
+  `"spacesim.settings.v1"` (`{graphics:"fancy"|"fast"}`).
+- **tracking.js** — `Tracking.init({getSim,getSatellites,onExit})`, `show()`, `hide()`,
+  `isOpen()`. The 📡 Tracking Center: 2D-canvas live map of the ACTIVE system (bodies via
+  `bodyStateAt`, satellites via `Physics.satellitePos`, stations via their circular
+  elements). Zoom/pan/click-to-track + a preview "sky clock". Reads state only.
+
+### Render API extensions (recorded, same spirit as rebuildWorld)
+```js
+Render.setQuality("fancy"|"fast")   // "fast" skips the composer (no bloom/post) per frame
+Render.enterEva(sim, {onExit})      // EVA ANYWHERE: Connie outside — spacewalk w/ tether
+                                    //   (space) or walk/hop at the world's real g0 (landed).
+Render.exitEva()
+Render.isInside()                   // now true for station interiors AND EVA (time freezes)
+Render.enterStation(info, cb)       // info gains .spin — centrifuge interior: gravity mode
+                                    //   (walk/jump on the floor instead of zero-g drift)
+```
+
+### Builder + parts
+- `Builder.setFacility("vab"|"hangar")` filters the stock palette by the new optional
+  `PartDef.facility` tag (untagged parts + all customs show everywhere).
+- New stock parts (facility:"hangar"): Swift Plane Cockpit, **Delta Wings** (`type:"wing"`),
+  Station Hub + Habitat Module (`type:"station"`), **Centrifuge Ring** (`type:"centrifuge"`).
+  mods.js TYPES accepts the three new types.
+- New per-stage craft fields set by main's loadStage: `wingCount`, `stationCount`,
+  `centrifugeCount` (same pattern as legCount/dockCount).
+
+### Physics
+- **Wing lift** in the drag block of `Physics.step`: perpendicular to the airflow,
+  `CL = clamp(2.0·sinAoA, ±1.3)` (stall), area 24 m² per wing part, accel capped 60 m/s²,
+  plus a small wing drag term. No air ⇒ no lift. Tested in `tests/hangar_test.mjs`.
+
+### Player stations
+- localStorage `"spacesim.playerStations.v1"`: `[{id,name,body,altR,phase0,centrifuge,system}]`
+  (cap 16; `system` = "sol" or the lowercased seed). main.js folds the active system's
+  entries into the live `STATIONS` array (flag `yours:true`), so docking, targets, teleport,
+  render, and tracking all work off the one list. Deploy = "🛰 Deploy as Space Station"
+  button (stable orbit + stationCount>0): circular orbit at the current radius/phase.
+- STATIONS entries may now carry `yours` and `centrifuge` (render tints yours gold;
+  boarding a centrifuge station passes `spin:true` to enterStation).
