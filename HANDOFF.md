@@ -9,6 +9,46 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-12 later): 🌟 PANDORA IS A TRIPLE STAR (his ask: "Pandora should be a binary")
+
+He's right, and the real thing is even better — Alpha Centauri is a TRIPLE. Shipped:
+- **Alpha Centauri B + Proxima Centauri added to the Pandora system** (famous.js): B is an
+  orange K-star at the TRUE 23.5 AU average A–B separation (real orbit is a stretched
+  80-year ellipse, 11–35 AU — rails are circles, so we draw the average and the arrival
+  fact teaches the ellipse). Proxima is a real-sized red dwarf (0.122 M☉, g0 1410 — real!)
+  drawn at 70 AU, ~200x closer than its true ~13,000 AU; the compression is CONFESSED in
+  the blurb, same honesty deal as the galaxy map. Both are in the 🎯 picker (teleport to a
+  star orbit works). Node-tested: famous_test grew to 55 checks.
+- **Companion-star SOI fix** (famous.js post-build): buildCatalog's Laplace SOI assumes a
+  tiny mass ratio; B at 0.82x A would get a 21.7 AU sphere swallowing half the map and
+  flipping readouts to B across the outer system. Companions use the gravity-balance point
+  instead (r = a·√q/(1+√q), ~11.2 AU for B). Property-tested: pull from B equals pull from
+  A at the SOI edge; no planet's orbit ever enters a companion's SOI.
+- **Stars melt, gas giants swallow** (physics.js one-liner, gated Rule 3 — messaging
+  classification only, no trajectory change): a star-styled non-solid body sets burnedUp,
+  not sankIntoClouds — so flying into B never prints "gas giants have no ground" about a
+  star. main.js banner + Navigator crash lines generalized ("☀️ MELTED BY ALPHA CENTAURI B";
+  coolest stars are still over 2,000°C — verified real).
+- **Latent orbit-advice bug fixed** (main.js): the "captured around a new world" callout
+  looked up BODIES[name.toLowerCase()], which misses famous/generated keys ("acb" ≠
+  "alpha centauri b") and would coach "To land: lower your periapsis" while orbiting a STAR
+  (or a generated gas giant, pre-existing). Now falls back to lookup by display name.
+- **WORLD_FACTS** for both stars (80-year ellipse fact; Proxima 4.24 ly + Proxima b, 2016);
+  Navigator FAMOUS SYSTEMS line updated ("we show one" → all three, compression confessed);
+  starLabel now "triple star (Alpha Centauri A + B + Proxima)"; new aliases (proxima,
+  alphacentaurib, centauri…) land on Pandora.
+
+**Verified**: all 10 node suites green; navigator_check passes (safety block untouched —
+only the FAMOUS SYSTEMS knowledge line changed). Browser-verified from a scratchpad copy:
+boot clean (zero console errors), Starmap hint shows "under three real suns", travel to
+Pandora prints the new blurb, 🎯 picker lists both stars, map view zoomed out shows A + B's
+23.5 AU ring + Proxima's 70 AU ring. **Flagged / not done**: the star-melt crash path is
+code-verified only (nobody flew into B — a fun play-test: ✨ Teleport to Alpha Centauri B,
+lower periapsis to 0); companion stars don't ILLUMINATE other worlds (only the sun is a
+light source — at 23.5 AU B's light really is ~1/2000 of A's at Pandora, so the dim render
+is accidentally honest; noted, not built). Worth one human play-test: Starmap → Pandora →
+map view, zoom out, count the suns with him.
+
 ## Status (2026-07-12): KONNIE SPACE PROGRAM — his six-item wish list, all browser-verified
 
 His ask (via Mom), all shipped this session:

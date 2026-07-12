@@ -17,7 +17,8 @@ const approx = (a, b, tol) => Math.abs(a - b) <= tol * Math.abs(b);
     ["Kerbol", "Kerbol"], ["kerbin", "Kerbol"], ["The Kerbal System", "Kerbol"],
     ["KSP", "Kerbol"], ["Kerbal Space Program", "Kerbol"],
     ["Pandora", "Pandora"], ["AVATAR", "Pandora"], ["alpha centauri", "Pandora"],
-    ["Polyphemus", "Pandora"],
+    ["Polyphemus", "Pandora"], ["Proxima", "Pandora"], ["proxima centauri", "Pandora"],
+    ["Alpha Centauri B", "Pandora"],
   ]) {
     const sys = generateSystem(alias);
     check(`"${alias}" → ${want}`, sys.seed === want && sys.famous, `got seed=${sys.seed}`);
@@ -89,6 +90,43 @@ for (const seed of ["Kerbol", "Pandora"]) {
     B.earth.atmosphere.seaLevelDensity > 1.225, "");
   check("Little Sister isn't a tinyMoon (readouts stay honest)", !B.moon.tinyMoon,
     `soi=${(B.moon.soiRadius / 1000).toFixed(0)} km vs r=${(B.moon.radius / 1000).toFixed(0)} km`);
+}
+
+// --- 5b. The triple star (his ask): all three Alpha Centauri stars, honest SOIs ---
+{
+  const sys = generateSystem("Pandora");
+  const B = sys.bodies;
+  check("three stars: A + B + Proxima all present", !!(B.sun && B.acb && B.proxima), "");
+  check("companions are star-styled, orbit A, and have no surface to land on",
+    ["acb", "proxima"].every((k) =>
+      B[k].style && B[k].style.star && B[k].parent === "sun" && !B[k].solid), "");
+  check("companions are targetable (in planetKeys)",
+    ["acb", "proxima"].every((k) => sys.planetKeys.includes(k)), "");
+  check("B rides at the true A–B average separation (23.5 AU)",
+    approx(B.acb.orbitRadius / B.polyphemus.orbitRadius, 23.5 / 1.22, 0.001),
+    `ratio=${(B.acb.orbitRadius / B.polyphemus.orbitRadius).toFixed(2)}`);
+  check("B's gravity matches 274·m/r² for 0.907 M☉ / 0.865 R☉",
+    approx(B.acb.g0, 274 * 0.907 / (0.865 ** 2), 0.01), `g0=${B.acb.g0}`);
+  check("Proxima's gravity matches 274·m/r² for 0.122 M☉ / 0.154 R☉",
+    approx(B.proxima.g0, 274 * 0.122 / (0.154 ** 2), 0.01), `g0=${B.proxima.g0}`);
+  // Companion SOIs use the gravity-balance point (Laplace assumes a tiny mass ratio;
+  // B is 0.82x A). Property: at the SOI edge, the companion's pull equals A's.
+  for (const k of ["acb", "proxima"]) {
+    const soi = B[k].soiRadius, a = B[k].orbitRadius;
+    const gStar = B[k].mu / (soi * soi);
+    const gSun = B.sun.mu / ((a - soi) * (a - soi));
+    check(`${k}'s SOI sits at the gravity-balance point`, approx(gStar, gSun, 1e-9),
+      `g(star)=${gStar.toExponential(3)} g(A)=${gSun.toExponential(3)}`);
+  }
+  // Readouts near any planet must never flip to a companion star.
+  const planets = ["prometheus", "polyphemus", "boreas"];
+  check("no planet's orbit ever enters a companion star's SOI",
+    ["acb", "proxima"].every((s) =>
+      planets.every((p) => B[p].orbitRadius < B[s].orbitRadius - B[s].soiRadius)), "");
+  check("Polyphemus's SOI (home's whole neighborhood) clears B's SOI",
+    B.polyphemus.orbitRadius + B.polyphemus.soiRadius < B.acb.orbitRadius - B.acb.soiRadius, "");
+  check("the two companions' SOIs never overlap each other",
+    B.proxima.orbitRadius - B.acb.orbitRadius > B.proxima.soiRadius + B.acb.soiRadius, "");
 }
 
 // --- 6. FAMOUS_LIST entries resolve and match their builders ---

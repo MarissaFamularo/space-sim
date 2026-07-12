@@ -343,4 +343,10 @@ Render.enterStation(info, cb)       // info gains .spin — centrifuge interior:
   ui.buildTargets skips "earth" when it appears among a planet's moons (it lists last, as
   home); main.tripDaysFromEarth measures home's star distance via its parent planet when
   home doesn't orbit the star directly. Famous systems carry `famous` + `blurb` (custom
-  arrival brief in travelToSystem).
+  arrival brief in travelToSystem). It's also a TRIPLE STAR (2026-07-12): companion stars
+  are ordinary bodies with `parent:"sun"` + `style.star` (Alpha Centauri B at the true
+  23.5 AU mean separation; Proxima at 70 AU, ~200x compressed and confessed in the blurb).
+  Companion SOIs are overridden post-buildCatalog to the gravity-balance point
+  (r = a·√q/(1+√q)) because the Laplace SOI formula assumes a tiny mass ratio; physics.step
+  treats any star-styled non-solid body like the sun on impact (burnedUp, not
+  sankIntoClouds).

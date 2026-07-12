@@ -52,7 +52,13 @@ const WORLD_FACTS = {
   Pluto: "Pluto is a dwarf planet with a giant heart-shaped nitrogen glacier. New Horizons flew past in 2015 after a 9-year trip. (Its REAL orbit is stretched and tilted — it even dips inside Neptune's!)",
   Sun: "The Sun holds 99.8% of all the mass in the solar system.",
   Earth: "The only world where your parachute, your lungs, and your snack supply all work.",
+  "Alpha Centauri B": "Alpha Centauri B is real — an orange star a bit smaller than our Sun. It and A swing around each other about every 80 years. (B's REAL path is a stretched ellipse, 11 to 35 AU from A — we drew the average.)",
+  "Proxima Centauri": "Proxima Centauri is the true nearest star to our Sun — 4.24 light-years away. It's a tiny red dwarf with a real planet, Proxima b, discovered in 2016!",
 };
+
+// Any star in the active system: the sun role, plus star-styled companions
+// (Pandora's Alpha Centauri B and Proxima). Stars melt ships; gas giants swallow them.
+const isStarKey = (k) => k === "sun" || !!(BODIES[k] && BODIES[k].style && BODIES[k].style.star);
 
 // ---- propulsion for a given stage (integration owns this; physics reads the live fields) ----
 function activeStage(craft, stageNum) {
@@ -763,8 +769,10 @@ function updateBanner() {
     if (sim.sankIntoClouds) {
       const g = BODIES[sim.crashedInto];
       where = "🌀 SANK INTO " + (g ? g.name.toUpperCase() : "THE") + "'S CLOUDS — GAS GIANTS HAVE NO GROUND";
-    } else if (sim.burnedUp && sim.crashedInto === "sun") {
-      where = BODIES.sun.blackHole ? "⚫ CROSSED THE EVENT HORIZON" : "☀️ MELTED BY THE SUN";
+    } else if (sim.burnedUp && isStarKey(sim.crashedInto)) {
+      const st = BODIES[sim.crashedInto];
+      where = (sim.crashedInto === "sun" && BODIES.sun.blackHole) ? "⚫ CROSSED THE EVENT HORIZON"
+        : "☀️ MELTED BY " + (st && st.name !== "Sun" ? st.name.toUpperCase() : "THE SUN");
     } else if (sim.burnedUp) {
       where = "🔥 BURNED UP ON REENTRY";
     } else if (sim.crashedInto && sim.crashedInto !== "earth") {
@@ -842,9 +850,13 @@ function flightCallouts() {
   if (sim.orbit && sim.orbit.isOrbit && sim.orbit.bodyName !== "Earth" && !announced["orbit_" + sim.orbit.bodyName]) {
     announced["orbit_" + sim.orbit.bodyName] = true;
     const b = sim.orbit.bodyName;
+    // Look up by key AND by display name: in famous/generated systems the key ("acb")
+    // rarely matches the name ("Alpha Centauri B"), and a star or gas giant must
+    // never get landing advice.
+    const ob = BODIES[b.toLowerCase()] || Object.values(BODIES).find((x) => x.name === b);
     copilotSay("🛰️ You're in orbit around <b>" + (b === "Moon" ? "the Moon" : b) + "</b>! Periapsis " + (sim.orbit.periapsis / 1000).toFixed(0) +
       " km, apoapsis " + (sim.orbit.apoapsis / 1000).toFixed(0) + " km. " +
-      (BODIES[b.toLowerCase()] && !BODIES[b.toLowerCase()].solid
+      (ob && !ob.solid
         ? "Careful — there's nothing to land ON down there. Enjoy the view from up here!"
         : "To land: lower your periapsis, then brake with the engine on the way down."));
   }
@@ -903,6 +915,9 @@ function flightCallouts() {
     if (sim.sankIntoClouds) {
       const g = BODIES[sim.crashedInto];
       copilotSay("🌀 The ship sank into <b>" + (g ? g.name : "the planet") + "'s</b> clouds and was crushed — gas giants have no surface at all, just air that gets thicker and thicker forever. " + bail + " Orbit them, admire them… just don't try to park on them!");
+    } else if (sim.burnedUp && isStarKey(sim.crashedInto) && sim.crashedInto !== "sun") {
+      const st = BODIES[sim.crashedInto];
+      copilotSay("☀️💥 You flew into <b>" + (st ? st.name : "a star") + "</b> — it's a STAR. Even the coolest stars are over 2,000°C at the surface — nothing survives that. " + bail + " Fun fact: it takes MORE fuel to fall into a star than to escape its system!");
     } else if (sim.burnedUp && sim.crashedInto === "sun") {
       if (BODIES.sun.blackHole) {
         copilotSay("⚫ You crossed the <b>event horizon</b> — the line where not even light is fast enough to climb back out. Nothing that crosses it ever returns; that's what makes it a black hole and not just a very heavy star. " + bail + " Everything OUTSIDE the horizon is just ordinary gravity though — you can orbit a black hole all day, exactly like a star. Next time, stay in orbit and admire the glowing disk!");

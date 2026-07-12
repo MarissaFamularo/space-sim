@@ -133,20 +133,47 @@ function pandoraSystem() {
               solid: false, atmo: { height: 9.0e5, seaLevelDensity: 0.4 }, phase0: 3.6, gen: true, gas: true,
               style: { color: 0x7fa8c8, halo: 0xa8c8e0 },
               face: { kind: "gas", bands: ["#7fa8c8", "#5d86a8", "#a8c8e0"], spot: false } },
+    // ---- THE OTHER TWO SUNS (his ask — and real!): Alpha Centauri is a TRIPLE system ----
+    // B: a slightly smaller orange star, at the TRUE A–B average separation of 23.5 AU.
+    // Real numbers: 0.907 solar masses, 0.865 solar radii → g0 = 274·m/r² ≈ 332.
+    // (The real orbit is a stretched 80-year ellipse, 11–35 AU; our rails are circles,
+    // so we draw the average — the arrival fact teaches the ellipse.)
+    acb: { name: "Alpha Centauri B", radius: 6.02e8, g0: 332, parent: "sun", a: 23.5 * AU,
+           solid: false, atmo: null, phase0: 1.1, gen: true,
+           style: { color: 0xffc07a, star: true, glow: "255,192,122" } },
+    // Proxima: the real nearest star to our Sun — a tiny red dwarf (0.122 solar masses,
+    // 0.154 solar radii). Its true orbit is ~13,000 AU out; drawn ~200x closer so the
+    // map isn't all empty black. The blurb confesses the compression (same honesty
+    // deal as the galaxy map's squeezed star positions).
+    proxima: { name: "Proxima Centauri", radius: 1.07e8, g0: 1410, parent: "sun", a: 70 * AU,
+               solid: false, atmo: null, phase0: 5.2, gen: true,
+               style: { color: 0xff6a4a, star: true, glow: "255,106,74" } },
   };
-  const order = ["sun", "prometheus", "polyphemus", "polyi", "earth", "moon", "polyii", "boreas"];
+  const order = ["sun", "prometheus", "polyphemus", "polyi", "earth", "moon", "polyii", "boreas",
+                 "acb", "proxima"];
+  const bodies = buildCatalog(defs, order);
+  // Companion-star SOI: buildCatalog's Laplace formula a·(mu/muA)^0.4 assumes the child
+  // is TINY next to its parent. B is 0.82x A — the formula would hand it a 21.7 AU
+  // sphere swallowing half the map, flipping readouts to B across the outer system.
+  // Use the gravity-balance point instead (where the companion's pull equals A's along
+  // the line between them): r = a·√q/(1+√q), q = mu/muA. Honest readouts, and no
+  // planet's orbit ever falls inside a companion's SOI (famous_test proves it).
+  for (const k of ["acb", "proxima"]) {
+    const q = Math.sqrt(bodies[k].mu / bodies.sun.mu);
+    bodies[k].soiRadius = bodies[k].orbitRadius * (q / (1 + q));
+  }
   return {
     key: "gen:pandora",
     name: "The Pandora System",
     seed: "Pandora",
     blackHole: false,
     starClass: "G",
-    starLabel: "yellow star (Alpha Centauri A)",
+    starLabel: "triple star (Alpha Centauri A + B + Proxima)",
     homeName: "Pandora",
     moonName: "Little Sister",
     planetCount: 3,
     frostAU: 3.3,
-    bodies: buildCatalog(defs, order),
+    bodies,
     planetKeys: order.slice(1),
     stations: [
       { id: "st_home", name: "Hell's Gate Station", body: "earth", altR: 2.3, phase0: 1.2 },
@@ -154,12 +181,14 @@ function pandoraSystem() {
     famous: "pandora",
     blurb: "🌿 <b>Welcome to the PANDORA system — from the movie Avatar!</b> Here's the " +
       "wild part: your homeworld is a <b>MOON</b>. Zoom the map out and you'll see Pandora " +
-      "circling the blue gas giant <b>Polyphemus</b>, which circles Alpha Centauri A — and " +
-      "THAT part is real: Alpha Centauri is the true nearest star system to ours, 4.37 " +
-      "light-years away. Real astronomers hunt for moons of giant planets (exomoons) as " +
-      "possible homes for life — none confirmed yet, and looking is real science. " +
-      "Pandora's air is thicker than Earth's — lovely for parachutes, poisonous to breathe, " +
-      "so the Connies keep their bubble helmets sealed. Hell's Gate Station is overhead. 🌌",
+      "circling the blue gas giant <b>Polyphemus</b>, which circles Alpha Centauri A — " +
+      "and keep zooming: <b>THREE stars</b>, and that part is real! Alpha Centauri is the " +
+      "true nearest star system to ours (4.37 light-years): A and its orange twin <b>B</b> " +
+      "swing around each other about every 80 years, and the little red dwarf <b>Proxima</b> " +
+      "circles far outside — really ~13,000 AU out; we drew it ~200x closer so your map " +
+      "isn't all empty black. Pandora's air is thicker than Earth's — lovely for parachutes, " +
+      "poisonous to breathe, so the Connies keep their bubble helmets sealed. Hell's Gate " +
+      "Station is overhead. 🌌",
   };
 }
 
@@ -172,14 +201,15 @@ const ALIASES = {
   kerbalsystem: "kerbol", kerbolsystem: "kerbol", thekerbolsystem: "kerbol",
   thekerbalsystem: "kerbol", kerbalspaceprogram: "kerbol",
   pandora: "pandora", avatar: "pandora", polyphemus: "pandora",
-  alphacentauri: "pandora", alphacentauria: "pandora",
+  alphacentauri: "pandora", alphacentauria: "pandora", alphacentaurib: "pandora",
+  proxima: "pandora", proximacentauri: "pandora", centauri: "pandora",
   pandorasystem: "pandora", avatarsystem: "pandora", thepandorasystem: "pandora",
 };
 
 // Shown in the Starmap panel and pre-lit on the galaxy map.
 export const FAMOUS_LIST = [
   { seed: "Kerbol", name: "The Kerbol System", hint: "the Kerbal Space Program worlds — Kerbin, the Mun, Jool…", color: 0xffd75e },
-  { seed: "Pandora", name: "The Pandora System", hint: "from Avatar — your home is a moon of a gas giant", color: 0x4a7ac8 },
+  { seed: "Pandora", name: "The Pandora System", hint: "from Avatar — your home is a moon of a gas giant, under three real suns", color: 0x4a7ac8 },
 ];
 
 // null if the name isn't famous — the seeded generator takes over as usual.

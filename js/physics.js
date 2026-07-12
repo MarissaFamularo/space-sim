@@ -298,10 +298,11 @@ export const Physics = {
         pos.x = s.pos.x + ur.x * s.body.radius;
         pos.y = s.pos.y + ur.y * s.body.radius;
         if (!s.body.solid) {
-          // No surface to stand on: the Sun melts you, gas giants swallow you.
+          // No surface to stand on: stars melt you, gas giants swallow you. Companion
+          // stars (Pandora's Alpha Centauri B, Proxima) carry style.star like the sun.
           crashed = true;
           sim.crashedInto = s.key;
-          if (s.key === "sun") sim.burnedUp = true;
+          if (s.key === "sun" || (s.body.style && s.body.style.star)) sim.burnedUp = true;
           else sim.sankIntoClouds = true;
         } else {
           const descentSpeed = Math.abs(vRadial);
