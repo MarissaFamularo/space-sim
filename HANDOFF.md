@@ -9,6 +9,59 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-12 latest+1): 🐍🐍🐍 TRIO POD + SCIENCE RECRUITS (his asks, via Mom)
+
+Two asks, same session as the Astronaut Complex below: "pods that hold three Connies",
+and "what do I do with the science?" (Mom didn't know — now the game answers). Shipped:
+- **Trio Command Pod** (parts.js `command_trio`, seats: 3, 2.4 t): three Connies fly
+  together, Apollo-style. `PartDef.seats` is a real optional field now (crewed command
+  parts, default 1; mods validation allows 1..8 — "Apollo held 3, the Space Shuttle 8"),
+  so he can MOD a pod's seats too.
+- **Crew LINEUPS**: the Astronaut Complex roster is multi-pick — tap up to 3 in order,
+  #1 is the commander (badges ① ② ③); at launch the first `seats` of the lineup fly and
+  Mission Control fills empty seats randomly, no repeats. `sim.crewList` = everyone
+  aboard; `sim.crew` stays the commander so EVERY existing path (EVA, interiors,
+  messages, snapshot) kept working untouched. Liftoff announces the full crew; crashes
+  pop one escape bubble EACH (nobody left behind — Rule 5); every member logs a mission.
+- **WHAT SCIENCE IS FOR — recruits** (the new answer): connies.js gains `RECRUITS`, three
+  new hero-punned astronauts in training who GRADUATE into the roster at science
+  milestones — Michael Coilins at 40 🔬 (Apollo 11's third astronaut — ties straight into
+  the Trio Pod lesson), Valentina Slitherkova at 120 (first woman in space, 1963), Peggy
+  Whitsnake at 250 (biochemist, most US time in space). Locked roster cards are mystery
+  silhouettes showing the goal + his current total; the crossing award fires a
+  "🎓 NEW ASTRONAUT!" callout with the hero fact. Science never gates parts and is never
+  spent — the total only grows (no regret, no stolen puzzle).
+- **Scientist bonus stacks honestly**: +5 per Scientist aboard at a console (a trio of
+  scientists = +15).
+- **Navigator taught, both channels**: THE CREW bullet covers seats/lineups/Collins/what-
+  science-is-for; snapshot gains `flight.crewAll` + top-level `nextAstronautAt`; and the
+  OFFLINE stub answers "what do I do with my science?" keylessly with his real next goal.
+  Safety block untouched — navigator_check grew to 22, green.
+- **Contract**: ARCHITECTURE 2026-07-12c section amended in place to the final API (the
+  interim single-pick `getPick/setPick` never shipped to main; storage `spacesim.crew.v1`
+  is now `{picks: [...], log}` with the interim `pick` shape migrated by the normalizer).
+
+**Verified**: all 11 node suites green (281 checks; crew_test now 41 — lineup order,
+seat fill, trio part, seats validation, recruit gating, graduation crossings, legacy-shape
+migration, kid-edit safety); navigator_check 24/24; browser-verified end-to-end from a
+scratch copy (boot smoke green; flight-check regression green; scripted: roster shows
+8 + 3 mystery cards → lineup Sally+Boa persists with ①② badges → 🐍 button reads
+"Sally Slide +1" → TRIO POD launch flies exactly 3 (lineup first, third seat auto-filled,
+"Crew of 3 aboard" callout, all three logged) → Acorn still flies 1 → two alien-science
+awards cross 40 🔬 and the 🎓 Michael Coilins callout + roster unlock both fire → offline
+"what do I do with my science?" answers with the 120 🔬 goal; zero console errors;
+screenshots incl. the Trio Pod on the pad). **Flagged / not done**:
+- **Render shows ONE Connie** on EVA/landed/interior even with three aboard (the commander
+  — the other two "stay with the ship", which is honestly what Apollo did). Drawing the
+  whole crew outside is a nice follow-up ask.
+- The graduation callout was browser-driven via an awardScience hook on the scratch copy;
+  the REAL first graduation will happen in his play — watch for it (40 🔬 is ~3 consoles).
+- Peggy Whitsnake's hero line says "almost two years" deliberately (her exact day count
+  keeps growing with new missions — don't pin a number that drifts).
+- Worth one human play-test with him: build with the Trio Pod, pick a 3-Connie lineup at
+  the complex, launch, then ask the Navigator "what do I do with my science?" — and go
+  earn Michael Coilins together.
+
 ## Status (2026-07-12 latest): 🐍 THE ASTRONAUT COMPLEX — pick your Connie (his ask, via Mom)
 
 His ask: choose which Connie flies at launch, plus a Space Center building where the
@@ -50,10 +103,8 @@ persisted → 🐍 Crew button mirrors it → crewed launch flies HER with the m
 callout → second launch logs #2 → ON A MISSION chip mid-flight → probe launch stays
 uncrewed with no log bump → Surprise-me launches a random Connie; zero console errors;
 screenshots of campus + roster). **Flagged / not done**:
-- **One seat per pod** — sim.crew is still a single commander everywhere (EVA, interiors,
-  messages), so the picker chooses WHO, not a whole crew list. If he meant "send several
-  Connies at once," multi-seat pods are the natural next ask (bigger refactor; flag it to
-  him as such).
+- ~~One seat per pod~~ — RESOLVED later this same session: the Trio Pod + crew lineups
+  (see the block above).
 - The **Scientist +5 science bonus is code-verified only** (the browser script didn't
   drift an interior console with a scientist aboard) — worth one play-test: fly Sally,
   dock, board, run a console, watch for the "+5 bonus" line.

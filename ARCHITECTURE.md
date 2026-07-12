@@ -352,9 +352,13 @@ Render.enterStation(info, cb)       // info gains .spin — centrifuge interior:
   sankIntoClouds).
 
 ## CONTRACT REVISION 2026-07-12c — Crew picks (the 🐍 Astronaut Complex)
+<!-- Amended the same day, same session: single-pick grew into multi-seat LINEUPS +
+     science-milestone RECRUITS before any of it shipped to main. This section is the
+     final shape; the interim single-pick API (getPick/setPick) no longer exists. -->
 
-Who flies is now the player's choice. Every previously-frozen surface is unchanged
-except the small, recorded extensions below.
+Who flies is now the player's choice, crews can be up to 3 (his ask: the Trio Pod), and
+science milestones grow the roster. Every previously-frozen surface is unchanged except
+the recorded extensions below.
 
 ### Connie shape extended (connies.js — still his kid-editable data file)
 ```js
@@ -363,27 +367,45 @@ except the small, recorded extensions below.
   skill: "one kid-readable line" }  // OPTIONAL — what they're best at
 ```
 Both new fields are optional: a Connie without a valid `role` (e.g. one HE adds) flies
-as a **Rookie** (`crew.js roleOf()`). `pickConnie()` is unchanged.
+as a **Rookie** (`crew.js roleOf()`). `pickConnie()` is unchanged. connies.js also
+exports **`RECRUITS`**: same shape plus `joinsAt` (a science total) — recruits graduate
+into the roster when `spacesim.science.v1` reaches their milestone (that's what science
+is FOR).
+
+### PartDef extended (parts.js / mods.js)
+- Command parts may carry `seats` (default 1). Stock: Acorn + Swift Cockpit `seats: 1`,
+  new **`command_trio` Trio Command Pod `seats: 3`** (the Apollo lesson). mods.js
+  validates an optional `seats` as a whole-ish number 1..8 ("Apollo held 3, the Space
+  Shuttle 8").
 
 ### New module: js/crew.js (owns crew choice + flight log; node-safe, node-tested)
 ```js
-Crew.getPick() / Crew.setPick(nameOrNull)  // null = "Surprise me" (random — the default)
-Crew.chooseForLaunch()   // his pick if it still exists, else pickConnie(); never throws
-Crew.recordMission(name) // main.js assignCrew() calls this on every crewed flight start
-Crew.missions(name) / Crew.roster()        // flight-log reads (roster merges counts+roles)
-Crew.showRoster({getCurrentCrewName, onPick, onClose}) / Crew.hideRoster() / Crew.isOpen()
-ROLE_INFO / roleOf(connie)                 // specialty catalog + safe role lookup
-normalizeCrewData(raw)                     // PURE storage sanitizer (tests/crew_test.mjs)
+Crew.lineup()                     // ordered picked names; [0] is commander; [] = Surprise-me
+Crew.togglePick(name)             // tap in/out; caps at MAX_LINEUP (3); newest replaces last
+Crew.clearPicks()                 // back to Surprise-me
+Crew.chooseCrewForLaunch(seats)   // lineup (skipping deleted names) truncated to seats,
+                                  //   then random distinct fill — a launch never breaks
+Crew.chooseForLaunch()            // single-seat convenience = chooseCrewForLaunch(1)[0]
+Crew.recordMission(name) / Crew.missions(name) / Crew.roster() // flight log (+locked recruits)
+Crew.newGraduates(prevSci, nowSci) // recruits whose milestone this award crossed
+Crew.nextRecruitInfo()             // {at, have} | null — the next science goal
+Crew.showRoster({getCurrentCrewNames, onPick, onClose}) / Crew.hideRoster() / Crew.isOpen()
+ROLE_INFO / roleOf(connie) / MAX_LINEUP / normalizeCrewData(raw) // PURE sanitizer
 ```
-Storage: localStorage `"spacesim.crew.v1"` = `{ pick: name|null, log: { [name]: count } }`
-(new versioned key; mangled data degrades to defaults; a stale pick falls back to random).
+Storage: localStorage `"spacesim.crew.v1"` = `{ picks: [name,...], log: { [name]: count } }`
+(new versioned key; the interim in-branch `pick: name` shape is migrated by
+`normalizeCrewData`; mangled data degrades to defaults; stale names are skipped).
 
 ### Recorded API extensions
 - `Menu.init({...})` gains `onAstronauts` (the new Space Center building's door).
-- `UI.init({...})` gains `onCrewPick`; new `UI.syncCrewButton(pickName)` mirrors the pick
+- `UI.init({...})` gains `onCrewPick`; new `UI.syncCrewButton(lineup)` mirrors the lineup
   on the 🐍 Crew button (build-mode only — it picks the NEXT launch).
-- Copilot snapshot: `flight.crew` gains `role` + `missions` (try/catch-wrapped).
-- main.js `awardScience()`: a Scientist Connie aboard adds +5 bonus Science per console
-  (game economy, not physics — the real reason crews fly mission specialists).
-- SimState `crew` is now the full Connie (may carry `role`/`skill`); still
-  `null` for probe-only rockets.
+- SimState: `crew` is the COMMANDER (full Connie; null for probes — unchanged contract),
+  new **`crewList`** = everyone aboard, commander first (`[]` when uncrewed). Seats are
+  summed over crewed command parts by main.js `assignCrew()`.
+- Copilot snapshot: `flight.crew` gains `role` + `missions`; `flight.crewAll`
+  (name+role each) when more than one is aboard; top-level `nextAstronautAt` while a
+  recruit is still locked. All try/catch-wrapped.
+- main.js `awardScience()`: +5 bonus Science per Scientist aboard (game economy, not
+  physics — why real crews fly mission specialists), and crossing a recruit's `joinsAt`
+  fires the 🎓 graduation callout via `Crew.newGraduates`.

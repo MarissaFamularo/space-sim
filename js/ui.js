@@ -239,9 +239,12 @@ export const UI = {
   syncMapButton(on) {
     if (this.els.mapBtn) this.els.mapBtn.textContent = on ? "🚀 Ship view" : "🗺 Map view";
   },
-  // pickName = a Connie's name, or null for Surprise-me (random).
-  syncCrewButton(pickName) {
-    if (this.els.crewBtn) this.els.crewBtn.textContent = "🐍 Crew: " + (pickName || "Surprise me!");
+  // lineup = ordered picked names ([] = Surprise-me). Shows the commander, counts the rest.
+  syncCrewButton(lineup) {
+    if (!this.els.crewBtn) return;
+    const l = Array.isArray(lineup) ? lineup : (lineup ? [lineup] : []);
+    this.els.crewBtn.textContent = "🐍 Crew: " +
+      (l.length === 0 ? "Surprise me!" : l.length === 1 ? l[0] : l[0] + " +" + (l.length - 1));
   },
 
   _toggleStarmap() {

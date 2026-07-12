@@ -111,18 +111,28 @@ function loadStage(stageNum) {
   sim.cantLiftOff = s.thrust <= sim.stageWeightKN;
 }
 
-// Crew policy: a Connie flies only when a CREWED pod is aboard. A probe-core-only rocket
+// Crew policy: Connies fly only when a CREWED pod is aboard. A probe-core-only rocket
 // is an uncrewed robot mission (sim.crew = null) — crashes cost hardware, never a Connie.
-// WHO flies is his call now (his ask): the Astronaut Complex pick, or Surprise-me random.
-// Every crewed flight start (launch or ✨ teleport) goes in that Connie's flight log.
+// WHO flies is his call (his ask): the Astronaut Complex lineup, or Surprise-me random.
+// Seats come from the pod (Acorn 1, Trio Pod 3 — Apollo held exactly 3): sim.crewList is
+// everyone aboard, commander first; sim.crew stays the commander so every existing path
+// (EVA, interiors, messages) keeps working. Every flight start logs a mission for each.
 function assignCrew() {
-  const hasCrewPod = craft.parts.some((i) => {
+  let seats = 0;
+  for (const i of craft.parts) {
     const d = findPart(PARTS, i.partId);
-    return d && d.type === "command" && !d.uncrewed;
-  });
-  sim.crew = hasCrewPod ? Crew.chooseForLaunch() : null;
-  if (sim.crew) Crew.recordMission(sim.crew.name);
+    if (d && d.type === "command" && !d.uncrewed) seats += Math.max(1, Math.round(d.seats || 1));
+  }
+  sim.crewList = seats ? Crew.chooseCrewForLaunch(seats) : [];
+  sim.crew = sim.crewList[0] || null;
+  for (const c of sim.crewList) Crew.recordMission(c.name);
   return sim.crew;
+}
+// "Sneil Armstrong, Buzz Coildrin and Sally Slide" — for callouts that name everyone.
+function crewNames() {
+  const names = (sim.crewList || []).map((c) => c.name);
+  if (names.length <= 1) return names[0] || "Your Connie";
+  return names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
 }
 
 // Deploy the parachute (P key, or auto low over any world with air). Teaches: chutes need AIR.
@@ -177,7 +187,11 @@ function launch() {
   announced = freshAnnounced();
   announced.soi[BODIES.earth.name] = true; // you start there; no callout for home
   loadStage(0);
-  if (sim.crew) {
+  if (sim.crew && sim.crewList.length > 1) {
+    const roles = sim.crewList.map((c) => c.name + " (" + ROLE_INFO[roleOf(c)].icon + " " + roleOf(c) + ")").join(", ");
+    copilotSay("🐍🐍🐍 <b>Crew of " + sim.crewList.length + " aboard:</b> " + roles +
+      " — Commander " + sim.crew.name + " has the stick. Helmets sealed, coils braced. Liftoff!");
+  } else if (sim.crew) {
     const role = roleOf(sim.crew);
     copilotSay("🐍 Commander <b>" + sim.crew.name + "</b> is aboard (" + ROLE_INFO[role].icon + " " +
       role + ", mission #" + Crew.missions(sim.crew.name) + ") — helmet sealed, coils braced. Liftoff!");
@@ -588,13 +602,13 @@ UI.init({
   onSpaceCenter: () => Menu.showCenter(),
   onCrewPick: () => openRoster(null), // 🐍 Crew button by Launch — same roster, no menu behind it
 });
-UI.syncCrewButton(Crew.getPick());
+UI.syncCrewButton(Crew.lineup());
 
 // One roster, two doors: the Astronaut Complex building and the 🐍 Crew button.
 function openRoster(onClose) {
   Crew.showRoster({
-    getCurrentCrewName: () => (sim.mode === "flight" && sim.crew ? sim.crew.name : null),
-    onPick: () => UI.syncCrewButton(Crew.getPick()),
+    getCurrentCrewNames: () => (sim.mode === "flight" && sim.crewList ? sim.crewList.map((c) => c.name) : []),
+    onPick: () => UI.syncCrewButton(Crew.lineup()),
     onClose,
   });
 }
@@ -779,7 +793,8 @@ const LANDED_LINES = {
 function updateBanner() {
   const crew = sim.crew ? sim.crew.name : "Your Connie";
   const crashSub = sim.crew
-    ? crew + " boinged away safely in the escape bubble — Connies always do. Press Reset to try again"
+    ? crewNames() + " boinged away safely in " + ((sim.crewList || []).length > 1 ? "their escape bubbles" : "the escape bubble") +
+      " — Connies always do. Press Reset to try again"
     : "Nobody was aboard — that's exactly why we send robot probes first! Press Reset to try again";
   if (sim.mode === "flight" && sim.status === "crashed") {
     banner.style.display = "block";
@@ -929,7 +944,8 @@ function flightCallouts() {
     announced.crashed = true;
     const crew = sim.crew ? sim.crew.name : null;
     const bail = crew
-      ? crew + "'s escape bubble popped out in time, as always."
+      ? ((sim.crewList || []).length > 1 ? "All " + sim.crewList.length + " escape bubbles popped out in time — " + crewNames() + " are fine, as always."
+                                         : crew + "'s escape bubble popped out in time, as always.")
       : "Nobody aboard — probes take the risks so Connies don't have to.";
     if (sim.sankIntoClouds) {
       const g = BODIES[sim.crashedInto];
@@ -981,18 +997,26 @@ const SCIENCE_VALUE = { bio: 10, materials: 10, astro: 10, salvage: 15, alien: 2
 let factRotor = 0;
 function awardScience(kind) {
   let pts = SCIENCE_VALUE[kind] || 10;
-  // A Scientist Connie squeezes more out of every experiment — the real reason
+  // Scientist Connies squeeze more out of every experiment — the real reason
   // crews fly mission specialists. Small, honest, and only for real console work.
   let bonus = "";
-  if (sim.crew && roleOf(sim.crew) === "Scientist") {
-    pts += 5;
-    bonus = " 🔬 +5 bonus — " + sim.crew.name + " is a trained scientist!";
+  const scientists = (sim.crewList || (sim.crew ? [sim.crew] : [])).filter((c) => roleOf(c) === "Scientist");
+  if (scientists.length) {
+    pts += 5 * scientists.length;
+    bonus = " 🔬 +" + 5 * scientists.length + " bonus — " +
+      scientists.map((c) => c.name).join(" and ") + (scientists.length > 1 ? " are trained scientists!" : " is a trained scientist!");
   }
+  const prev = SCIENCE;
   SCIENCE += pts;
   try { localStorage.setItem(SCIENCE_KEY, String(SCIENCE)); } catch {}
   const facts = SCIENCE_FACTS[kind] || [];
   const fact = facts.length ? facts[(factRotor++) % facts.length] : "";
   copilotSay(fact + bonus + " <b>+" + pts + " Science</b> (total " + SCIENCE + ").");
+  // Science GROWS the program: crossing a milestone graduates a recruit into the roster.
+  for (const g of Crew.newGraduates(prev, SCIENCE)) {
+    copilotSay("🎓🐍 <b>NEW ASTRONAUT! " + g.name + " just graduated from training</b> and joined the " +
+      "Astronaut Complex — your science made it happen (" + g.joinsAt + " 🔬 reached). " + g.hero);
+  }
 }
 
 // ---- EVA anywhere (his ask): E in space or on the ground sends the Connie OUT ----

@@ -57,6 +57,10 @@ const sim = {
     pos: { x: 0, y: 680000 }, chuteCount: 1, dockCount: 0 },
   orbit: { bodyName: "Earth", apoapsis: 90000, periapsis: -20000, isOrbit: false },
   crew: { name: "Sally Slide", hero: "Sally Ride", role: "Scientist" },
+  crewList: [
+    { name: "Sally Slide", hero: "Sally Ride", role: "Scientist" },
+    { name: "Boa Lovell", hero: "Jim Lovell", role: "Pilot" },
+  ],
 };
 const fs = Copilot.snapshot(sim, stats);
 check(!!fs.rocket && fs.rocket.deltaV_ms === 4200, "rocket block present with rounded deltaV_ms");
@@ -70,6 +74,12 @@ check(fs.flight.crew.role === "Scientist" && typeof fs.flight.crew.missions === 
   "flight.crew carries role + missions-flown");
 check(src.includes("ASTRONAUT COMPLEX") && src.includes("SPECIALTY"),
   "SYSTEM prompt teaches crew specialties + the Astronaut Complex");
+
+// ---- multi-seat crews + what-science-is-for (2026-07-12 later) ----
+check(Array.isArray(fs.flight.crewAll) && fs.flight.crewAll.length === 2 &&
+  fs.flight.crewAll[1].role === "Pilot", "flight.crewAll lists the whole crew with roles");
+check(src.includes("TRIO COMMAND POD") && src.includes("WHAT SCIENCE IS FOR"),
+  "SYSTEM prompt teaches the Trio Pod seats + science's purpose");
 
 // ---- 3. Wish Book (2026-07-12) ----
 check(src.includes("THE WISH BOOK"), "SYSTEM prompt teaches the Wish Book");

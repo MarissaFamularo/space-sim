@@ -7,7 +7,19 @@ export const PARTS = [
     type: "command",
     name: "Acorn Command Pod",
     dryMass: 0.8,
+    seats: 1, // one Connie, Mercury-capsule style
     height: 1.2, radius: 0.7, shape: "cone",
+    attachTop: false, attachBottom: true,
+  },
+  {
+    // Three Connies fly together, Apollo-style (the real Apollo pod held exactly 3:
+    // two walked on the Moon while one flew the ship — that was Michael Collins).
+    id: "command_trio",
+    type: "command",
+    name: "Trio Command Pod",
+    dryMass: 2.4,
+    seats: 3,
+    height: 1.8, radius: 1.0, shape: "cone",
     attachTop: false, attachBottom: true,
   },
   {
@@ -186,6 +198,7 @@ export const PARTS = [
     type: "command",
     name: "Swift Plane Cockpit",
     dryMass: 0.9,
+    seats: 1,
     height: 1.3, radius: 0.6, shape: "cone",
     attachTop: false, attachBottom: true,
     facility: "hangar",

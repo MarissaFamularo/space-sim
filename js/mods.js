@@ -74,6 +74,10 @@ export function validatePartDef(def) {
   // Optional fields still have to be the right kind if present.
   if (def.fuelMass !== undefined && !isNum(def.fuelMass))
     return no('"fuelMass" should be a number (tonnes of fuel).');
+  if (def.seats !== undefined) {
+    e = checkNum(def, "seats", 1, 8, "Connies aboard; Apollo held 3, the Space Shuttle 8");
+    if (e) return no(e);
+  }
   for (const f of ["attachTop", "attachBottom"]) {
     if (def[f] !== undefined && typeof def[f] !== "boolean")
       return no(`"${f}" is a yes/no switch — write true or false (no quotes).`);

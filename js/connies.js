@@ -33,6 +33,22 @@ export const CONNIES = [
     hero: "Jim Lovell — commander of Apollo 13, brought a broken ship safely home" },
 ];
 
+// RECRUITS in training: doing SCIENCE grows the space program, and at these milestones
+// a new astronaut graduates and joins the roster (crew.js checks the science total).
+// Real space programs work the same way — discoveries earn the money and the missions
+// that let them train new astronaut classes.
+export const RECRUITS = [
+  { name: "Michael Coilins", joinsAt: 40, role: "Pilot",
+    skill: "Flies the mothership solo while the others explore",
+    hero: "Michael Collins — Apollo 11's third astronaut: he flew the command ship around the Moon ALONE while Armstrong and Aldrin walked. Somebody always minds the ship." },
+  { name: "Valentina Slitherkova", joinsAt: 120, role: "Pilot",
+    skill: "48 orbits solo — on her very first flight",
+    hero: "Valentina Tereshkova — the first woman in space EVER, 1963. She orbited Earth 48 times, alone, two years after Gagarin." },
+  { name: "Peggy Whitsnake", joinsAt: 250, role: "Scientist",
+    skill: "Biochemist — has basically LIVED in space",
+    hero: "Peggy Whitson — a biochemist who has spent more time in space than any other American: almost two years of her life, added up." },
+];
+
 // Pick a random Connie for a launch (cosmetic random is fine here).
 export function pickConnie() {
   return CONNIES[Math.floor(Math.random() * CONNIES.length)];

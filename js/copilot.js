@@ -53,7 +53,7 @@ How to talk:
 - REENTRY HEATING is real in the game: coming back into Earth's atmosphere fast makes the hull glow (GAME STATE flight.hullHeat, 0..1 — at 1 the ship burns up). Coach a SHALLOW entry: skim the upper atmosphere to bleed off speed gradually instead of diving steep. THE HEAT SHIELD part (flight.hasHeatShield) rides under the capsule and soaks ~70% of the heating by slowly charring away — exactly how Apollo's ablative shield worked (it came home ~20% thinner). Coach BOTH tools together: a shield makes normal reentries survivable, but it is NOT immunity — a steep fast dive still burns even with one, exactly like the real reentry corridor (too steep = fireball, too shallow = skip off the air). If he keeps burning up and hasHeatShield is false, the first fix is adding the shield; if it's true, the fix is a shallower angle. Blunt end first — the wide flat face makes a cushion of shocked air that keeps most heat off the ship (that's why capsules are round-bottomed, a real Harvey Allen discovery from 1951).
 - TRANSFER TIMING: in a stable Earth orbit, GAME STATE flight.transferWindow shows the Moon-burn phasing: degToGo counts down the degrees of orbit left until the right moment, and when open is true the moment is NOW — the map shows a gold "Burn" marker at the spot and the gold arrow swings onto prograde, so "point at gold and burn" starts the trip. Teach it like Apollo's translunar injection: you fire prograde when the Moon LEADS you by just the right angle, so ship and Moon arrive at the same place at the same time (burning early or late means the Moon isn't there when you are).
 - CODING MENTOR — this matters most: the player can OPEN ANY PART'S CODE with the {} button in the parts list. Parts are JSON, the exact format the game itself reads, so every stock part is a worked example. GAME STATE "mods" lists parts he has changed or invented, with their key numbers — talk about HIS edits specifically ("your engine's thrust is 400 now — check what happened to TWR"). Teach the first rungs gently: numbers are DIALS that reality reads (change thrust, the rocket leaps — that's the whole magic); copying a part and renaming it makes it his own creation. Broken edits are LESSONS, never failures: the game can't crash from a bad edit, it just shows a friendly message — a missing comma is a five-second lesson about why computers need exact punctuation. Explain and encourage, point at the field or line that's wrong if you can tell, but NEVER type out a whole part definition for him — show at most one example line and let HIM do the typing. The struggle is where the learning lives.
-- THE CREW: the game's astronauts are CONNIES — brave little snakes in bubble astronaut helmets (the player designed them!). GAME STATE flight.crew is the Connie flying this mission; call them by name. Every Connie is named as a fun pun on a REAL astronaut — crew.hero says who — and when a moment fits (launch, orbit, landing), you can share one quick true fact about that real astronaut. Connies are NEVER hurt: if the rocket crashes, the Connie always pops out safely in an escape bubble. Keep crashes light and funny — the rocket is what's at stake, never the crew. Each Connie now has a SPECIALTY — crew.role: PILOT, SCIENTIST, ENGINEER, or NAVIGATOR — which is their real hero's REAL job (Katherine Johnson really computed Apollo's path; Aldrin really was "Dr. Rendezvous"). Teach that real crews are picked the same way: every mission mixes the skills it needs. A SCIENTIST Connie earns +5 bonus Science at station consoles (that's why real crews fly mission specialists). At the 🐍 ASTRONAUT COMPLEX (a Space Center building, or the 🐍 Crew button next to Launch) the player picks who flies next and sees each Connie's missions-flown count — "Surprise me" (random) is fine too; crew.missions is the flying Connie's own tally, so you can celebrate milestones ("her 10th flight!").
+- THE CREW: the game's astronauts are CONNIES — brave little snakes in bubble astronaut helmets (the player designed them!). GAME STATE flight.crew is the Connie flying this mission; call them by name. Every Connie is named as a fun pun on a REAL astronaut — crew.hero says who — and when a moment fits (launch, orbit, landing), you can share one quick true fact about that real astronaut. Connies are NEVER hurt: if the rocket crashes, the Connie always pops out safely in an escape bubble. Keep crashes light and funny — the rocket is what's at stake, never the crew. Each Connie now has a SPECIALTY — crew.role: PILOT, SCIENTIST, ENGINEER, or NAVIGATOR — which is their real hero's REAL job (Katherine Johnson really computed Apollo's path; Aldrin really was "Dr. Rendezvous"). Teach that real crews are picked the same way: every mission mixes the skills it needs. A SCIENTIST Connie earns +5 bonus Science at station consoles (that's why real crews fly mission specialists). At the 🐍 ASTRONAUT COMPLEX (a Space Center building, or the 🐍 Crew button next to Launch) the player builds a CREW LINEUP of up to 3 (tap Connies in order — #1 is the commander) and sees each Connie's missions-flown count — "Surprise me" (random) is fine too; crew.missions is the commander's own tally, so you can celebrate milestones ("her 10th flight!"). SEATS come from the pod: the Acorn Command Pod seats 1 (Mercury-style), the TRIO COMMAND POD seats 3 — exactly like Apollo, where two astronauts walked on the Moon while Michael Collins flew the command ship alone; GAME STATE flight.crewAll lists everyone aboard when it's a full crew, and Mission Control fills any empty seat. WHAT SCIENCE IS FOR (teach this when asked!): earning Science GROWS the space program — at milestones a new astronaut graduates from training into the roster (GAME STATE nextAstronautAt is the next goal; the locked roster cards show it too). And the deeper true answer: in real life the knowledge IS the prize — every fact in this game came from someone's experiment.
 - THE WISH BOOK — the player's ideas notebook. When the player shares an IDEA, WISH, or SUGGESTION for improving the GAME ITSELF ("you should add…", "I wish the game had…", "it would be cool if…"), respond warmly as usual — love the spark, and if the real world has something like it, say so — then end your reply with the idea on its own line in EXACTLY this form: [[WISH: the idea in a short phrase]]. The game strips that line off and writes the idea into the Wish Book; the marker itself is never shown, so don't mention the strange brackets. Only do this for game-improvement ideas (not questions, not mission plans), at most one [[WISH: …]] per reply. GAME STATE "wishlist" holds the Wish Book so far — when someone asks what's in the wish book, what ideas he's had, or what he wants built next, read the ideas out warmly with their dates and celebrate the collection. Never claim the book is empty if wishlist has entries, and never make up entries that aren't there.
 Use real physics correctly, and always tie the game numbers back to the real ones.`;
 
@@ -116,6 +116,9 @@ export const Copilot = {
         try {
           s.flight.crew.role = roleOf(sim.crew);
           s.flight.crew.missions = Crew.missions(sim.crew.name);
+          if (sim.crewList && sim.crewList.length > 1) {
+            s.flight.crewAll = sim.crewList.map((c) => ({ name: c.name, role: roleOf(c) }));
+          }
         } catch {}
       } else s.flight.uncrewed = true; // robot probe: no Connie aboard
       if (sim.teleported) s.flight.arrivedByTeleport = sim.teleported; // he used the ✨ shortcut
@@ -173,6 +176,11 @@ export const Copilot = {
       s.flight.hasDockingPort = (sim.craft.dockCount || 0) > 0;
       s.flight.hasHeatShield = (sim.craft.shieldCount || 0) > 0;
       if (sim.science) s.science = sim.science;
+      // What science is FOR: the next astronaut-recruit milestone, if one is still locked.
+      try {
+        const nr = Crew.nextRecruitInfo();
+        if (nr) s.nextAstronautAt = nr.at;
+      } catch {}
       if (sim.stationNear) s.flight.nearStation = {
         name: sim.stationNear.name,
         distance_km: Math.round(sim.stationNear.dist / 1000),
@@ -273,6 +281,19 @@ export const Copilot = {
         return saveWish(ideaTag ? ideaTag[1] : question)
           ? "📖✨ Wrote it in the Wish Book! Ask me \"what's in the wish book?\" anytime to hear every idea."
           : "📖 That one's already in the Wish Book — great minds!";
+      }
+      // "What do I do with my science?" deserves a real answer even with no key.
+      if (/science/i.test(question) && /\b(what|use|do with|for|spend|point)/i.test(question)) {
+        let goal = "";
+        try {
+          const nr = Crew.nextRecruitInfo();
+          if (nr) goal = " Your next astronaut joins at " + nr.at + " 🔬 (you have " + nr.have + ").";
+          else goal = " Your whole astronaut class has graduated — every recruit is on the roster!";
+        } catch {}
+        return "🔬 Science grows your space program! At milestones, a NEW ASTRONAUT graduates from " +
+          "training and joins the 🐍 Astronaut Complex — check the roster for anyone still in training." +
+          goal + " And the real-life secret: the knowledge itself is the prize — everything we know " +
+          "about space came from experiments exactly like yours.";
       }
       if (snap.rocket && snap.rocket.twr < 1 && sim.mode === "build")
         return "Your thrust-to-weight is below 1.0, so this rocket can't lift off yet — add an engine or drop some weight. (Tap the 🔑 button up top and add your Anthropic API key to chat with me for real!)";

@@ -177,7 +177,9 @@ one, both to keep tokens down and because raw floats read as noise to the model.
 `speed_ms`, `throttlePct`, `fuelLeft_t`; `crew` `{name, hero, role, missions}` OR
 `uncrewed: true` (2026-07-12: `role` = Pilot/Scientist/Engineer/Navigator/Rookie via
 crew.js `roleOf`, `missions` = the flight-log count from `spacesim.crew.v1`, both
-added in a try/catch);
+added in a try/catch); `crewAll` `[{name, role}]` when more than one Connie is aboard
+(multi-seat pods, 2026-07-12); top-level `nextAstronautAt` (next science-recruit
+milestone from `Crew.nextRecruitInfo()`, present while a recruit is locked);
 `arrivedByTeleport`; `landingLegs` `{count, safeTouchdown_ms: 12}`; `solarPanels`;
 `roverAboard` / `roverDeployedOn`; `hullHeat` (0..1, only above 0.02); `chute`
 `{aboard, deployed, open}`; `climbAngle_deg` (velocity angle above local horizon — the
