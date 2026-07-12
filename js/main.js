@@ -11,7 +11,7 @@ import { Render } from "./render.js";
 import { Builder } from "./builder.js";
 import { UI } from "./ui.js";
 import { Copilot } from "./copilot.js";
-import { pickConnie } from "./connies.js";
+import { Crew, ROLE_INFO, roleOf } from "./crew.js";
 import { Menu } from "./menu.js";
 import { Tracking } from "./tracking.js";
 
@@ -113,12 +113,15 @@ function loadStage(stageNum) {
 
 // Crew policy: a Connie flies only when a CREWED pod is aboard. A probe-core-only rocket
 // is an uncrewed robot mission (sim.crew = null) — crashes cost hardware, never a Connie.
+// WHO flies is his call now (his ask): the Astronaut Complex pick, or Surprise-me random.
+// Every crewed flight start (launch or ✨ teleport) goes in that Connie's flight log.
 function assignCrew() {
   const hasCrewPod = craft.parts.some((i) => {
     const d = findPart(PARTS, i.partId);
     return d && d.type === "command" && !d.uncrewed;
   });
-  sim.crew = hasCrewPod ? pickConnie() : null;
+  sim.crew = hasCrewPod ? Crew.chooseForLaunch() : null;
+  if (sim.crew) Crew.recordMission(sim.crew.name);
   return sim.crew;
 }
 
@@ -174,7 +177,11 @@ function launch() {
   announced = freshAnnounced();
   announced.soi[BODIES.earth.name] = true; // you start there; no callout for home
   loadStage(0);
-  if (sim.crew) copilotSay("🐍 Commander <b>" + sim.crew.name + "</b> is aboard — helmet sealed, coils braced. Liftoff!");
+  if (sim.crew) {
+    const role = roleOf(sim.crew);
+    copilotSay("🐍 Commander <b>" + sim.crew.name + "</b> is aboard (" + ROLE_INFO[role].icon + " " +
+      role + ", mission #" + Crew.missions(sim.crew.name) + ") — helmet sealed, coils braced. Liftoff!");
+  }
   else copilotSay("🛰️ <b>Uncrewed launch</b> — no Connie aboard, the probe core is doing the flying. Real space programs send robots first, so nobody's ever in danger. Liftoff!");
   if (sim.craft.thrust <= 0) copilotSay("This rocket has no working engine on its first stage — it won't lift off. Add an engine at the bottom.");
   else if (sim.cantLiftOff) copilotSay("Hmm — your engines push with " + Math.round(sim.craft.thrust) +
@@ -579,7 +586,18 @@ UI.init({
   onStarmapHome: () => travelHome(),
   getVisitedSystems: () => loadVisited(),
   onSpaceCenter: () => Menu.showCenter(),
+  onCrewPick: () => openRoster(null), // 🐍 Crew button by Launch — same roster, no menu behind it
 });
+UI.syncCrewButton(Crew.getPick());
+
+// One roster, two doors: the Astronaut Complex building and the 🐍 Crew button.
+function openRoster(onClose) {
+  Crew.showRoster({
+    getCurrentCrewName: () => (sim.mode === "flight" && sim.crew ? sim.crew.name : null),
+    onPick: () => UI.syncCrewButton(Crew.getPick()),
+    onClose,
+  });
+}
 wireCopilot();
 Copilot.initSettings();
 refreshGalaxy();
@@ -603,6 +621,7 @@ Menu.init({
     copilotSay("✈ <b>Welcome to the Space Plane Hangar!</b> This is where planes, probes, and space stations get built — wings glide in air, a Centrifuge Ring spins for gravity, and a Station Hub makes your build deployable as a real station. Build it, then ✨ Teleport it to orbit!");
   },
   onTracking: () => Tracking.show(),
+  onAstronauts: () => openRoster(() => Menu.showCenter()),
   onSettingsChange: (s) => Render.setQuality(s.graphics),
 });
 Render.setQuality(Menu.getSettings().graphics);
@@ -631,7 +650,7 @@ function wireCopilot() {
 const keys = {};
 window.addEventListener("keydown", (e) => {
   if (e.target && e.target.tagName === "INPUT") return;
-  if (Menu.isOpen() || Tracking.isOpen()) return; // menus own the keys while open
+  if (Menu.isOpen() || Tracking.isOpen() || Crew.isOpen()) return; // menus own the keys while open
   if (Render.isInside()) return; // the station interior owns the keys while aboard
   keys[e.key] = true;
   if (e.repeat) return;
@@ -961,12 +980,19 @@ const SCIENCE_FACTS = {
 const SCIENCE_VALUE = { bio: 10, materials: 10, astro: 10, salvage: 15, alien: 25 };
 let factRotor = 0;
 function awardScience(kind) {
-  const pts = SCIENCE_VALUE[kind] || 10;
+  let pts = SCIENCE_VALUE[kind] || 10;
+  // A Scientist Connie squeezes more out of every experiment — the real reason
+  // crews fly mission specialists. Small, honest, and only for real console work.
+  let bonus = "";
+  if (sim.crew && roleOf(sim.crew) === "Scientist") {
+    pts += 5;
+    bonus = " 🔬 +5 bonus — " + sim.crew.name + " is a trained scientist!";
+  }
   SCIENCE += pts;
   try { localStorage.setItem(SCIENCE_KEY, String(SCIENCE)); } catch {}
   const facts = SCIENCE_FACTS[kind] || [];
   const fact = facts.length ? facts[(factRotor++) % facts.length] : "";
-  copilotSay(fact + " <b>+" + pts + " Science</b> (total " + SCIENCE + ").");
+  copilotSay(fact + bonus + " <b>+" + pts + " Science</b> (total " + SCIENCE + ").");
 }
 
 // ---- EVA anywhere (his ask): E in space or on the ground sends the Connie OUT ----

@@ -9,6 +9,57 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-12 latest): 🐍 THE ASTRONAUT COMPLEX — pick your Connie (his ask, via Mom)
+
+His ask: choose which Connie flies at launch, plus a Space Center building where the
+astronauts live, "with different skills and readings." Shipped:
+- **Connies have SPECIALTIES now** (connies.js — still his editable file): each Connie
+  carries `role` + `skill`, and the role is the REAL hero's REAL job — Armstrong/Gagarin/
+  Lovell are 🕹 PILOTS, Ride/Jemison 🔬 SCIENTISTS, Hadfield 🔧 ENGINEER, and Coilson +
+  Coildrin are 🧭 NAVIGATORS (Katherine Johnson really computed Apollo's path; Aldrin
+  really was "Dr. Rendezvous"). Both fields optional: a Connie HE adds with no role flies
+  as a 🌱 Rookie ("every astronaut starts somewhere") — failing safely, node-tested.
+- **🐍 ASTRONAUT COMPLEX building** on the Space Center campus (menu.js — campus widened,
+  a Connie peeks out a porthole): opens the roster in js/crew.js (new module). Cards show
+  the readings he asked for: portrait, specialty badge, skill line, MISSIONS FLOWN (his
+  real per-Connie history), 🚀 ON A MISSION status, the hero fact, and a gold "✔ flying
+  next" pick. "🎲 Surprise me!" (random — the old behavior) stays the default.
+- **Pick-at-launch button**: a "🐍 Crew: <name>" button sits right by 🚀 Launch in build
+  mode (hidden in flight — it picks the NEXT launch) and opens the same roster.
+- **The pick actually flies**: `assignCrew()` (launch AND fresh-flight ✨ teleport) uses
+  `Crew.chooseForLaunch()` and writes the mission to the flight log. Liftoff callout now
+  says specialty + mission number ("Commander Sally Slide (🔬 Scientist, mission #2)…").
+  A stale pick (he deletes a Connie from connies.js) silently falls back to random.
+- **Specialties matter once, honestly**: a Scientist aboard earns +5 bonus Science per
+  station console — game economy, not physics (Rule 3 untouched); it's WHY real crews fly
+  mission specialists. Pilots/Engineers/Navigators are flavor + Navigator teaching for now.
+- **Storage**: `spacesim.crew.v1` `{pick, log}` — new versioned key, Rule 2 clean, mangled
+  data degrades to defaults (pure `normalizeCrewData`, node-tested). Catalogued in the
+  constants-and-storage skill.
+- **Navigator taught** (safety block untouched; navigator_check grew to 20, green):
+  THE CREW bullet now covers specialties + the complex; snapshot `flight.crew` gains
+  `role` + `missions` so it can celebrate milestones ("her 10th flight!").
+- **Contract**: ARCHITECTURE.md "CONTRACT REVISION 2026-07-12c" (Connie shape, crew.js
+  API, Menu `onAstronauts`, UI `onCrewPick`/`syncCrewButton`).
+
+**Verified**: all 11 node suites green (263 checks, incl. new tests/crew_test.mjs — 23);
+navigator_check 20/20; browser-verified end-to-end from a scratch copy (boot smoke green,
+flight-check regression green, and a scripted crew flow: title → Space Center shows the
+new building → roster shows 9 cards with specialties/missions/heroes → pick Sally Slide →
+persisted → 🐍 Crew button mirrors it → crewed launch flies HER with the mission-#1
+callout → second launch logs #2 → ON A MISSION chip mid-flight → probe launch stays
+uncrewed with no log bump → Surprise-me launches a random Connie; zero console errors;
+screenshots of campus + roster). **Flagged / not done**:
+- **One seat per pod** — sim.crew is still a single commander everywhere (EVA, interiors,
+  messages), so the picker chooses WHO, not a whole crew list. If he meant "send several
+  Connies at once," multi-seat pods are the natural next ask (bigger refactor; flag it to
+  him as such).
+- The **Scientist +5 science bonus is code-verified only** (the browser script didn't
+  drift an interior console with a scientist aboard) — worth one play-test: fly Sally,
+  dock, board, run a console, watch for the "+5 bonus" line.
+- Worth one human play-test with him: Space Center → 🐍 Astronaut Complex → read the
+  hero facts together (that's the payload) → pick his favorite → launch → EVA.
+
 ## Status (2026-07-12 later still): 📖 THE WISH BOOK (Mom's ask: "keep a list of his ideas")
 
 He tells the Navigator ideas in real time; Mom wants to ask for them later. Shipped, all

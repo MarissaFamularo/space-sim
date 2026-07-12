@@ -350,3 +350,40 @@ Render.enterStation(info, cb)       // info gains .spin — centrifuge interior:
   (r = a·√q/(1+√q)) because the Laplace SOI formula assumes a tiny mass ratio; physics.step
   treats any star-styled non-solid body like the sun on impact (burnedUp, not
   sankIntoClouds).
+
+## CONTRACT REVISION 2026-07-12c — Crew picks (the 🐍 Astronaut Complex)
+
+Who flies is now the player's choice. Every previously-frozen surface is unchanged
+except the small, recorded extensions below.
+
+### Connie shape extended (connies.js — still his kid-editable data file)
+```js
+{ name, hero,                       // as before (name pun + true fact)
+  role: "Pilot"|"Scientist"|"Engineer"|"Navigator",  // OPTIONAL — the real hero's real job
+  skill: "one kid-readable line" }  // OPTIONAL — what they're best at
+```
+Both new fields are optional: a Connie without a valid `role` (e.g. one HE adds) flies
+as a **Rookie** (`crew.js roleOf()`). `pickConnie()` is unchanged.
+
+### New module: js/crew.js (owns crew choice + flight log; node-safe, node-tested)
+```js
+Crew.getPick() / Crew.setPick(nameOrNull)  // null = "Surprise me" (random — the default)
+Crew.chooseForLaunch()   // his pick if it still exists, else pickConnie(); never throws
+Crew.recordMission(name) // main.js assignCrew() calls this on every crewed flight start
+Crew.missions(name) / Crew.roster()        // flight-log reads (roster merges counts+roles)
+Crew.showRoster({getCurrentCrewName, onPick, onClose}) / Crew.hideRoster() / Crew.isOpen()
+ROLE_INFO / roleOf(connie)                 // specialty catalog + safe role lookup
+normalizeCrewData(raw)                     // PURE storage sanitizer (tests/crew_test.mjs)
+```
+Storage: localStorage `"spacesim.crew.v1"` = `{ pick: name|null, log: { [name]: count } }`
+(new versioned key; mangled data degrades to defaults; a stale pick falls back to random).
+
+### Recorded API extensions
+- `Menu.init({...})` gains `onAstronauts` (the new Space Center building's door).
+- `UI.init({...})` gains `onCrewPick`; new `UI.syncCrewButton(pickName)` mirrors the pick
+  on the 🐍 Crew button (build-mode only — it picks the NEXT launch).
+- Copilot snapshot: `flight.crew` gains `role` + `missions` (try/catch-wrapped).
+- main.js `awardScience()`: a Scientist Connie aboard adds +5 bonus Science per console
+  (game economy, not physics — the real reason crews fly mission specialists).
+- SimState `crew` is now the full Connie (may carry `role`/`skill`); still
+  `null` for probe-only rockets.

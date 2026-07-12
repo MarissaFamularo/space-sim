@@ -174,7 +174,10 @@ one, both to keep tokens down and because raw floats read as noise to the model.
 | `world` | current body has `mu` | `orbitSpeedNeeded_ms`, `approxDeltaVToOrbit_ms` (= v_circ × 1.5), and `realEarth` `{orbitSpeed_ms: 7800, deltaVToOrbit_ms: 9400, ...}` — this pair is the mechanical basis of "teach both numbers" |
 
 **`flight` subfields** (all conditional on the relevant state): `altitude_km`,
-`speed_ms`, `throttlePct`, `fuelLeft_t`; `crew` `{name, hero}` OR `uncrewed: true`;
+`speed_ms`, `throttlePct`, `fuelLeft_t`; `crew` `{name, hero, role, missions}` OR
+`uncrewed: true` (2026-07-12: `role` = Pilot/Scientist/Engineer/Navigator/Rookie via
+crew.js `roleOf`, `missions` = the flight-log count from `spacesim.crew.v1`, both
+added in a try/catch);
 `arrivedByTeleport`; `landingLegs` `{count, safeTouchdown_ms: 12}`; `solarPanels`;
 `roverAboard` / `roverDeployedOn`; `hullHeat` (0..1, only above 0.02); `chute`
 `{aboard, deployed, open}`; `climbAngle_deg` (velocity angle above local horizon — the

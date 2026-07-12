@@ -38,7 +38,8 @@ function fmtWarp(w) {
 export const UI = {
   els: {},
   // handlers: onLaunch, onReset, onModeChange, onToggleMap, onToggleArrow,
-  // onTargetChange, onTeleport, onStarmapTravel, onStarmapHome, getVisitedSystems.
+  // onTargetChange, onTeleport, onStarmapTravel, onStarmapHome, getVisitedSystems,
+  // onSpaceCenter, onCrewPick.
   init(handlers) {
     this.els.readouts = document.getElementById("readout-list");
     this.els.controls = document.getElementById("control-list");
@@ -95,8 +96,11 @@ export const UI = {
     }
   },
   // Show flight-only controls in flight, hide them in build (keeps the MODE box short).
+  // The 🐍 Crew button is the opposite: it picks who flies the NEXT launch, so it lives
+  // on the pad (build mode) and hides once you're flying.
   setMode(mode) {
     if (this.els.flightControls) this.els.flightControls.style.display = mode === "flight" ? "" : "none";
+    if (this.els.crewBtn) this.els.crewBtn.style.display = mode === "build" ? "" : "none";
   },
   _renderControls() {
     const c = this.els.controls;
@@ -112,6 +116,16 @@ export const UI = {
     mk("Build", () => this.handlers.onModeChange && this.handlers.onModeChange("build"));
     mk("🚀 Launch", () => this.handlers.onLaunch && this.handlers.onLaunch());
     mk("Reset", () => this.handlers.onReset && this.handlers.onReset());
+
+    // 🐍 Who flies? Opens the Astronaut Complex roster (his ask: pick your Connie
+    // right before launch). Label mirrors the current pick via syncCrewButton.
+    const crewBtn = document.createElement("button");
+    this.els.crewBtn = crewBtn;
+    crewBtn.style.cssText = "margin-top:6px;width:100%;";
+    crewBtn.textContent = "🐍 Crew: Surprise me!";
+    crewBtn.title = "Pick which Connie flies the next mission";
+    crewBtn.onclick = () => this.handlers.onCrewPick && this.handlers.onCrewPick();
+    c.appendChild(crewBtn);
 
     // Which system are we in? (The Starmap changes this.)
     const sysLabel = document.createElement("div");
@@ -224,6 +238,10 @@ export const UI = {
   currentTarget() { return this.els.targetSel ? this.els.targetSel.value : "moon"; },
   syncMapButton(on) {
     if (this.els.mapBtn) this.els.mapBtn.textContent = on ? "🚀 Ship view" : "🗺 Map view";
+  },
+  // pickName = a Connie's name, or null for Surprise-me (random).
+  syncCrewButton(pickName) {
+    if (this.els.crewBtn) this.els.crewBtn.textContent = "🐍 Crew: " + (pickName || "Surprise me!");
   },
 
   _toggleStarmap() {

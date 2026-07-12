@@ -56,7 +56,7 @@ const sim = {
   craft: { throttle: 0.5, fuelRemaining: 3.2, vel: { x: 1200, y: 900 },
     pos: { x: 0, y: 680000 }, chuteCount: 1, dockCount: 0 },
   orbit: { bodyName: "Earth", apoapsis: 90000, periapsis: -20000, isOrbit: false },
-  crew: { name: "Sally Slide", hero: "Sally Ride" },
+  crew: { name: "Sally Slide", hero: "Sally Ride", role: "Scientist" },
 };
 const fs = Copilot.snapshot(sim, stats);
 check(!!fs.rocket && fs.rocket.deltaV_ms === 4200, "rocket block present with rounded deltaV_ms");
@@ -64,6 +64,12 @@ check(!!fs.flight && typeof fs.flight.climbAngle_deg === "number", "flight.climb
 check(!!fs.orbit && fs.orbit.aroundBody === "Earth", "orbit block present");
 check(!!fs.world && fs.world.realEarth.orbitSpeed_ms === 7800, "world.realEarth teaches the real number");
 check(!!fs.moon && fs.flight.chute.aboard === 1, "moon block + chute status present");
+
+// ---- crew specialties (2026-07-12) ----
+check(fs.flight.crew.role === "Scientist" && typeof fs.flight.crew.missions === "number",
+  "flight.crew carries role + missions-flown");
+check(src.includes("ASTRONAUT COMPLEX") && src.includes("SPECIALTY"),
+  "SYSTEM prompt teaches crew specialties + the Astronaut Complex");
 
 // ---- 3. Wish Book (2026-07-12) ----
 check(src.includes("THE WISH BOOK"), "SYSTEM prompt teaches the Wish Book");

@@ -1,10 +1,11 @@
 // menu.js — Konnie Space Program's front door: the title screen, the settings panel,
 // and the KONNIE SPACE CENTER (his ask): a place on Earth with real buildings — the
-// Tracking Center, the VAB, and the Space Plane Hangar — each one a door into a game
-// mode. Pure DOM/SVG overlays on top of the running 3D scene; owns no game state.
+// Tracking Center, the VAB, the Space Plane Hangar, and the Astronaut Complex — each
+// one a door into a game mode. Pure DOM/SVG overlays on top of the running 3D scene;
+// owns no game state.
 //
 // API (used by main.js):
-//   Menu.init({ onVAB, onHangar, onTracking, onSettingsChange })
+//   Menu.init({ onVAB, onHangar, onTracking, onAstronauts, onSettingsChange })
 //   Menu.showTitle() / Menu.showCenter() / Menu.hideAll()
 //   Menu.getSettings() -> { graphics: "fancy"|"fast" }
 
@@ -202,14 +203,15 @@ function showCenter() {
   centerEl.appendChild(head);
 
   // The campus, as one big SVG: Tracking Center (dish), VAB (tall), Hangar (curved roof),
-  // plus a launchpad with a rocket, the flag, and the water tower for flavor.
+  // Astronaut Complex (crew quarters), plus a launchpad with a rocket, the flag, and the
+  // water tower for flavor.
   const svgWrap = document.createElement("div");
-  svgWrap.style.cssText = "width:min(96vw,1150px);margin-top:60px;";
+  svgWrap.style.cssText = "width:min(96vw,1250px);margin-top:60px;";
   svgWrap.innerHTML = `
-  <svg viewBox="0 0 1150 470" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">
+  <svg viewBox="0 0 1420 470" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">
     <!-- ground -->
-    <rect x="0" y="345" width="1150" height="125" fill="#101c14"/>
-    <rect x="0" y="345" width="1150" height="5" fill="#1d3322"/>
+    <rect x="0" y="345" width="1420" height="125" fill="#101c14"/>
+    <rect x="0" y="345" width="1420" height="5" fill="#1d3322"/>
     <!-- crawler-way -->
     <path d="M330 470 L370 345 L410 345 L450 470 Z" fill="#22303f"/>
     <path d="M388 345 L392 345 L400 470 L380 470 Z" fill="#3a4c5e"/>
@@ -271,18 +273,45 @@ function showCenter() {
       <text x="810" y="416" text-anchor="middle" font-size="12" fill="#9fb3da">planes · probes · space stations</text>
     </g>
 
+    <!-- ASTRONAUT COMPLEX: the Connies' crew quarters — one is peeking out a porthole -->
+    <g class="ksp-bld" data-go="astronauts" transform="translate(90,0)">
+      <g class="ksp-glow">
+        <rect x="950" y="268" width="180" height="77" rx="6" fill="#243b2c" stroke="#3f6047" stroke-width="2"/>
+        <rect x="950" y="268" width="180" height="14" rx="6" fill="#3f6047"/>
+        <!-- porthole windows -->
+        <circle cx="980" cy="308" r="11" fill="#0c1626" stroke="#8fb99a" stroke-width="2.5"/>
+        <circle cx="1014" cy="308" r="11" fill="#0c1626" stroke="#8fb99a" stroke-width="2.5"/>
+        <circle cx="1048" cy="308" r="11" fill="#0c1626" stroke="#8fb99a" stroke-width="2.5"/>
+        <!-- a Connie looking out the first window -->
+        <circle cx="980" cy="311" r="6.5" fill="#3f9d5c"/>
+        <circle cx="977.5" cy="309" r="1.6" fill="#fff"/><circle cx="982.5" cy="309" r="1.6" fill="#fff"/>
+        <circle cx="977.8" cy="309.3" r="0.9" fill="#0a1020"/><circle cx="982.8" cy="309.3" r="0.9" fill="#0a1020"/>
+        <!-- door -->
+        <rect x="1094" y="318" width="24" height="27" fill="#101a2c"/>
+        <!-- bubble-helmet sign on the roof -->
+        <rect x="1032" y="240" width="6" height="28" fill="#3f6047"/>
+        <circle cx="1035" cy="227" r="15" fill="rgba(160,200,255,0.15)" stroke="#bcd2f5" stroke-width="2.5"/>
+        <circle cx="1035" cy="230" r="8.5" fill="#3f9d5c"/>
+        <circle cx="1032" cy="228" r="1.7" fill="#0a1020"/><circle cx="1038" cy="228" r="1.7" fill="#0a1020"/>
+      </g>
+      <text x="1040" y="395" text-anchor="middle" font-size="20" font-weight="800" fill="#cfe0ff">🐍 ASTRONAUT COMPLEX</text>
+      <text x="1040" y="416" text-anchor="middle" font-size="12" fill="#9fb3da">meet the Connies — pick your crew</text>
+    </g>
+
     <!-- launchpad + rocket, flag, water tower (decoration) -->
     <g>
-      <rect x="985" y="330" width="120" height="15" fill="#33404f"/>
-      <rect x="1000" y="205" width="10" height="125" fill="#5b6a7d"/>
-      <line x1="1010" y1="215" x2="1042" y2="230" stroke="#5b6a7d" stroke-width="4"/>
-      <rect x="1036" y="230" width="16" height="88" rx="7" fill="#e8eefc"/>
-      <path d="M1036 236 L1044 214 L1052 236 Z" fill="#e0443f"/>
-      <path d="M1036 318 L1028 334 L1036 330 Z" fill="#c3ccdb"/>
-      <path d="M1052 318 L1060 334 L1052 330 Z" fill="#c3ccdb"/>
-      <rect x="948" y="252" width="4" height="93" fill="#5b6a7d"/>
-      <rect x="952" y="252" width="26" height="16" fill="#e0443f"/>
-      <circle cx="965" cy="260" r="5" fill="#fff"/>
+      <g transform="translate(280,0)">
+        <rect x="985" y="330" width="120" height="15" fill="#33404f"/>
+        <rect x="1000" y="205" width="10" height="125" fill="#5b6a7d"/>
+        <line x1="1010" y1="215" x2="1042" y2="230" stroke="#5b6a7d" stroke-width="4"/>
+        <rect x="1036" y="230" width="16" height="88" rx="7" fill="#e8eefc"/>
+        <path d="M1036 236 L1044 214 L1052 236 Z" fill="#e0443f"/>
+        <path d="M1036 318 L1028 334 L1036 330 Z" fill="#c3ccdb"/>
+        <path d="M1052 318 L1060 334 L1052 330 Z" fill="#c3ccdb"/>
+        <rect x="948" y="252" width="4" height="93" fill="#5b6a7d"/>
+        <rect x="952" y="252" width="26" height="16" fill="#e0443f"/>
+        <circle cx="965" cy="260" r="5" fill="#fff"/>
+      </g>
       <ellipse cx="668" cy="255" rx="24" ry="18" fill="#6e7c8f"/>
       <rect x="664" y="270" width="8" height="75" fill="#5b6a7d"/>
     </g>
@@ -296,6 +325,7 @@ function showCenter() {
       if (go === "vab" && handlers.onVAB) handlers.onVAB();
       if (go === "hangar" && handlers.onHangar) handlers.onHangar();
       if (go === "tracking" && handlers.onTracking) handlers.onTracking();
+      if (go === "astronauts" && handlers.onAstronauts) handlers.onAstronauts();
     });
   });
 
