@@ -91,6 +91,54 @@ const check = (name, ok, detail = "") => {
     `status=${sim.status} burnedUp=${!!sim.burnedUp} maxHeat=${maxHeat.toFixed(2)}`);
 }
 
+// --- 4b. HEAT SHIELD: soaks ~70% of the heating ---
+// One reusable entry: lunar-return speed at a moderate (not suicidal) angle.
+function hotEntry({ shields = 0 } = {}) {
+  const sim = newSimState(E);
+  sim.mode = "flight"; sim.status = "flying";
+  const r0 = E.radius + 50000;
+  const vEsc = Math.sqrt(2 * E.mu / (E.radius + 8000));
+  const e = EW(0);
+  sim.craft.pos = { x: e.pos.x + r0, y: e.pos.y };
+  // Mostly sideways, dipping in — a plausible "came back from the Moon a bit hot".
+  sim.craft.vel = { x: e.vel.x - vEsc * 0.30, y: e.vel.y + vEsc * 0.95 };
+  sim.craft.mass = 1.5; sim.craft.throttle = 0;
+  sim.craft.shieldCount = shields;
+  let maxHeat = 0, steps = 0;
+  while (sim.status !== "landed" && sim.status !== "crashed" && steps < 400000) {
+    Physics.step(sim, 0.05); maxHeat = Math.max(maxHeat, sim.heat || 0); steps++;
+  }
+  return { sim, maxHeat };
+}
+{
+  const bare = hotEntry({ shields: 0 });
+  const shielded = hotEntry({ shields: 1 });
+  check("hot lunar-return entry BURNS without a shield", bare.sim.burnedUp === true,
+    `burnedUp=${!!bare.sim.burnedUp} maxHeat=${bare.maxHeat.toFixed(2)}`);
+  check("same entry SURVIVES with a Heat Shield", !shielded.sim.burnedUp,
+    `burnedUp=${!!shielded.sim.burnedUp} maxHeat=${shielded.maxHeat.toFixed(2)}`);
+  check("shield still lets it glow (not magic cold)", shielded.maxHeat > 0.1,
+    `maxHeat=${shielded.maxHeat.toFixed(2)}`);
+}
+// The shield is a corridor, not immunity: the suicide dive from test 4 burns anyway.
+{
+  const sim = newSimState(E);
+  sim.mode = "flight"; sim.status = "flying";
+  const r0 = E.radius + 50000;
+  const vEsc = Math.sqrt(2 * E.mu / (E.radius + 8000));
+  const e = EW(0);
+  sim.craft.pos = { x: e.pos.x + r0, y: e.pos.y };
+  sim.craft.vel = { x: e.vel.x - vEsc, y: e.vel.y + vEsc * 0.05 };
+  sim.craft.mass = 1.5; sim.craft.throttle = 0;
+  sim.craft.shieldCount = 1;
+  let steps = 0;
+  while (sim.status !== "landed" && sim.status !== "crashed" && steps < 200000) {
+    Physics.step(sim, 0.05); steps++;
+  }
+  check("straight-down dive burns EVEN WITH a shield (corridor, not immunity)",
+    sim.burnedUp === true, `status=${sim.status} burnedUp=${!!sim.burnedUp}`);
+}
+
 // --- 5. Ascent through atmosphere does NOT cook the ship ---
 {
   const sim = newSimState(E);

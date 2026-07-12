@@ -334,6 +334,7 @@ export const UI = {
       if ((sim.craft.legCount || 0) > 0) html += row("Landing legs", "🦵 ok under 12 m/s");
       if ((sim.craft.dockCount || 0) > 0) html += row("Docking port", "🛰 ready");
       if ((sim.craft.wingCount || 0) > 0) html += row("Wings", "✈ lift (needs air)");
+      if ((sim.craft.shieldCount || 0) > 0) html += row("Heat shield", "🛡 soaking the heat");
       if ((sim.craft.stationCount || 0) > 0) html += row("Station hub", "🛰 deployable in orbit");
       if (sim.satellites && sim.satellites.length) html += row("Satellites", "🛰 " + sim.satellites.length + " in orbit");
       if (sim.stationNear) {

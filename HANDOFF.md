@@ -45,6 +45,18 @@ His ask (via Mom), all shipped this session:
    interiors, `Render.isInside()` covers both). Guards: no EVA from probes (nobody aboard),
    none inside an atmosphere mid-flight (Navigator explains). E returns to the ship.
 
+**New 2026-07-12 later — 🛡 HEAT SHIELD part (his ask: "he'll keep burning up").**
+`heat_shield` (`type:"shield"`, 0.3 t, blunt copper dish w/ charred face, rides under the
+pod). Physics: `SHIELD_HEAT_FACTOR = 0.25` multiplies the heating equilibrium when
+`craft.shieldCount > 0` — a shield makes normal reentries survivable but is a CORRIDOR,
+NOT IMMUNITY: a straight-down lunar-return dive still burns even shielded (tested — the
+real Apollo-corridor lesson). Reentry + burn-up Navigator callouts now coach shield vs
+angle depending on `shieldCount`; snapshot gains `flight.hasHeatShield`; HUD row; mods
+TYPES gained "shield". reentry_test.mjs grew to 12 checks (bare burns / shielded survives
+at 0.77 heat / shielded suicide dive still burns). Corridor tuning note: at lunar-return
+speed the survivable band is genuinely narrow (real!) — if the kid finds it TOO narrow,
+soften SHIELD_HEAT_FACTOR (0.25 → 0.2) rather than touching HEAT_EQ_K.
+
 **Verified**: all 9 node suites green (181 checks, incl. new tests/hangar_test.mjs);
 browser end-to-end with screenshots (title → center → tracking zoom/track → hangar build →
 teleport → deploy → dock → centrifuge walk → spacewalk w/ tether → sunlit Moon ground EVA →

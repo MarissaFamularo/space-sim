@@ -57,7 +57,7 @@ const WORLD_FACTS = {
 // ---- propulsion for a given stage (integration owns this; physics reads the live fields) ----
 function activeStage(craft, stageNum) {
   let thrust = 0, veSum = 0, engines = 0, stageFuel = 0, remainingMass = 0, chutes = 0, docks = 0;
-  let legs = 0, solar = 0, rovers = 0, wings = 0, stationParts = 0, centrifuges = 0;
+  let legs = 0, solar = 0, rovers = 0, wings = 0, stationParts = 0, centrifuges = 0, shields = 0;
   for (const inst of craft.parts) {
     const def = findPart(PARTS, inst.partId);
     if (!def) continue;
@@ -71,6 +71,7 @@ function activeStage(craft, stageNum) {
       if (def.type === "wing") wings++;
       if (def.type === "station") stationParts++;
       if (def.type === "centrifuge") centrifuges++;
+      if (def.type === "shield") shields++;
     }
     if (inst.stage === stageNum) {
       if (def.type === "engine") { thrust += def.thrust || 0; veSum += def.exhaustVelocity || 0; engines++; }
@@ -78,7 +79,7 @@ function activeStage(craft, stageNum) {
     }
   }
   return { thrust, exhaustVelocity: engines ? veSum / engines : 0, stageFuel, remainingMass,
-           chutes, legs, solar, rovers, docks, wings, stationParts, centrifuges };
+           chutes, legs, solar, rovers, docks, wings, stationParts, centrifuges, shields };
 }
 function maxStage(craft) {
   return craft.parts.reduce((m, i) => Math.max(m, i.stage || 0), 0);
@@ -99,6 +100,7 @@ function loadStage(stageNum) {
   sim.craft.wingCount = s.wings;    // physics: wings make LIFT in atmosphere
   sim.craft.stationCount = s.stationParts;   // a Station Hub aboard = deployable station
   sim.craft.centrifugeCount = s.centrifuges; // spin gravity for the deployed station
+  sim.craft.shieldCount = s.shields; // physics: a heat shield soaks ~70% of reentry heating
   sim.stageWeightKN = s.remainingMass * BODIES.earth.g0;
   sim.cantLiftOff = s.thrust <= sim.stageWeightKN;
 }
@@ -867,7 +869,10 @@ function flightCallouts() {
   // Reentry plasma — first time the hull glows.
   if ((sim.heat || 0) > 0.25 && !announced.reentry) {
     announced.reentry = true;
-    copilotSay("🔥 <b>Reentry!</b> You're hitting the air so fast it's turning to glowing plasma around the ship — that orange fire is real physics (speed + air = heat). Come in at a shallow angle so the air slows you gently. Too steep and too fast… the ship burns up. This is why real capsules have heat shields!");
+    copilotSay("🔥 <b>Reentry!</b> You're hitting the air so fast it's turning to glowing plasma around the ship — that orange fire is real physics (speed + air = heat). Come in at a shallow angle so the air slows you gently. " +
+      ((sim.craft.shieldCount || 0) > 0
+        ? "Your <b>Heat Shield</b> is taking the fire for you — it chars away slowly instead of letting the ship cook, exactly like Apollo's. Keep the angle shallow and it'll hold."
+        : "⚠️ You have <b>no Heat Shield</b> aboard — the bare hull is soaking all of this heat. If it reaches 100% you burn up. Next build, put a Heat Shield under the pod — it's how every real capsule comes home."));
   }
   // Touchdowns.
   if (sim.status === "landed" && sim.landed && !announced.landed[sim.landed.body]) {
@@ -905,7 +910,10 @@ function flightCallouts() {
         copilotSay("☀️💥 You flew into the SUN. It's 5,500°C at the surface — nothing survives that. " + bail + " Fun fact: it actually takes MORE fuel to fall into the Sun than to escape the solar system!");
       }
     } else if (sim.burnedUp) {
-      copilotSay("🔥💥 The ship <b>burned up on reentry</b> — too fast and too steep, and the air-friction heat won. " + bail + " Next time skim the top of the air so it slows you a little at a time — real capsules survive with heat shields and a precise entry angle.");
+      copilotSay("🔥💥 The ship <b>burned up on reentry</b> — too fast and too steep, and the air-friction heat won. " + bail +
+        ((sim.craft.shieldCount || 0) > 0
+          ? " Even your Heat Shield couldn't take that — it buys you a safe CORRIDOR, not immunity. Come in shallower: skim the top of the air and let it slow you a little at a time, like Apollo threading its reentry corridor."
+          : " Two fixes, use both: add a <b>Heat Shield</b> under the pod (it soaks most of the fire — every real capsule has one), and come in shallower so the air slows you a little at a time."));
     } else if (sim.crashedInto && sim.crashedInto !== "earth") {
       const b = BODIES[sim.crashedInto];
       copilotSay("💥 We hit " + (b ? b.name : "the surface") + " too hard. " + (b && !b.atmosphere ? "No air here to slow you — you have to burn the engine to brake all the way down. " : "") +

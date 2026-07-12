@@ -114,6 +114,18 @@ export const PARTS = [
     attachTop: true, attachBottom: true,
   },
   {
+    // The part that lets you come HOME. An ablative dish that rides under the capsule
+    // and soaks ~70% of reentry heating by slowly charring away — Apollo's did exactly
+    // this. Blunt end first! It buys you the reentry corridor, not immunity: a
+    // straight-down dive at interplanetary speed is still a fireball.
+    id: "heat_shield",
+    type: "shield",
+    name: "Heat Shield",
+    dryMass: 0.3,
+    height: 0.35, radius: 0.8, shape: "shield",
+    attachTop: true, attachBottom: true,
+  },
+  {
     id: "decoupler",
     type: "decoupler",
     name: "Stage Decoupler",

@@ -2086,6 +2086,32 @@ function makePartObject(def, h, r) {
       grp.scale.setScalar(Math.max(0.6, r));
       return grp;
     }
+    case "shield": {
+      // Ablative heat shield: a wide blunt dish under the stack — copper-brown top
+      // ring, charred dark face on the business end (blunt end first, like Apollo).
+      const grp = new THREE.Group();
+      const body = lathe([
+        [0.001, 0], [r * 0.9, 0.02], [r, 0.28], [r * 0.98, 0.62], [r * 0.82, 0.95], [0.001, 1],
+      ], h, new THREE.MeshStandardMaterial({
+        color: 0x9a5b32, metalness: 0.25, roughness: 0.55,
+        emissive: 0x9a5b32, emissiveIntensity: 0.22,
+      }));
+      body.material._isClone = true;
+      grp.add(body);
+      const char = new THREE.Mesh(new THREE.CircleGeometry(r * 0.88, 24),
+        new THREE.MeshStandardMaterial({ color: 0x2b2320, roughness: 0.95,
+          emissive: 0x2b2320, emissiveIntensity: 0.15 }));
+      char.material._isClone = true;
+      char.rotation.x = Math.PI / 2; // faces DOWN — the side that takes the fire
+      char.position.y = -h * 0.49;
+      grp.add(char);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 0.94, 0.045, 8, 28),
+        MAT ? MAT.decoupler : mat);
+      rim.rotation.x = Math.PI / 2;
+      rim.position.y = h * 0.12;
+      grp.add(rim);
+      return grp;
+    }
     case "wing": {
       // Delta Wings for the Hangar: a structural sleeve (same trick as the fins —
       // the fuselage must read continuous) with big swept lifting surfaces.

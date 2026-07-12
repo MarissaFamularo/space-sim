@@ -33,6 +33,11 @@ const LEGS_LAND_TOTAL = 18;
 // not total energy, is what melts ships — see HANDOFF for the tuning rationale.
 const HEAT_EQ_K = 3.8e-9; // equilibrium heat per (kg/m^3 * (m/s)^3)
 const HEAT_TAU = 4;       // seconds to relax toward equilibrium (up and down)
+// A Heat Shield soaks most of the heating (real ablative shields char away instead of
+// letting the ship cook — Apollo's lost ~20% of its thickness coming home). It is NOT
+// magic: a straight-down dive at interplanetary speed still burns, exactly like the
+// real reentry corridor — the shield buys you the corridor, not immunity.
+const SHIELD_HEAT_FACTOR = 0.25;
 
 // --- Parachute ---
 // A deployed chute adds huge drag area — but ONLY where there's air (Earth yes, Moon no,
@@ -331,6 +336,7 @@ export const Physics = {
         const av = airInfo.state.vel;
         const vRel = Math.hypot(vel.x - av.x, vel.y - av.y);
         eq = HEAT_EQ_K * airInfo.rho * vRel * vRel * vRel;
+        if ((c.shieldCount || 0) > 0) eq *= SHIELD_HEAT_FACTOR; // the shield takes the fire
       }
       sim.heat = Math.max(0, Math.min(1, sim.heat + ((eq - sim.heat) / HEAT_TAU) * dt));
       if (sim.heat >= 1) {
