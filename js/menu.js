@@ -113,8 +113,11 @@ function showTitle() {
   titleEl.appendChild(box);
 
   const foot = document.createElement("div");
-  foot.style.cssText = "position:absolute;bottom:18px;font-size:12px;color:#5f6f97;";
-  foot.textContent = "a Konnie & Mom production";
+  foot.style.cssText = "position:absolute;bottom:18px;left:0;right:0;text-align:center;" +
+    "font-size:12px;color:#5f6f97;line-height:1.7;";
+  foot.innerHTML = "a Paddy and Mom production<br>" +
+    "<span style='font-size:11px;color:#4d5b80;'>inspired by Kerbal Space Program — " +
+    "with thanks to its creators for making us love space 🚀</span>";
   titleEl.appendChild(foot);
 }
 
