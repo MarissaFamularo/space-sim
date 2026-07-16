@@ -94,6 +94,33 @@ export function galaxyPos(seedName) {
   return { x: Math.cos(a) * r, y: Math.sin(a) * r };
 }
 
+// ---- INTERSTELLAR DISTANCES (Phase B: really flying there) ----
+// The compressed galaxy-map positions above are treated as the TRUE geometry of the
+// neighborhood, just drawn small: real separations are those same vectors scaled up.
+// The scale is CALIBRATED so Pandora (Alpha Centauri) sits at its real 4.37
+// light-years from Sol — every other star's distance falls out of the map geometry
+// (deterministic, a few to ~15 ly: a believable stellar neighborhood).
+// One light-year here is a GAME light-year: x0.1 like every other distance in the
+// scaled universe (the Navigator teaches both numbers, as always).
+const LY_M = 9.4607e15;             // one real light-year, meters
+export const GAME_LY = LY_M * 0.1;  // one game light-year (SCALE = 0.1 universe)
+const PANDORA_LY = 4.37;            // real Alpha Centauri distance — the calibration
+function lyPerMapMeter() {
+  const p = galaxyPos("Pandora");
+  return PANDORA_LY / Math.hypot(p.x, p.y);
+}
+// Real (game-scaled) vector from one system's star to another's.
+// fromSeed null/"@sol" = Sol. Returns { dir:{x,y} unit, ly, meters }.
+export function interstellarVector(fromSeed, toSeed) {
+  const a = !fromSeed || fromSeed === "@sol" ? { x: 0, y: 0 } : galaxyPos(fromSeed);
+  const b = String(toSeed).trim() === "@sol" || !toSeed ? { x: 0, y: 0 } : galaxyPos(toSeed);
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const mapDist = Math.hypot(dx, dy);
+  if (!(mapDist > 0)) return null; // same star
+  const ly = mapDist * lyPerMapMeter();
+  return { dir: { x: dx / mapDist, y: dy / mapDist }, ly, meters: ly * GAME_LY };
+}
+
 export function generateSystem(seedName) {
   const seed = String(seedName).trim();
   const norm = seed.toLowerCase();

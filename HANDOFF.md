@@ -9,6 +9,45 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-16 later): 🌌 INTERSTELLAR PHASE B — HE CAN FLY TO ANOTHER STAR FOR REAL
+
+Mom confirmed the point of the antimatter drive was flying there — so the roadmap's
+Phase B ("the honest travel mechanic") is BUILT. Escape your star for real → a course
+panel offers the galaxy neighborhood → burn, warp (two new interstellar-only tiers),
+flip and brake → arrive IN FLIGHT at the new system's edge, decades older, fuel as it
+really is. The Starmap fold remains as the labeled-magic shortcut.
+
+**Flagged / worth knowing:**
+- **Kid play-test needed most here** (rung 4): the full trip is browser-verified
+  scripted (below), but the FEEL — panel wording, autopace pacing, the flip moment —
+  is exactly what only he can judge. Suggested first trip: build big (6 Mega tanks +
+  Annihilation Beam Drive + pod ≈ 4.8e6 m/s of Δv), teleport to orbit, burn to solar
+  escape, follow the panel. Sol → Youngcow is 2.77 ly ≈ ~55 game-years flown well.
+- Arriving HOT is allowed and honest (the arrival message says flip and burn) — he
+  can overshoot the new system and burn back; nothing crashes.
+- Stars don't move relative to each other, and relativity isn't simulated (~1% of c);
+  the Navigator confesses both if asked.
+- The interstellar autopace (warp auto-steps DOWN during burns and near arrival) took
+  several scripted-flight iterations to get honest — the failure archaeology is worth
+  keeping: naive versions let one warped frame drain the whole tank, skip the arrival
+  bubble entirely, or strangle prograde burns via the trim gear. All three are now
+  impossible by construction (two-axis Δv gearing + segment-crossing arrival test).
+
+**Shipped (all rung 3 — scripted end-to-end voyage, ALL GREEN, zero console errors):**
+- **Real star distances** from the galaxy map's own geometry, calibrated to Pandora =
+  Alpha Centauri's true 4.37 ly (stargen `interstellarVector`, node-tested — 15 checks,
+  incl. flip-and-brake dynamics: the panel's stop-distance is honestly conservative).
+- **Course panel** (main-owned, appears on true solar escape): destinations = famous +
+  visited systems (+ home); live board: ly to go, closing km/s, ETA, cruise/drift/BRAKE
+  advisories; 🎯 Aim (velocity-steering attitude help — burning stays his) and ✖ clear.
+- **Arrival preserves the flight** (`arriveFromInterstellar`): system swaps under the
+  ship, craft placed at the new edge with its true inbound velocity + fuel; 🎯 set to
+  the new home; arrival brief celebrates the real voyage and the game-vs-real 10x.
+- **Verified numbers** (scripted voyage): accel 1,529 km/s on the beam drive, flip on
+  the panel's cue, brake to 26 km/s, arrive Youngcow at the edge with 16 t fuel after
+  54.6 game-years; all 13 node suites green (323 checks); navigator_check 18/18; boot
+  smoke green. Saves untouched (no schema changes).
+
 ## Status (2026-07-16): 🐄✨ THE YOUNGCOW SYSTEM — his full spec (via Mom), plus warp burns + antimatter
 
 His design, built end-to-end: a BABY solar system ("Youngcow", famous.js — aliases

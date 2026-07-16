@@ -385,3 +385,30 @@ Render.enterStation(info, cb)       // info gains .spin — centrifuge interior:
 - **New stock part** `engine_antimatter` ("Annihilation Beam Drive", ve 2,000 km/s,
   shape "beam"): plume gains a `beam` tier (violet laser lance) for ve ≥ 1,000 km/s.
 - **Warp burns** — see the Physics.step revision note above (per-substep fuel/mass).
+
+## CONTRACT REVISION 2026-07-16b — Interstellar Phase B (really flying there)
+
+- **stargen.js** gains `interstellarVector(fromSeed, toSeed)` + `GAME_LY` (pure,
+  node-tested): the compressed galaxy-map positions are treated as the TRUE geometry,
+  scaled so Pandora sits at Alpha Centauri's real 4.37 ly; a game light-year is
+  ×0.1 like every other distance. tests/interstellar_test.mjs.
+- **main.js interstellar state machine** (`sim.interstellar = {seed, name, ly, dir,
+  dest, prev, startTime}`): once the craft truly escapes its star (dominant = sun and
+  v ≥ v_esc), a main-owned course panel offers the galaxy neighborhood. WARPS gained
+  two tiers (2e7, 2e8) that only unlock on a course. `aimAtCourse(sign)` is attitude
+  control: cruise aim blends along-line thrust with drift-kill (velocity-steering);
+  brake aim is pure retrograde. **Honest autopace** (the warpLimited philosophy): warp
+  only steps DOWN — coast frames cover ≤20% of the distance to the system's EDGE,
+  burn frames add ≤5% of speed along-line and ≤60% of remaining drift cross-line
+  (each gear engages only when its thrust component is real). Arrival = the flown
+  segment passes within ARRIVE_R (4e12 m) of the destination (segment test — a warp
+  frame may not skip the bubble); `arriveFromInterstellar()` swaps the system IN
+  FLIGHT (unlike the Starmap fold's pad reset), placing the craft at the new system's
+  edge with its true inbound velocity and fuel. Brake zone = stop-distance rule OR
+  the final 15% of the approach.
+- **Render**: `interMarker` destination beacon drawn along the true bearing at 2e11 m
+  (the real point is ~1000x past the far plane; bearing is what a pilot needs).
+- **Navigator**: INTERSTELLAR FLIGHT prompt section; snapshot gains
+  `flight.interstellar {destination, lightYearsToGo, closingSpeed_kms, phase}`.
+- Relativity is not simulated (~1% c; the Navigator says so if asked). Stars'
+  relative motion is ignored (rails don't move between systems).

@@ -4,7 +4,7 @@
 
 import { PARTS } from "./mods.js";
 import { BODIES, SYSTEM, STATIONS, isSol, setSystem, returnToSol, newCraft, newSimState, computeStats, findPart, bodyStateAt, dominantBody } from "./state.js";
-import { generateSystem, galaxyPos } from "./stargen.js";
+import { generateSystem, galaxyPos, interstellarVector, GAME_LY } from "./stargen.js";
 import { FAMOUS_LIST } from "./famous.js";
 import { Physics } from "./physics.js";
 import { Render } from "./render.js";
@@ -22,8 +22,11 @@ let sim = newSimState(BODIES.earth);
 let mapView = false; // declared early: enterBuild() touches it during boot
 
 // Time-warp tiers: , and . step through. Interplanetary cruises need the top ones —
-// a Mars transfer is ~82 (scaled) days of coasting.
-const WARPS = [1, 5, 25, 100, 1000, 10000, 100000, 500000, 2000000]; // top tier: Pluto runs
+// a Mars transfer is ~82 (scaled) days of coasting. The two INTERSTELLAR tiers only
+// unlock on an interstellar course (Phase B): between the stars there is nothing to
+// hit and nothing nearby, so the integrator honestly keeps up.
+const WARPS = [1, 5, 25, 100, 1000, 10000, 100000, 500000, 2000000, 20000000, 200000000];
+const MAX_SYSTEM_WARP = 2000000; // tiers above this need sim.interstellar
 
 // One-shot copilot callouts per flight. soi/landed are per-BODY maps.
 function freshAnnounced() {
@@ -659,9 +662,12 @@ window.addEventListener("keydown", (e) => {
 });
 window.addEventListener("keyup", (e) => { keys[e.key] = false; });
 function stepWarp(dir) {
+  // Interstellar tiers only exist between the stars (Phase B) — inside a system the
+  // ladder tops out where it always did.
+  const top = sim.interstellar ? WARPS.length - 1 : WARPS.indexOf(MAX_SYSTEM_WARP);
   const i = WARPS.findIndex((w) => w >= sim.timeWarp);
-  const at = i === -1 ? WARPS.length - 1 : i;
-  const next = Math.max(0, Math.min(WARPS.length - 1, at + dir));
+  const at = i === -1 ? top : i;
+  const next = Math.max(0, Math.min(top, at + dir));
   sim.timeWarp = WARPS[next];
 }
 
@@ -1041,6 +1047,245 @@ function boardStation() {
       : "🚪 <b>Welcome aboard " + st.name + "!</b> Float with the arrow keys — in zero-g you push once and coast. Glowing screens are experiments waiting for a scientist. That's you.");
 }
 
+// ---- 🌌 INTERSTELLAR FLIGHT (Phase B — his ask: really FLY to another star) ----
+// Escape your star for real, set a course, burn, and the clock pays the true
+// (scaled) light-years. No fold, no fudge: distances come from the galaxy map's own
+// geometry calibrated to Pandora's REAL 4.37 ly; the trip is decades of sim time
+// (the Connies hibernate); braking is your problem — flip halfway, like every
+// honest torch-ship story ever written.
+const ARRIVE_R = 4e12;        // "system edge" — about a Pluto orbit; arrival trigger
+let interPanel = null, interBody = null;
+function ensureInterPanel() {
+  if (interPanel) return;
+  interPanel = document.createElement("div");
+  interPanel.style.cssText = "position:absolute;top:118px;left:50%;transform:translateX(-50%);z-index:8;" +
+    "background:rgba(10,14,30,0.92);border:1px solid #3a3f6d;border-radius:10px;color:#cfe0ff;" +
+    "padding:10px 16px;font:600 13px system-ui,sans-serif;display:none;text-align:center;" +
+    "box-shadow:0 4px 22px rgba(0,0,0,.5);max-width:460px;";
+  interBody = document.createElement("div");
+  interPanel.appendChild(interBody);
+  document.body.appendChild(interPanel);
+}
+// Truly leaving the star: the star owns you AND you're above escape speed for your r.
+function escapedStar() {
+  if (sim.mode !== "flight" || (sim.status !== "flying" && sim.status !== "orbit")) return false;
+  if (sim.soi !== BODIES.sun.name) return false;
+  const r = Math.hypot(sim.craft.pos.x, sim.craft.pos.y);
+  const v2 = sim.craft.vel.x ** 2 + sim.craft.vel.y ** 2;
+  return r > 0 && v2 >= (2 * BODIES.sun.mu) / r;
+}
+function interstellarDestinations() {
+  // Same neighborhood the galaxy map shows: famous + visited (+ home), minus here.
+  return buildGalaxyList().map((e) => ({ seed: e.seed, name: e.name }));
+}
+function setInterstellarCourse(seed) {
+  const from = isSol() ? null : SYSTEM.seed;
+  const vec = interstellarVector(from, seed === "@sol" ? null : seed);
+  if (!vec) return;
+  const name = seed === "@sol" ? "The Solar System" : generateSystem(seed).name;
+  sim.interstellar = {
+    seed, name, ly: vec.ly, dir: vec.dir,
+    dest: { x: vec.dir.x * vec.meters, y: vec.dir.y * vec.meters }, // from this star
+    startTime: sim.time || 0,
+  };
+  copilotSay("🌌🧭 <b>Course locked: " + name + " — " + vec.ly.toFixed(1) +
+    " light-years.</b> This is the REAL trip (our practice universe is 10x small, " +
+    "as always — the real gap is 10x wider). Aim the nose, burn hard, and warp: new " +
+    "warp tiers just unlocked, because out there is nothing but distance. The one " +
+    "rule of torch-ship flying: <b>flip and brake halfway</b> — I'll tell you when. " +
+    "Decades will pass; the Connies curl up and hibernate. 🐍💤");
+}
+function cancelInterstellar() {
+  if (!sim.interstellar) return;
+  sim.interstellar = null;
+  sim.timeWarp = Math.min(sim.timeWarp, MAX_SYSTEM_WARP);
+  copilotSay("🧭 Course cleared — coasting free between the stars. Set a new one anytime.");
+}
+// Aim helper: attitude control, not cheating — rotation was never simulated, and
+// burning is still all his. Cruise aim steers the VELOCITY onto the target (thrust
+// along wanted-minus-actual — the real navigation rule; pointing the nose straight
+// at a star while you still carry sideways orbital speed misses by trillions of
+// meters). Brake aim is pure retrograde, which kills the sideways drift too.
+function aimAtCourse(sign) {
+  if (!sim.interstellar) return;
+  const c = sim.craft;
+  const dx = sim.interstellar.dest.x - c.pos.x, dy = sim.interstellar.dest.y - c.pos.y;
+  const d = Math.hypot(dx, dy) || 1;
+  const ux = dx / d, uy = dy / d;
+  let tx, ty;
+  const vm = Math.hypot(c.vel.x, c.vel.y);
+  if (sign < 0 && vm > 1) {
+    tx = -c.vel.x / vm; ty = -c.vel.y / vm;
+  } else {
+    // Forward thrust ALWAYS, blended with enough sideways lean to kill the drift:
+    // aim = along-the-line + drift-kill, weighted so a clean track burns straight
+    // at the star and a drifting one leans against the slide (smooth — no
+    // special-case flip that could leave the nose parked sideways).
+    const vTo2 = c.vel.x * ux + c.vel.y * uy;
+    const vLx = c.vel.x - vTo2 * ux, vLy = c.vel.y - vTo2 * uy;
+    const vL = Math.hypot(vLx, vLy);
+    const along = Math.max(3 * vL, vm * 0.2, 1);
+    const bx = ux * along - vLx, by = uy * along - vLy;
+    const bm = Math.hypot(bx, by) || 1;
+    tx = bx / bm; ty = by / bm;
+  }
+  c.angle = Math.atan2(-tx, ty); // heading vector is (−sin a, cos a)
+}
+function arriveFromInterstellar() {
+  const it = sim.interstellar;
+  const years = ((sim.time || 0) - it.startTime) / (365.25 * 86400);
+  const vx = sim.craft.vel.x, vy = sim.craft.vel.y;
+  const speed = Math.hypot(vx, vy);
+  const inX = it.dir.x, inY = it.dir.y; // inbound direction of travel
+  // Swap the universe under the ship — flight-preserving (unlike the Starmap fold).
+  if (it.seed === "@sol") returnToSol();
+  else {
+    const sys = generateSystem(it.seed);
+    setSystem(sys.bodies, sys.planetKeys,
+      { key: sys.key, name: sys.name, seed: sys.seed, stations: sys.stations });
+    rememberVisit(sys);
+  }
+  Render.rebuildWorld();
+  refreshGalaxy();
+  injectPlayerStations();
+  UI.rebuildTargets();
+  sim.interstellar = null;
+  sim.timeWarp = 1;
+  sim.body = BODIES.earth;
+  sim.target = "earth";
+  announced = freshAnnounced();
+  // Park the arrival at the new system's edge, still moving inbound at whatever
+  // speed he really arrived with. Braking (or screaming through) is real physics.
+  let edge = ARRIVE_R * 0.5;
+  for (const k of Object.keys(BODIES)) {
+    if (BODIES[k].parent === "sun") edge = Math.max(edge, BODIES[k].orbitRadius * 1.25);
+  }
+  sim.craft.pos = { x: -inX * edge, y: -inY * edge };
+  sim.craft.vel = { x: inX * speed, y: inY * speed };
+  sim.landed = null;
+  sim.status = "flying";
+  const kms = speed / 1000;
+  copilotSay("🌌🎉 <b>ARRIVAL: " + BODIES.sun.name + "'s system — you FLEW here.</b> " +
+    it.ly.toFixed(1) + " light-years in " + years.toFixed(1) + " game-years (real " +
+    "universe: 10x farther, 10x longer — that's why nobody's done this yet). The " +
+    "Connies are waking up and stretching " + (speed > 1e5
+      ? "— and you're still doing " + Math.round(kms) + " km/s, far too fast to stop here. Flip and BURN or you'll fly straight through!"
+      : "— arrival speed " + Math.round(kms) + " km/s. Beautiful braking. Now fly in and explore: it's all ordinary spaceflight from here.") +
+    " 🎯 is set to " + BODIES.earth.name + ".");
+}
+function updateInterstellar() {
+  ensureInterPanel();
+  if (sim.mode !== "flight" || sim.status === "crashed") { interPanel.style.display = "none"; return; }
+  const it = sim.interstellar;
+  if (!it) {
+    if (!escapedStar()) { interPanel.style.display = "none"; return; }
+    // Escaped the star, no course: offer the neighborhood.
+    interPanel.style.display = "block";
+    if (interBody.dataset.mode !== "pick") {
+      interBody.dataset.mode = "pick";
+      interBody.innerHTML = "<div style='margin-bottom:6px'>🌌 <b>You've escaped " +
+        BODIES.sun.name + "!</b> Interstellar space. Set a course:</div>";
+      for (const d of interstellarDestinations()) {
+        const b = document.createElement("button");
+        b.textContent = "→ " + d.name;
+        b.style.cssText = "margin:2px 4px;padding:4px 10px;border-radius:8px;border:1px solid #4a5f9d;" +
+          "background:#1d2a52;color:#cfe0ff;cursor:pointer;font:600 12px system-ui;";
+        b.onclick = () => { interBody.dataset.mode = ""; setInterstellarCourse(d.seed); };
+        interBody.appendChild(b);
+      }
+    }
+    return;
+  }
+  // Course active: live nav board.
+  const dx = it.dest.x - sim.craft.pos.x, dy = it.dest.y - sim.craft.pos.y;
+  const rem = Math.hypot(dx, dy);
+  // ARRIVAL — checked against the whole path flown since last frame, not just the
+  // endpoint: at interstellar warp a single frame can leap far past the arrival
+  // bubble, and "we skipped over the star between frames" is not an honest miss.
+  let crossed = rem < ARRIVE_R;
+  if (!crossed && it.prev) {
+    const sx = sim.craft.pos.x - it.prev.x, sy = sim.craft.pos.y - it.prev.y;
+    const l2 = sx * sx + sy * sy;
+    if (l2 > 0) {
+      let f = ((it.dest.x - it.prev.x) * sx + (it.dest.y - it.prev.y) * sy) / l2;
+      f = Math.max(0, Math.min(1, f));
+      crossed = Math.hypot(it.dest.x - (it.prev.x + sx * f), it.dest.y - (it.prev.y + sy * f)) < ARRIVE_R;
+    }
+  }
+  if (crossed) { interPanel.style.display = "none"; arriveFromInterstellar(); return; }
+  it.prev = { x: sim.craft.pos.x, y: sim.craft.pos.y };
+  const ux = dx / rem, uy = dy / rem;
+  const vTo = sim.craft.vel.x * ux + sim.craft.vel.y * uy; // closing speed
+  const a = (sim.craft.thrust || 0) > 0 && (sim.craft.mass || 0) > 0
+    ? (sim.craft.thrust * 1000) / (sim.craft.mass * 1000) : 0;
+  const brakeDist = a > 0 && vTo > 0 ? (vTo * vTo) / (2 * a) : 0;
+  // Brake against the system EDGE (the arrival bubble), not the star itself: flip
+  // so the speed dies just as you slide into the new system, ready to explore.
+  const remEdge = Math.max(0, rem - ARRIVE_R);
+  // Brake zone: when the stop-distance says so, and ALWAYS for the last 15% of the
+  // approach — a slow, well-braked cruise still deserves more than one frame of
+  // "flip now!" before the system's edge arrives.
+  const braking = brakeDist > 0 && remEdge < Math.max(brakeDist * 1.15, rem * 0.15);
+  // HONEST AUTOPACE (same spirit as sim.warpLimited): warp steps DOWN — never up.
+  // Coasting: no frame covers more than 20% of what's left (you cannot blink past
+  // the star). Burning: no frame adds more than ~5% of your speed (at 200,000,000x
+  // an open throttle would otherwise drain the whole tank inside one frame — the
+  // kid never has to out-reflex the clock).
+  const vNow = Math.hypot(sim.craft.vel.x, sim.craft.vel.y);
+  if (vNow > 1) {
+    // Pace against the system's EDGE (not the star): the last stretch before the
+    // bubble gets many frames, not one leap over it.
+    let cap = Math.max(1, (0.2 * Math.max(remEdge, ARRIVE_R * 0.05)) / (vNow * 0.017));
+    if (a > 0 && (sim.craft.throttle || 0) > 0) {
+      // Gear the burn by BOTH of its consequences per frame, measured against the
+      // course line: the along-line push may add ≤5% of your speed, and the
+      // cross-line push may add ≤60% of the remaining drift — so trims converge
+      // instead of oscillating, and an open throttle can't inhale the tank.
+      const hx = -Math.sin(sim.craft.angle), hy = Math.cos(sim.craft.angle);
+      const hAlong = Math.abs(hx * ux + hy * uy);
+      const hCross = Math.abs(hx * uy - hy * ux);
+      const vL = Math.hypot(sim.craft.vel.x - vTo * ux, sim.craft.vel.y - vTo * uy);
+      const dvAlong = Math.max(5000, 0.05 * Math.max(vTo, vNow * 0.1));
+      const dvCross = Math.max(20, 0.6 * vL);
+      // A gear only engages when its component is real: a near-pure prograde burn
+      // must not be strangled by the cross gear (and vice versa).
+      const capAlong = hAlong > 0.02 ? dvAlong / (a * 0.017 * hAlong) : Infinity;
+      const capCross = hCross > 0.02 ? dvCross / (a * 0.017 * hCross) : Infinity;
+      cap = Math.min(cap, Math.max(1, Math.min(capAlong, capCross)));
+    }
+    // Round to 2 significant digits — the HUD shows this number to a kid.
+    if (sim.timeWarp > cap) sim.timeWarp = Math.max(1, Number(cap.toPrecision(2)));
+  }
+  const eta = vTo > 1 ? (rem / vTo) / (365.25 * 86400) : null;
+  interPanel.style.display = "block";
+  if (interBody.dataset.mode !== "nav") {
+    interBody.dataset.mode = "nav";
+    interBody.innerHTML =
+      "<div data-i='txt' style='margin-bottom:6px'></div>" +
+      "<button data-i='aim' style='margin:2px 4px;padding:4px 10px;border-radius:8px;border:1px solid #4a5f9d;background:#1d2a52;color:#cfe0ff;cursor:pointer;font:600 12px system-ui;'></button>" +
+      "<button data-i='off' style='margin:2px 4px;padding:4px 10px;border-radius:8px;border:1px solid #6d4a4a;background:#3a1d1d;color:#ffd0d0;cursor:pointer;font:600 12px system-ui;'>✖ clear course</button>";
+    interBody.querySelector("[data-i=off]").onclick = cancelInterstellar;
+  }
+  const aimBtn = interBody.querySelector("[data-i=aim]");
+  aimBtn.textContent = braking ? "🔄 Aim RETROGRADE (brake!)" : "🎯 Aim at " + it.name;
+  aimBtn.onclick = () => aimAtCourse(braking ? -1 : 1);
+  // Off-line drift: how far the current track misses the star, projected ahead.
+  const vLx = sim.craft.vel.x - vTo * ux, vLy = sim.craft.vel.y - vTo * uy;
+  const missProj = vTo > 1 ? (Math.hypot(vLx, vLy) / vTo) * rem : 0;
+  const drifting = !braking && missProj > ARRIVE_R * 0.5;
+  interBody.querySelector("[data-i=txt]").innerHTML =
+    "🌌 <b>" + it.name + "</b> · " + (rem / GAME_LY).toFixed(2) + " ly to go · closing " +
+    Math.round(vTo / 1000) + " km/s" + (eta ? " · ~" + eta.toFixed(1) + " yr at this speed" : "") +
+    "<br>" + (braking
+      ? "🔥 <b>BRAKE ZONE — flip and burn</b> (stop-distance ≥ what's left to the system's edge)"
+      : drifting
+        ? "⚠️ <b>drifting off the line</b> — 🎯 Aim & a short burn brings the track back"
+        : brakeDist > 0
+          ? "on line — flip-and-brake point in " +
+            ((remEdge - Math.max(brakeDist * 1.15, rem * 0.15)) / GAME_LY).toFixed(2) + " ly"
+          : "cruise — 🎯 Aim at the star and burn");
+}
+
 // ---- 🏠 Ground bases (Hundun): land near one, press B, go inside ----
 // Bases live on the HOME body's style (famous.js); they sit at fixed surface
 // angles, so distance is just arc length. Range is generous — it's for a kid.
@@ -1263,6 +1508,7 @@ function frame(t) {
   updateStationsSim();
   updateBasesSim();
   updateMeteorRain();
+  updateInterstellar();
 
   Render.update(sim);
   updateBanner();

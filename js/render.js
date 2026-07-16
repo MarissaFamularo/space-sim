@@ -146,6 +146,7 @@ let plantField = null;     // instanced plant tufts on living worlds (Hundun)
 let dinoFlock = null;      // [{group, neck}] armored dino-bird grazers
 const PLANT_COUNT = 64;
 let meteors = [];          // ☄️ falling ring rocks: {p0, p1, t0, life, line, flash}
+let interMarker = null;    // 🌌 interstellar destination beacon {sprite, label}
 const ROCK_COUNT = 240;
 const ROCK_ARC = 130; // meters of ground between rock slots
 let reticle = null;
@@ -2778,6 +2779,42 @@ function updateFlight(sim) {
     ls.mesh.quaternion.setFromUnitVectors(_v1.set(0, 0, 1), _v2.set(dx / d, dy / d, 0));
   }
   updateMeteors(t); // ☄️ falling ring rocks (Hundun)
+
+  // 🌌 Interstellar destination beacon: the target star, drawn as a nav marker along
+  // its true BEARING (the real point sits ~1000x past the far plane — direction is
+  // what a pilot needs, and the panel carries the honest distance).
+  if (sim.interstellar) {
+    if (!interMarker) {
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: plumeGlowTexture(), color: 0xfff2c0, transparent: true,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      }));
+      sprite.frustumCulled = false;
+      scene.add(sprite);
+      const label = makeTextSprite("→ destination", "#ffe9a8");
+      scene.add(label);
+      interMarker = { sprite, label, name: "" };
+    }
+    const it = sim.interstellar;
+    if (interMarker.name !== it.name) { // re-bake label text on course change
+      interMarker.name = it.name;
+      scene.remove(interMarker.label);
+      interMarker.label = makeTextSprite("→ " + it.name, "#ffe9a8");
+      scene.add(interMarker.label);
+    }
+    const dx = it.dest.x - sim.craft.pos.x, dy = it.dest.y - sim.craft.pos.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const R = 2e11; // beacon range: far beyond every ship, safely inside the far plane
+    interMarker.sprite.position.set((dx / d) * R, (dy / d) * R, 0);
+    interMarker.sprite.scale.setScalar(R * 0.02);
+    interMarker.label.position.set((dx / d) * R * 0.92, (dy / d) * R * 0.92 + R * 0.03, 0);
+    interMarker.label.scale.set(R * 0.06, R * 0.022, 1); // text-sprite aspect (like map labels)
+    interMarker.sprite.visible = true;
+    interMarker.label.visible = true;
+  } else if (interMarker) {
+    interMarker.sprite.visible = false;
+    interMarker.label.visible = false;
+  }
   // Centrifuge wheels turn with game time — steady spin, that's the gravity trick.
   for (const sp of craftSpinners) sp.rotation.y = (t * sp.userData.spin) % (Math.PI * 2);
 
