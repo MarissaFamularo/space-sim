@@ -672,6 +672,10 @@ const keys = {};
 window.addEventListener("keydown", (e) => {
   if (e.target && e.target.tagName === "INPUT") return;
   if (Menu.isOpen() || Tracking.isOpen() || School.isOpen()) return; // menus own the keys while open
+  // School FLIGHTS deliberately leave the keyboard LIVE (Mom's call): the flight keys
+  // are the on-ramp to the real game — discovering that Space fires the decoupler is
+  // a feature, not an accident. The school's nets (assist-stage, auto-chute, friendly
+  // crash + retry) already make every outcome safe.
   if (Render.isInside()) return; // the station interior owns the keys while aboard
   keys[e.key] = true;
   if (e.repeat) return;

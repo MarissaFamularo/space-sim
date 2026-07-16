@@ -461,7 +461,7 @@ function startFlight() {
   flightEl.appendChild(exit);
 
   flight = { phase: "countdown", count: 5, lastAlt: 0, descendTimer: 0, assistedStage: false,
-             ui: { bubble: b, ship, bottom } };
+             coastTicks: 0, coastSaid: false, ui: { bubble: b, ship, bottom } };
   say("Count down with me! Tap the numbers!");
   showCountButton();
 }
@@ -521,6 +521,14 @@ function onTick(sim) {
   // Back to real time just above the ground: the touchdown is hers to watch.
   if (flight.phase === "chute" && (sim.altitude || 0) < 150 && sim.timeWarp > 1) {
     handlers.setWarp && handlers.setWarp(1);
+  }
+
+  // The coast over the top is the one stretch with nothing to press — say so
+  // (Mom's play-test note: "it just goes on and on… what is she supposed to do?").
+  // ~5 s after the space cheer, tell her waiting IS the mission right now.
+  if (flight.phase === "space" && !flight.coastSaid && ++flight.coastTicks > 300) {
+    flight.coastSaid = true;
+    say("Nothing to press yet — we're floating up and over the top! Watch the little rocket on the ladder. When we start falling, I'll call you!");
   }
 
   const ev = SchoolCore.flightEvent(flight.phase, {

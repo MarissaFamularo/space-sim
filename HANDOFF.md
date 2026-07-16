@@ -55,6 +55,19 @@ landed → certificate "ASTRONAUT ELLIE" with 3 stickers → exit → VAB palett
 Moon-teleport regression 0.0007% error. Canvas verified lit via litFraction 0.9999
 (WebGL screenshots don't composite between harness tool calls — DOM shots captured).
 
+**Rung-4 feedback already in (Mom flew it, same day):**
+- "After the space cheer it just goes on and on — it doesn't say what to do." TRUE:
+  the coast over the top was a silent ~25 s. Fixed: ~5 s after the celebration the
+  teacher now says "Nothing to press yet — we're floating up and over the top! Watch
+  the little rocket on the ladder. When we start falling, I'll call you!" (school.js
+  onTick, coastTicks). Code-verified + all suites green; the say() path it rides was
+  browser-verified above — worth an ear on her next flight.
+- Keyboard stays LIVE during school flights — Mom's explicit call. A keys-blocked
+  guard was written and REVERTED: she isn't key-mashing, and discovering that Space
+  fires the decoupler is the on-ramp to the real game. The nets (assist-stage,
+  auto-chute, consequence-free crash) already make every outcome safe. Comment at
+  the main.js keydown guard records the decision — don't re-add the lockout.
+
 **Flagged / rung 4 (play-test with HER):**
 - **Speech is the whole UX and headless can't hear it** — first real run: is the voice
   clear, loud enough, pacing right? speak() uses the default en-US voice, rate 0.95.
