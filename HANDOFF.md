@@ -9,6 +9,35 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-16 latest): 🛰 STATION FIXES — his two gripes, both addressed
+
+His ask (deferred until after Youngcow + interstellar): "the stations are all the
+same in the inside and you dock far away from them."
+
+**Flagged / worth a play-test:** the archetype rooms are browser-verified (screenshots:
+harbor=crates+Earth windows, selene=amber tanks+pipes, Cradle=green vines+grow-lights)
+but only he can say if they FEEL different enough — if not, each archetype's furniture
+lives in one labeled block in enterStation, easy to fatten. The observatory and a
+seeded lab weren't screenshotted (random seeds) — worth one boarding tour with him.
+Deployed player stations keep the generic EXTERIOR mesh (older flag, still open).
+
+**Shipped (rung 3 — scripted dock+board tour ALL GREEN, zero console errors):**
+1. **The station PULLS YOU IN** (main.js): on latch, a retraction winch seats the
+   ship flush at the port (12 m — verified; was anywhere inside 150 m), riding the
+   station's orbit, nose at the port. Ease the throttle to push off (unchanged rule).
+   Real docking works exactly this way (soft capture → retraction) — Navigator says so.
+2. **INTERIOR ARCHETYPES** (render.js enterStation): every station is now a KIND of
+   place — 📦 cargo hub (crates, straps, loading arm, planet in the windows), ⛽ fuel
+   depot (spherical tanks, pipe run, amber light), 🌿 greenhouse (plant beds both
+   walls, vines, blooming grow-lights, green light), 🔭 observatory (one giant cupola
+   with nebula + ringed world, telescope, dim RED light — real night-vision practice),
+   🔬 lab (the classic room). Hand-pinned: Harbor=hub, Selene=depot, Gene's=hub, Jool
+   outpost=lab, Hell's Gate & Cradle=garden; seeded everywhere else (same station =
+   same place forever). Console kinds follow the archetype (gardens run bio, etc.);
+   hint bar names the kind. Derelict + alien + ground bases unchanged.
+3. Navigator taught berthing + station kinds (safety untouched, 18/18); all 13 node
+   suites green; boot smoke green.
+
 ## Status (2026-07-16 later): 🌌 INTERSTELLAR PHASE B — HE CAN FLY TO ANOTHER STAR FOR REAL
 
 Mom confirmed the point of the antimatter drive was flying there — so the roadmap's

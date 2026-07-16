@@ -1450,6 +1450,23 @@ function updateStationsSim() {
   } else if (dockedAtId && dist > 600) {
     dockedAtId = null; // drifted away: next visit greets (and refuels) again
   }
+
+  // HIS FIX ("you dock far away from them"): once latched, the station PULLS YOU IN —
+  // real docking is a soft capture followed by retraction that seats the ship flush.
+  // While berthed the ship rides the station's orbit, nose at the port. Easing the
+  // throttle pushes off (the latch re-arms once you've drifted past 600 m).
+  if (dockedAtId === st.id && (sim.status === "flying" || sim.status === "orbit") &&
+      (sim.craft.throttle || 0) === 0) {
+    const ss = stationStateAt(st, t);
+    if (ss) {
+      const bx = ss.pos.x + 12, by = ss.pos.y; // berth: just off the +X docking port
+      sim.craft.pos.x += (bx - sim.craft.pos.x) * 0.06; // the retraction winch
+      sim.craft.pos.y += (by - sim.craft.pos.y) * 0.06;
+      sim.craft.vel.x = ss.vel.x;
+      sim.craft.vel.y = ss.vel.y;
+      sim.craft.angle = Math.PI / 2; // nose -X: pointed at the port that holds you
+    }
+  }
 }
 
 function frame(t) {

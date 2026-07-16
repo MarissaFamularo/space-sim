@@ -412,3 +412,17 @@ Render.enterStation(info, cb)       // info gains .spin — centrifuge interior:
   `flight.interstellar {destination, lightYearsToGo, closingSpeed_kms, phase}`.
 - Relativity is not simulated (~1% c; the Navigator says so if asked). Stars'
   relative motion is ignored (rails don't move between systems).
+
+## CONTRACT REVISION 2026-07-16c — Station berthing + interior archetypes (his fix)
+
+- **Berth pull-in** (main.js updateStationsSim): while docked with throttle 0, the
+  craft is winched to a flush berth 12 m off the station's +X port (exponential
+  ease, station-orbit velocity, nose at the port). Throttle > 0 releases; the
+  existing 600 m hysteresis re-arms the latch. No API change.
+- **Interior archetypes** (render.js enterStation, internal): every non-derelict
+  space station is a seeded KIND — hub / depot / garden / observatory / lab — with
+  its own walls, lighting mood, windows (hubs/gardens see their planet; the
+  observatory gets one big cupola + telescope + real red night-lighting), furniture,
+  and console kinds. Famous addresses hand-pinned (harbor=hub, selene=depot,
+  Pandora & Youngcow homes=garden, Gene's=hub, Jool outpost=lab). Ground bases and
+  the derelict keep their existing looks.

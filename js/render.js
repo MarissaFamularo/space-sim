@@ -3833,9 +3833,31 @@ function enterStation(info, cb) {
   const rad = 2.6 + rng() * 0.8;
   const derelict = !!info.abandoned;
 
-  // Hull: a cylinder seen from INSIDE, with end caps. Wall tint is seeded.
+  // ARCHETYPES (his fix: "the stations are all the same inside"). Every station is
+  // now a KIND of place — a cargo hub, a fuel depot, a greenhouse, an observatory,
+  // or a science lab — with its own furniture, lighting, windows, and experiments.
+  // The famous addresses are hand-assigned; everywhere else it's seeded, so the
+  // same station is the same place forever.
+  const ARCH_PINNED = {
+    "sol/harbor": "hub",            // Harbor Station: the freight yard of Earth orbit
+    "sol/selene": "depot",          // Selene Depot: it's in the NAME
+    "gen:kerbol/st_home": "hub",    // Gene's Station: mission control energy
+    "gen:kerbol/st_far": "lab",     // Jool Research Outpost
+    "gen:pandora/st_home": "garden",   // Hell's Gate: jungle moon below, jungle inside
+    "gen:youngcow/st_home": "garden",  // Cradle Station: a nursery for a baby system
+  };
+  let arch = "lab";
+  if (info.ground) arch = "base";
+  else if (!derelict) {
+    const kinds = ["hub", "depot", "garden", "observatory", "lab"];
+    arch = ARCH_PINNED[info.seedKey] || kinds[Math.floor(rng() * kinds.length)];
+  }
+
+  // Hull: a cylinder seen from INSIDE, with end caps. Wall tint says what kind of
+  // place this is (seeded pastel only for labs/bases, like before).
+  const ARCH_WALL = { hub: 0x7e8894, depot: 0x9a8e78, garden: 0xaac8a2, observatory: 0x39415a };
   const wallColor = derelict ? 0x3a3236
-    : new THREE.Color().setHSL(rng(), 0.12, 0.72).getHex();
+    : ARCH_WALL[arch] || new THREE.Color().setHSL(rng(), 0.12, 0.72).getHex();
   const wallMat = new THREE.MeshStandardMaterial({
     color: wallColor, roughness: 0.9, metalness: 0.1, side: THREE.BackSide,
   });
@@ -3861,13 +3883,30 @@ function enterStation(info, cb) {
   }
 
   // Windows: starfield outside (tiny baked canvas) — or, in a GROUND base, the
-  // planet itself: sky, plains, and if you're lucky a dino-bird on the horizon.
-  const nWin = derelict ? 1 : 2 + Math.floor(rng() * 3);
+  // planet itself. Hubs and gardens look DOWN at their world (stations orbit
+  // something); the observatory skips portholes for one giant cupola (built below).
+  const nWin = derelict ? 1 : arch === "observatory" ? 0 : 2 + Math.floor(rng() * 3);
+  const planetView = arch === "hub" || arch === "garden";
+  const planetHue = rng(); // this station's world, same color in every window
   for (let i = 0; i < nWin; i++) {
     const cv = document.createElement("canvas");
     cv.width = 64; cv.height = 48;
     const ctx = cv.getContext("2d");
-    if (info.ground) {
+    if (planetView) {
+      ctx.fillStyle = "#050a18"; ctx.fillRect(0, 0, 64, 48);
+      ctx.fillStyle = "#fff";
+      for (let k = 0; k < 14; k++) ctx.fillRect(rng() * 64, rng() * 26, 1, 1);
+      // the world below: a bright limb filling the window's lower half
+      const pc = new THREE.Color().setHSL(planetHue, 0.5, 0.55);
+      ctx.fillStyle = "#" + pc.getHexString();
+      ctx.beginPath(); ctx.arc(32, 88, 62, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.25)"; // cloud swirls
+      for (let k = 0; k < 6; k++) {
+        ctx.beginPath();
+        ctx.ellipse(rng() * 64, 34 + rng() * 14, 6 + rng() * 8, 2 + rng() * 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (info.ground) {
       const sky = ctx.createLinearGradient(0, 0, 0, 30);
       sky.addColorStop(0, "#7ab0d8"); sky.addColorStop(1, "#c8d8a8");
       ctx.fillStyle = sky; ctx.fillRect(0, 0, 64, 30);
@@ -3930,15 +3969,23 @@ function enterStation(info, cb) {
     addConsole(0.5, conY != null ? conY : -0.4,
       info.ground ? "basewreck" : "salvage", new THREE.Color(0.5, 0.12, 0.1)); // dying ember
   } else {
-    const kinds = ["bio", "materials", "astro"];
-    const n = 1 + Math.floor(rng() * 3);
+    // Each kind of station runs its own science: gardens grow, observatories look,
+    // depots test materials, hubs and labs dabble.
+    const ARCH_CONSOLES = {
+      hub: ["materials", "astro"], depot: ["materials", "materials"],
+      garden: ["bio", "bio"], observatory: ["astro", "astro"],
+      lab: ["bio", "materials", "astro"], base: ["bio", "materials", "astro"],
+    };
+    const kindList = ARCH_CONSOLES[arch] || ARCH_CONSOLES.lab;
+    const n = arch === "lab" || arch === "base" ? 1 + Math.floor(rng() * 3) : kindList.length;
     for (let i = 0; i < n; i++) {
       addConsole(-len / 2 + 1.6 + i * (len - 3) / Math.max(1, n - 0.5) + rng(),
-        conY != null ? conY : -0.6 + rng() * 1.2, kinds[Math.floor(rng() * kinds.length)],
+        conY != null ? conY : -0.6 + rng() * 1.2, kindList[i % kindList.length],
         new THREE.Color(0.15, 1.6, 0.8)); // HDR: it blooms
     }
-    // A plant rack — on a station things grow in every direction at once; in a
-    // ground base it's a proper greenhouse shelf (extra sprouts — Hundun is ALIVE).
+    // A plant rack, where plants belong — gardens overflow with them (built below),
+    // labs keep a small one, ground bases run a proper greenhouse shelf.
+    if (arch === "garden" || arch === "lab" || arch === "base") {
     const shelfY = info.ground ? floorY + 0.05 : -1.1;
     const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.5),
       new THREE.MeshStandardMaterial({ color: 0x8a919c }));
@@ -3954,6 +4001,7 @@ function enterStation(info, cb) {
         shelfY + 0.12 + rng() * 0.1, -rad + 0.6);
       iScene.add(sprout);
     }
+    } // end plant-rack gate (garden / lab / base only)
   }
 
   // Clutter: FLOATING cargo in zero-g — but a GROUND base has real gravity, so
@@ -3980,6 +4028,136 @@ function enterStation(info, cb) {
       iScene.add(box);
       drifters.push({ m: box, w: (rng() - 0.5) * (derelict ? 0.8 : 0.25) });
     }
+  }
+
+  // ---- Archetype furniture: what makes a hub a hub and a garden a garden ----
+  if (arch === "hub") {
+    // Cargo hub: strapped crate stacks, a loading arm, hazard stripes by the door.
+    const crateMat = new THREE.MeshStandardMaterial({ color: 0xc8a45a, roughness: 0.85 });
+    crateMat._isClone = true;
+    for (let s = 0; s < 3; s++) {
+      const sx = -len / 2 + 1.6 + s * (len - 3) / 3;
+      for (let k = 0; k < 4; k++) {
+        const crate = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 0.5), crateMat);
+        crate.position.set(sx + (k % 2) * 0.6, -rad + 1.15 + Math.floor(k / 2) * 0.55, -(rad - 1.05));
+        crate.rotation.y = (rng() - 0.5) * 0.15;
+        iScene.add(crate);
+      }
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.15, 0.04),
+        new THREE.MeshStandardMaterial({ color: 0xd8b83a, roughness: 0.7, transparent: true, opacity: 0.5 }));
+      strap.material._isClone = true;
+      strap.position.set(sx + 0.3, -rad + 1.4, -(rad - 0.78));
+      iScene.add(strap);
+    }
+    const armMat = new THREE.MeshStandardMaterial({ color: 0xe8e4da, roughness: 0.5 });
+    armMat._isClone = true;
+    const shoulder = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.4, 8), armMat);
+    shoulder.position.set(len * 0.28, rad - 1.0, -0.4);
+    shoulder.rotation.z = 0.8;
+    iScene.add(shoulder);
+    const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.2, 8), armMat);
+    forearm.position.set(len * 0.28 + 0.9, rad - 1.7, -0.4);
+    forearm.rotation.z = -0.6;
+    iScene.add(forearm);
+    const claw = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), armMat);
+    claw.position.set(len * 0.28 + 1.35, rad - 2.1, -0.4);
+    iScene.add(claw);
+  } else if (arch === "depot") {
+    // Fuel depot: big spherical tanks, a pipe run the length of the module, gauges.
+    const tankMatI = new THREE.MeshStandardMaterial({ color: 0xd8d2c4, roughness: 0.4, metalness: 0.35 });
+    tankMatI._isClone = true;
+    for (let s = 0; s < 3; s++) {
+      const tank = new THREE.Mesh(new THREE.SphereGeometry(0.85, 18, 14), tankMatI);
+      tank.position.set(-len / 2 + 2 + s * (len - 3.4) / 2, -rad + 0.75, -(rad - 1.0));
+      iScene.add(tank);
+      const gauge = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.2),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(1.4, 0.9, 0.2) })); // amber, blooms
+      gauge.position.set(tank.position.x, tank.position.y + 1.0, -(rad - 1.05));
+      
+      iScene.add(gauge);
+    }
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, len - 1.4, 10), tankMatI);
+    pipe.rotation.z = Math.PI / 2;
+    pipe.position.set(0, rad - 0.75, -(rad - 1.0));
+    iScene.add(pipe);
+    for (let s = 0; s < 4; s++) { // hazard collars on the pipe
+      const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.18, 10),
+        new THREE.MeshStandardMaterial({ color: 0xd8b83a, roughness: 0.6 }));
+      collar.material._isClone = true;
+      collar.rotation.z = Math.PI / 2;
+      collar.position.set(-len / 2 + 1.6 + s * (len - 2.4) / 3, rad - 0.75, -(rad - 1.0));
+      iScene.add(collar);
+    }
+  } else if (arch === "garden") {
+    // Greenhouse: plant rows down BOTH walls, hanging vines, grow-light bars.
+    const leafMat = new THREE.MeshStandardMaterial({ color: 0x4fae54, roughness: 0.8 });
+    leafMat._isClone = true;
+    for (const zSide of [-1, 1]) {
+      const bed = new THREE.Mesh(new THREE.BoxGeometry(len - 2, 0.12, 0.6),
+        new THREE.MeshStandardMaterial({ color: 0x7a6a52, roughness: 0.9 }));
+      bed.material._isClone = true;
+      bed.position.set(0, -rad + 0.7, zSide * (rad - 0.75));
+      iScene.add(bed);
+      for (let i = 0; i < 14; i++) {
+        const sprout = new THREE.Mesh(new THREE.SphereGeometry(0.08 + rng() * 0.1, 8, 6), leafMat);
+        sprout.position.set(-len / 2 + 1.3 + i * (len - 2.4) / 14,
+          -rad + 0.85 + rng() * 0.12, zSide * (rad - 0.75));
+        iScene.add(sprout);
+      }
+    }
+    for (let i = 0; i < 5; i++) { // vines hang from the ceiling — zero-g doesn't care
+      const vine = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 0.9 + rng() * 0.8, 6), leafMat);
+      vine.position.set(-len / 2 + 2 + i * (len - 3.5) / 4, rad - 1.0, (rng() - 0.5) * 1.4);
+      vine.rotation.z = (rng() - 0.5) * 0.3;
+      iScene.add(vine);
+    }
+    for (let s = 0; s < 2; s++) { // grow-light bars: pink-white, bright enough to bloom
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(len * 0.35, 0.06, 0.2),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(1.5, 1.1, 1.35) }));
+      bar.position.set(-len * 0.22 + s * len * 0.44, rad - 0.7, 0);
+      iScene.add(bar);
+    }
+  } else if (arch === "observatory") {
+    // Observatory: one HUGE cupola window (nebula + a ringed world), a telescope
+    // aimed through it, and dim RED lighting — astronomers guard their night eyes.
+    const cv = document.createElement("canvas");
+    cv.width = 128; cv.height = 128;
+    const ctx = cv.getContext("2d");
+    ctx.fillStyle = "#04070f"; ctx.fillRect(0, 0, 128, 128);
+    ctx.fillStyle = "#fff";
+    for (let k = 0; k < 130; k++) {
+      ctx.globalAlpha = 0.4 + rng() * 0.6;
+      ctx.fillRect(rng() * 128, rng() * 128, 1, 1);
+    }
+    ctx.globalAlpha = 0.35; // a painted nebula smear
+    const neb = ctx.createRadialGradient(48, 60, 4, 48, 60, 44);
+    neb.addColorStop(0, "#b06de0"); neb.addColorStop(0.6, "#3a4ac0"); neb.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = neb;
+    ctx.beginPath(); ctx.arc(48, 60, 44, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#d8c89a"; // a far-off ringed world
+    ctx.beginPath(); ctx.arc(96, 40, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "rgba(216,200,154,0.8)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(96, 40, 13, 4, -0.4, 0, Math.PI * 2); ctx.stroke();
+    const cupola = new THREE.Mesh(new THREE.CircleGeometry(1.7, 28),
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv) }));
+    cupola.position.set(len * 0.12, 0.25, -rad + 0.06);
+    iScene.add(cupola);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(1.72, 0.07, 8, 30),
+      new THREE.MeshStandardMaterial({ color: 0x9aa2ae, roughness: 0.7 }));
+    rim.material._isClone = true;
+    rim.position.copy(cupola.position);
+    iScene.add(rim);
+    const scopeMat = new THREE.MeshStandardMaterial({ color: 0xdfe3ea, roughness: 0.45 });
+    scopeMat._isClone = true;
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 1.7, 14), scopeMat);
+    tube.position.set(len * 0.12 - 0.6, -0.5, -rad + 1.6);
+    tube.lookAt(cupola.position.x, cupola.position.y, cupola.position.z);
+    tube.rotateX(Math.PI / 2); // cylinder axis onto the look direction
+    iScene.add(tube);
+    const mount = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.12, 1.1, 8), scopeMat);
+    mount.position.set(len * 0.12 - 0.6, -1.1, -rad + 1.6);
+    iScene.add(mount);
   }
 
   // The RESIDENT. 👽 Friendly — big eyes like a Connie, its own glyph console,
@@ -4019,7 +4197,10 @@ function enterStation(info, cb) {
     addConsole(len * 0.32 + 1.1, -0.2, "alien", new THREE.Color(1.8, 0.3, 1.6)); // glyph screen
   }
 
-  // Light: warm and even on a live station; one uneasy red flicker on the wreck.
+  // Light: every kind of place has its own mood. Wrecks flicker red; observatories
+  // run dim red ON PURPOSE (real astronomers protect their night vision); gardens
+  // glow greenhouse-bright; depots sit in workshop amber; hubs in cool freight-bay
+  // white; labs keep the warm even light they always had.
   if (derelict) {
     iScene.add(new THREE.AmbientLight(0x201418, 1.2));
     const red = new THREE.PointLight(0xff3020, 30, 30, 2);
@@ -4027,10 +4208,17 @@ function enterStation(info, cb) {
     iScene.add(red);
     interiorFlicker = red;
   } else {
-    iScene.add(new THREE.AmbientLight(0xf4efe6, 1.4));
-    const warm = new THREE.PointLight(0xfff0d8, 40, 40, 2);
-    warm.position.set(0, rad * 0.6, 0.5);
-    iScene.add(warm);
+    const MOOD = {
+      hub: { amb: 0xe4ecf6, ambI: 1.35, pt: 0xdfe8ff, ptI: 42 },
+      depot: { amb: 0xf0e2c8, ambI: 1.25, pt: 0xffc878, ptI: 44 },
+      garden: { amb: 0xe8f6e2, ambI: 1.5, pt: 0xf2ffe8, ptI: 46 },
+      observatory: { amb: 0x2a2430, ambI: 1.0, pt: 0xff4838, ptI: 14 },
+    };
+    const m = MOOD[arch] || { amb: 0xf4efe6, ambI: 1.4, pt: 0xfff0d8, ptI: 40 };
+    iScene.add(new THREE.AmbientLight(m.amb, m.ambI));
+    const pt = new THREE.PointLight(m.pt, m.ptI, 40, 2);
+    pt.position.set(0, rad * 0.6, 0.5);
+    iScene.add(pt);
     interiorFlicker = null;
   }
 
@@ -4048,7 +4236,10 @@ function enterStation(info, cb) {
   hintEl.style.cssText = "position:absolute;bottom:70px;left:50%;transform:translateX(-50%);" +
     "background:rgba(12,18,34,0.86);border:1px solid #24304d;border-radius:8px;color:#9fb3da;" +
     "padding:6px 14px;font:600 13px system-ui,sans-serif;z-index:15;";
-  hintEl.textContent = "🐍 " + info.name + " — arrows float · drift to a glowing screen for science · E to return to your ship";
+  const ARCH_LABEL = { hub: "📦 cargo hub", depot: "⛽ fuel depot", garden: "🌿 greenhouse",
+    observatory: "🔭 observatory", lab: "🔬 science lab" };
+  hintEl.textContent = "🐍 " + info.name + (ARCH_LABEL[arch] ? " · " + ARCH_LABEL[arch] : "") +
+    " — arrows float · drift to a glowing screen for science · E to return to your ship";
   document.getElementById("app").appendChild(hintEl);
 
   interior = { scene: iScene, cam, connie, vel: { x: 0, y: 0 }, consoles, alien,
