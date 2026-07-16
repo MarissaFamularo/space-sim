@@ -3962,17 +3962,14 @@ function whiteboardTexture(rng) {
 
 function enterStation(info, cb) {
   if (interior) exitStation();
-  const rng = mulberry32(hashStr("interior:" + info.seedKey));
-  const iScene = new THREE.Scene();
-  const len = 8 + rng() * 6;       // every module a different length
-  const rad = 2.6 + rng() * 0.8;
   const derelict = !!info.abandoned;
 
-  // ARCHETYPES (his fix: "the stations are all the same inside"). Every station is
-  // now a KIND of place — a cargo hub, a fuel depot, a greenhouse, an observatory,
-  // or a science lab — with its own furniture, lighting, windows, and experiments.
-  // The famous addresses are hand-assigned; everywhere else it's seeded, so the
-  // same station is the same place forever.
+  // ---- THE ROOM PLAN (his ask: "stuff to explore — more than one room") ----
+  // Every station is a little CHAIN of 2–3 connected modules, each a different kind
+  // of room. Drift into the glowing hatch at the end and you're in the next one.
+  // Seeded off the station itself, so your station always has the same floor plan.
+  const planRng = mulberry32(hashStr("rooms:" + info.seedKey));
+  const KINDS = ["hub", "depot", "garden", "observatory", "lab"];
   const ARCH_PINNED = {
     "sol/harbor": "hub",            // Harbor Station: the freight yard of Earth orbit
     "sol/selene": "depot",          // Selene Depot: it's in the NAME
@@ -3981,11 +3978,44 @@ function enterStation(info, cb) {
     "gen:pandora/st_home": "garden",   // Hell's Gate: jungle moon below, jungle inside
     "gen:youngcow/st_home": "garden",  // Cradle Station: a nursery for a baby system
   };
-  let arch = "lab";
-  if (info.ground) arch = "base";
-  else if (!derelict) {
-    const kinds = ["hub", "depot", "garden", "observatory", "lab"];
-    arch = ARCH_PINNED[info.seedKey] || kinds[Math.floor(rng() * kinds.length)];
+  let rooms = info._rooms;
+  if (!rooms) {
+    if (info.ground) {
+      // Ground bases: main room + a back room (the greenhouse keeps the crew fed).
+      rooms = ["base", derelict ? "base" : "garden"];
+    } else if (derelict) {
+      rooms = ["lab", "lab"]; // two dark holds; the old log waits in the deepest one
+    } else {
+      const n = 2 + Math.floor(planRng() * 2); // 2–3 modules
+      rooms = [null]; // room 0's kind resolves below (pinned or seeded, as before)
+      let prev = ARCH_PINNED[info.seedKey] || null;
+      for (let i = 1; i < n; i++) {
+        let pick = Math.floor(planRng() * KINDS.length);
+        if (KINDS[pick] === prev) pick = (pick + 1) % KINDS.length; // neighbors always differ
+        rooms.push(KINDS[pick]);
+        prev = KINDS[pick];
+      }
+    }
+  }
+  const roomIndex = info._room || 0;
+  const alienRoom = Math.floor(planRng() * rooms.length); // where the resident lives
+
+  const rng = mulberry32(hashStr("interior:" + info.seedKey + "#" + roomIndex));
+  const iScene = new THREE.Scene();
+  const len = 8 + rng() * 6;       // every module a different length
+  const rad = 2.6 + rng() * 0.8;
+
+  // ARCHETYPES (his fix: "the stations are all the same inside"). Every station is
+  // now a KIND of place — a cargo hub, a fuel depot, a greenhouse, an observatory,
+  // or a science lab — with its own furniture, lighting, windows, and experiments.
+  // The famous addresses are hand-assigned; everywhere else it's seeded, so the
+  // same station is the same place forever.
+  let arch = rooms[roomIndex];
+  if (!arch) { // room 0 resolves like it always did: pinned address or seeded
+    arch = "lab";
+    if (info.ground) arch = "base";
+    else if (!derelict) arch = ARCH_PINNED[info.seedKey] || KINDS[Math.floor(rng() * KINDS.length)];
+    rooms[roomIndex] = arch; // remember: the plan travels with the boarding
   }
   // Gravity room? (planet surface OR spinning centrifuge — his rule: nothing floats)
   const grounded = !!info.ground || !!info.spin;
@@ -4050,6 +4080,34 @@ function enterStation(info, cb) {
       spoke.position.copy(wheel.position);
       spoke.rotation.x = (s / 3) * Math.PI;
       iScene.add(spoke);
+    }
+    // An OPENABLE hatch (another room beyond) glows green and wears a sign — drift
+    // into it and you're through. Sealed hatches stay dark.
+    const opens = sx > 0 ? roomIndex < rooms.length - 1 : roomIndex > 0;
+    if (opens) {
+      const glowRim = new THREE.Mesh(new THREE.TorusGeometry(rad * 0.42, 0.028, 8, 26),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 1.8, 0.6) })); // blooms softly
+      glowRim.position.set(sx * (len / 2 - 0.1), -rad * 0.12, 0);
+      glowRim.rotation.y = Math.PI / 2;
+      iScene.add(glowRim);
+      const toArch = rooms[roomIndex + (sx > 0 ? 1 : -1)];
+      const SIGN = { hub: "\u{1F4E6} CARGO HUB", depot: "⛽ FUEL DEPOT", garden: "\u{1F33F} GREENHOUSE",
+        observatory: "\u{1F52D} OBSERVATORY", lab: "\u{1F52C} SCIENCE LAB", base: "\u{1F3E0} MAIN ROOM" };
+      const sc = document.createElement("canvas");
+      sc.width = 192; sc.height = 40;
+      const sctx = sc.getContext("2d");
+      sctx.fillStyle = "#101826"; sctx.fillRect(0, 0, 192, 40);
+      sctx.strokeStyle = "#3adb6a"; sctx.lineWidth = 3; sctx.strokeRect(2, 2, 188, 36);
+      sctx.fillStyle = "#bfffd2"; sctx.font = "700 17px system-ui";
+      sctx.textAlign = "center"; sctx.textBaseline = "middle";
+      sctx.fillText((sx > 0 ? "→ " : "← ") + (SIGN[toArch] || "NEXT ROOM"), 96, 21);
+      const signTex = new THREE.CanvasTexture(sc);
+      signTex.colorSpace = THREE.SRGBColorSpace;
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 0.24),
+        new THREE.MeshBasicMaterial({ map: signTex }));
+      sign.position.set(sx * (len / 2 - 0.12), rad * 0.42, 0);
+      sign.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
+      iScene.add(sign);
     }
   }
   // Handrails down both walls — the real ISS is COVERED in these (astronauts move
@@ -4128,7 +4186,7 @@ function enterStation(info, cb) {
   // planet itself. Hubs and gardens look DOWN at their world (stations orbit
   // something); the observatory skips portholes for one giant cupola (built below).
   const nWin = derelict ? 1 : arch === "observatory" ? 0 : 2 + Math.floor(rng() * 3);
-  const planetView = arch === "hub" || arch === "garden";
+  const planetView = !info.ground && (arch === "hub" || arch === "garden"); // grounded rooms see the plains, not a limb
   const planetHue = rng(); // this station's world, same color in every window
   for (let i = 0; i < nWin; i++) {
     const cv = document.createElement("canvas");
@@ -4208,8 +4266,12 @@ function enterStation(info, cb) {
   const floorY = -(rad - 0.95);
   const conY = grounded ? floorY + 0.55 : null;
   if (derelict) {
-    addConsole(0.5, conY != null ? conY : -0.4,
-      info.ground ? "basewreck" : "salvage", new THREE.Color(0.5, 0.12, 0.1)); // dying ember
+    // The old log survives only in the DEEPEST room — you have to venture in for
+    // the story. The rooms before it are just dark, drifting, and empty-handed.
+    if (roomIndex === rooms.length - 1) {
+      addConsole(0.5, conY != null ? conY : -0.4,
+        info.ground ? "basewreck" : "salvage", new THREE.Color(0.5, 0.12, 0.1)); // dying ember
+    }
   } else {
     // Each kind of station runs its own science: gardens grow, observatories look,
     // depots test materials, hubs and labs dabble.
@@ -4440,9 +4502,10 @@ function enterStation(info, cb) {
       chart.rotation.z = (rng() - 0.5) * 0.12;
       iScene.add(chart);
     }
-  } else if (arch === "lab" || arch === "base") {
+  } else if (!derelict && (arch === "lab" || arch === "base")) {
     // The classic lab earns its detail too: a whiteboard mid-derivation, a sample
-    // rack, and a little microscope on a bench.
+    // rack, and a little microscope on a bench. (Wreck rooms keep their gloom —
+    // no cheerfully glowing vials on a dead station.)
     const board = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.72),
       new THREE.MeshBasicMaterial({ map: whiteboardTexture(rng) }));
     const boardY = grounded ? floorY + 1.35 : 0.75;
@@ -4473,10 +4536,20 @@ function enterStation(info, cb) {
     iScene.add(scopeBase);
   }
 
-  // The RESIDENT. 👽 Friendly — big eyes like a Connie, its own glyph console,
-  // and it hums in prime numbers (the Navigator explains).
+  // Science already earned this boarding stays earned (rooms rebuild on re-entry).
+  const sciDone = (info._sci && info._sci[roomIndex]) || [];
+  consoles.forEach((con, ci) => {
+    if (sciDone[ci]) {
+      con.done = true;
+      con.screen.material.color = new THREE.Color(0.55, 0.5, 0.2); // spent gold
+    }
+  });
+
+  // The RESIDENT. 👽 Friendly — big eyes like a Connie, its own glyph console, and
+  // it hums in prime numbers (the Navigator explains). It lives in ONE particular
+  // room of the station — finding it is part of the exploring.
   let alien = null;
-  if (info.alien && !derelict) {
+  if (info.alien && !derelict && roomIndex === alienRoom % rooms.length) {
     alien = new THREE.Group();
     const hue = rng();
     const skin = new THREE.MeshStandardMaterial({
@@ -4557,7 +4630,8 @@ function enterStation(info, cb) {
 
   interior = { scene: iScene, cam, connie, vel: { x: 0, y: 0 }, consoles, alien,
                keys: {}, hintEl, cb, len, rad, drifters, last: 0,
-               spin: !!info.spin, ground: !!info.ground };
+               spin: !!info.spin, ground: !!info.ground,
+               rooms, roomIndex, baseInfo: info, sci: info._sci || {} };
   if (info.spin) {
     // Centrifuge station: the ring's spin presses you to the floor — gravity you can
     // stand on. Same room, different physics; the hint teaches the difference.
@@ -4567,6 +4641,10 @@ function enterStation(info, cb) {
     // Ground base: PLANET gravity — the honest kind. Walk, jump, nothing floats.
     hintEl.textContent = "🐍🏠 " + info.name + " — real ground, real gravity! ← → walk · ↑ jump · walk to a glowing screen · E to go back out";
     connie.position.set(-len * 0.3, -(rad - 0.95), 0); // standing on the floor
+  }
+  if (rooms.length > 1) {
+    hintEl.textContent += " · room " + (roomIndex + 1) + "/" + rooms.length +
+      (roomIndex < rooms.length - 1 ? " — the glowing hatch leads deeper!" : "");
   }
   window.addEventListener("keydown", interiorKeyDown);
   window.addEventListener("keyup", interiorKeyUp);
@@ -4589,6 +4667,27 @@ function exitStation() {
   interiorFlicker = null;
 }
 
+// Drift through an open hatch: tear the room down, build the neighbor, and carry
+// the Connie (and her momentum, and the science she's already earned) through.
+function interiorGoRoom(dir) {
+  const it = interior;
+  if (!it || !it.rooms) return;
+  const next = it.roomIndex + dir;
+  if (next < 0 || next >= it.rooms.length) return;
+  const vel = { x: it.vel.x, y: it.vel.y };
+  const wasGrounded = it.spin || it.ground;
+  const info = { ...it.baseInfo, _room: next, _rooms: it.rooms, _sci: it.sci };
+  enterStation(info, it.cb); // full teardown + rebuild — interior is now the new room
+  const nit = interior;
+  // Emerge INSIDE the new room, still moving the way you came through (the wall
+  // clamp may have bounced the old velocity just before the crossing — going
+  // through a hatch never spits you back the way you came).
+  nit.vel = { x: Math.max(0.6, Math.abs(vel.x) * 0.5) * dir, y: vel.y * 0.5 };
+  const mx = nit.len / 2 - 0.95;
+  nit.connie.position.x = dir > 0 ? -mx + 0.6 : mx - 0.6;
+  if (wasGrounded) nit.connie.position.y = -(nit.rad - 0.95);
+}
+
 // True while any "person mode" owns time and the keys: aboard a station OR out on EVA.
 // main.js freezes physics and ignores flight keys whenever this is true.
 function isInside() { return !!interior || !!eva; }
@@ -4600,6 +4699,10 @@ function updateInterior() {
   it.last = now;
   const c = it.connie;
   const mx = it.len / 2 - 0.8, my = it.rad - 0.9;
+  // Reaching an end of the module: through the hatch if one opens this way. (The
+  // wall clamp parks her at EXACTLY ±mx, so the test needs a whisker of tolerance.)
+  if (c.position.x >= mx - 0.02 && it.rooms && it.roomIndex < it.rooms.length - 1) { interiorGoRoom(1); return; }
+  if (c.position.x <= -(mx - 0.02) && it.rooms && it.roomIndex > 0) { interiorGoRoom(-1); return; }
   if (it.spin || it.ground) {
     // Centrifuge OR planet gravity: walk on the floor, jump, come back DOWN — spin
     // gravity is real gravity as far as your boots can tell (that's the whole lesson).
@@ -4637,15 +4740,20 @@ function updateInterior() {
   it.cam.position.x += (c.position.x * 0.7 - it.cam.position.x) * 0.04;
   it.cam.lookAt(c.position.x * 0.85, 0, -it.rad * 0.3);
 
-  // Science: drift close to a live screen and it fires (once each per visit).
-  for (const con of it.consoles) {
-    if (con.done) continue;
+  // Science: drift close to a live screen and it fires (once each per BOARDING —
+  // hopping between rooms and back can't re-farm a spent screen).
+  it.consoles.forEach((con, ci) => {
+    if (con.done) return;
     if (Math.hypot(c.position.x - con.x, c.position.y - con.y) < 1.15) {
       con.done = true;
       con.screen.material.color = new THREE.Color(2.0, 1.8, 0.4); // flashes gold
+      if (it.sci) {
+        it.sci[it.roomIndex] = it.sci[it.roomIndex] || [];
+        it.sci[it.roomIndex][ci] = true;
+      }
       if (it.cb && it.cb.onScience) it.cb.onScience(con.kind);
     }
-  }
+  });
   if (composer && fancyGraphics) composer.render();
   else renderer.render(it.scene, it.cam);
 }

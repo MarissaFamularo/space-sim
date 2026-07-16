@@ -9,6 +9,22 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-16 latest+1): 🚪 MULTI-ROOM STATIONS — stuff to EXPLORE (his ask)
+
+Every station is now a seeded CHAIN of 2–3 connected modules; adjacent rooms are
+always different kinds. The openable hatch wears a GREEN GLOWING RIM and a sign
+("→ 🌿 GREENHOUSE"); drift into it and the Connie carries her momentum through into
+the next room. Science is per room per boarding (hopping back can't re-farm a spent
+screen); the alien resident lives in ONE seeded room; the derelict's salvage log now
+waits in its DEEPEST room (venture in for the story); ground bases gained a back
+room (live base: the greenhouse). Hint bar shows "room 1/3". Navigator taught (ISS =
+~16 modules bolted together — real!). Browser-verified: boarded Harbor, drifted the
+hatch, arrived room 2/2 with momentum, stayed (no ping-pong), zero console errors;
+all 13 suites + boot smoke green. **Flag:** hatch traversal in a GRAVITY room (walk
+into the end wall) is code-verified only — worth one walk-through with him; and the
+transition rebuild is instant (no door animation) — if it feels abrupt, a fade would
+live in interiorGoRoom.
+
 ## Status (2026-07-16 latest): 🛰 STATION FIXES — his two gripes, both addressed
 
 His ask (deferred until after Youngcow + interstellar): "the stations are all the
