@@ -3997,6 +3997,12 @@ function enterStation(info, cb) {
       }
     }
   }
+  // CRADLE STATION (his planet!) hides something extra: its deepest room is THE
+  // FOUNDERS' VAULT — a real puzzle. The key is knowing his own system.
+  if (!info._rooms && info.seedKey === "gen:youngcow/st_home" &&
+      rooms[rooms.length - 1] !== "vault") {
+    rooms.push("vault");
+  }
   const roomIndex = info._room || 0;
   const alienRoom = Math.floor(planRng() * rooms.length); // where the resident lives
 
@@ -4022,7 +4028,7 @@ function enterStation(info, cb) {
 
   // Hull: a cylinder seen from INSIDE, with end caps. Wall tint says what kind of
   // place this is (seeded pastel only for labs/bases, like before).
-  const ARCH_WALL = { hub: 0x7e8894, depot: 0x9a8e78, garden: 0xaac8a2, observatory: 0x39415a };
+  const ARCH_WALL = { hub: 0x7e8894, depot: 0x9a8e78, garden: 0xaac8a2, observatory: 0x39415a, vault: 0x4a3a5e };
   const wallColor = derelict ? 0x3a3236
     : ARCH_WALL[arch] || new THREE.Color().setHSL(rng(), 0.12, 0.72).getHex();
   // Painted panel quilt (seams, rivets, vents, placards, the archetype's stripe) —
@@ -4092,7 +4098,8 @@ function enterStation(info, cb) {
       iScene.add(glowRim);
       const toArch = rooms[roomIndex + (sx > 0 ? 1 : -1)];
       const SIGN = { hub: "\u{1F4E6} CARGO HUB", depot: "⛽ FUEL DEPOT", garden: "\u{1F33F} GREENHOUSE",
-        observatory: "\u{1F52D} OBSERVATORY", lab: "\u{1F52C} SCIENCE LAB", base: "\u{1F3E0} MAIN ROOM" };
+        observatory: "\u{1F52D} OBSERVATORY", lab: "\u{1F52C} SCIENCE LAB", base: "\u{1F3E0} MAIN ROOM",
+        vault: "\u{1F3DB} THE VAULT" };
       const sc = document.createElement("canvas");
       sc.width = 192; sc.height = 40;
       const sctx = sc.getContext("2d");
@@ -4185,7 +4192,7 @@ function enterStation(info, cb) {
   // Windows: starfield outside (tiny baked canvas) — or, in a GROUND base, the
   // planet itself. Hubs and gardens look DOWN at their world (stations orbit
   // something); the observatory skips portholes for one giant cupola (built below).
-  const nWin = derelict ? 1 : arch === "observatory" ? 0 : 2 + Math.floor(rng() * 3);
+  const nWin = derelict || arch === "vault" ? (derelict ? 1 : 0) : arch === "observatory" ? 0 : 2 + Math.floor(rng() * 3);
   const planetView = !info.ground && (arch === "hub" || arch === "garden"); // grounded rooms see the plains, not a limb
   const planetHue = rng(); // this station's world, same color in every window
   for (let i = 0; i < nWin; i++) {
@@ -4277,7 +4284,7 @@ function enterStation(info, cb) {
     // depots test materials, hubs and labs dabble.
     const ARCH_CONSOLES = {
       hub: ["materials", "astro"], depot: ["materials", "materials"],
-      garden: ["bio", "bio"], observatory: ["astro", "astro"],
+      garden: ["bio", "bio"], observatory: ["astro", "astro"], vault: [],
       lab: ["bio", "materials", "astro"], base: ["bio", "materials", "astro"],
     };
     const kindList = ARCH_CONSOLES[arch] || ARCH_CONSOLES.lab;
@@ -4545,6 +4552,105 @@ function enterStation(info, cb) {
     }
   });
 
+  // ---- 🏛 THE FOUNDERS' VAULT (Cradle Station's deepest room): a REAL puzzle ----
+  // Four pedestals show the worlds of HIS system, scrambled. Touch them in order
+  // FROM THE STAR and the vault opens. The key isn't written anywhere — it's
+  // knowing your own solar system (and why worlds sort by distance is real
+  // astronomy: rock and lava bake close in, ice survives far out).
+  let puzzle = null;
+  if (arch === "vault") {
+    const WORLDS = [ // rank = true order from Youngcow, outward
+      { rank: 0, name: "Sia", draw: (x) => { // half-molten lava ball
+          x.fillStyle = "#2a1410"; x.beginPath(); x.arc(32, 32, 22, 0, Math.PI * 2); x.fill();
+          x.fillStyle = "#ff5a1a"; x.beginPath(); x.arc(32, 32, 22, Math.PI / 2, Math.PI * 1.5); x.fill();
+          x.fillStyle = "#ffc24a"; x.fillRect(14, 30, 12, 3); } },
+      { rank: 1, name: "Hundun", draw: (x) => { // green world with a ring
+          x.fillStyle = "#4a9a5a"; x.beginPath(); x.arc(32, 32, 18, 0, Math.PI * 2); x.fill();
+          x.strokeStyle = "#d8cfa8"; x.lineWidth = 4;
+          x.beginPath(); x.ellipse(32, 32, 29, 9, -0.35, 0, Math.PI * 2); x.stroke(); } },
+      { rank: 2, name: "Comet Konnie", draw: (x) => { // snowball with a tail
+          x.fillStyle = "rgba(159,216,240,0.75)";
+          x.beginPath(); x.moveTo(56, 8); x.lineTo(26, 36); x.lineTo(40, 44); x.closePath(); x.fill();
+          x.fillStyle = "#dff4fa"; x.beginPath(); x.arc(28, 40, 11, 0, Math.PI * 2); x.fill(); } },
+      { rank: 3, name: "Centdra", draw: (x) => { // world still forming in its disc
+          x.fillStyle = "#c09a5a"; x.beginPath(); x.arc(32, 32, 13, 0, Math.PI * 2); x.fill();
+          x.strokeStyle = "rgba(224,168,90,0.8)"; x.lineWidth = 3;
+          x.beginPath(); x.ellipse(32, 32, 26, 7, 0.3, 0, Math.PI * 2); x.stroke();
+          x.strokeStyle = "rgba(224,168,90,0.4)";
+          x.beginPath(); x.ellipse(32, 32, 30, 9, 0.3, 0, Math.PI * 2); x.stroke(); } },
+    ];
+    // Scramble the pedestal ORDER on the wall (seeded — same scramble every visit).
+    const slots = [0, 1, 2, 3];
+    for (let i = slots.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [slots[i], slots[j]] = [slots[j], slots[i]];
+    }
+    const pedMat = new THREE.MeshStandardMaterial({ color: 0x5a4a6e, roughness: 0.6, metalness: 0.3 });
+    pedMat._isClone = true;
+    const panels = [];
+    slots.forEach((worldIdx, si) => {
+      const w = WORLDS[worldIdx];
+      const px = -len / 2 + 1.6 + si * (len - 3.2) / 3;
+      const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.38, 1.1, 10), pedMat);
+      ped.position.set(px, -rad + 1.35, -(rad - 0.95));
+      iScene.add(ped);
+      const cvI = document.createElement("canvas");
+      cvI.width = 64; cvI.height = 64;
+      const ctxI = cvI.getContext("2d");
+      ctxI.fillStyle = "#141020"; ctxI.fillRect(0, 0, 64, 64);
+      w.draw(ctxI);
+      const texI = new THREE.CanvasTexture(cvI);
+      texI.colorSpace = THREE.SRGBColorSpace;
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.62),
+        new THREE.MeshBasicMaterial({ map: texI }));
+      face.position.set(px, -rad + 2.15, -(rad - 0.95));
+      iScene.add(face);
+      const haloP = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.03, 8, 22),
+        new THREE.MeshBasicMaterial({ color: 0x3a3450 }));
+      haloP.position.copy(face.position);
+      iScene.add(haloP);
+      panels.push({ rank: w.rank, name: w.name, x: px, y: -rad + 2.0, halo: haloP, lit: false });
+    });
+    // The vault door itself: a golden seal on the far cap, crystal waiting behind.
+    const doorMat = new THREE.MeshStandardMaterial({
+      color: 0xb08a2a, roughness: 0.35, metalness: 0.7,
+      emissive: 0x6a4a10, emissiveIntensity: 0.5,
+    });
+    doorMat._isClone = true;
+    const vaultDoor = new THREE.Mesh(new THREE.CircleGeometry(rad * 0.34, 26), doorMat);
+    vaultDoor.position.set(len / 2 - 0.06, rad * 0.35, 0);
+    vaultDoor.rotation.y = -Math.PI / 2;
+    iScene.add(vaultDoor);
+    const crystal = new THREE.Mesh(new THREE.IcosahedronGeometry(0.32, 0),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 1.9, 1.6) })); // blooms
+    crystal.position.set(len / 2 - 0.55, rad * 0.35, 0);
+    crystal.visible = false;
+    iScene.add(crystal);
+    // The instruction, carved over the door — the ANSWER is his own system.
+    const cvS = document.createElement("canvas");
+    cvS.width = 256; cvS.height = 56;
+    const ctxS = cvS.getContext("2d");
+    ctxS.fillStyle = "#1a1426"; ctxS.fillRect(0, 0, 256, 56);
+    ctxS.strokeStyle = "#b08a2a"; ctxS.lineWidth = 3; ctxS.strokeRect(2, 2, 252, 52);
+    ctxS.fillStyle = "#ffd870"; ctxS.font = "700 15px system-ui";
+    ctxS.textAlign = "center";
+    ctxS.fillText("TOUCH THE WORLDS IN ORDER", 128, 23);
+    ctxS.fillText("FROM THE STAR  ☀️ →", 128, 43);
+    const signTexV = new THREE.CanvasTexture(cvS);
+    signTexV.colorSpace = THREE.SRGBColorSpace;
+    const signV = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.42),
+      new THREE.MeshBasicMaterial({ map: signTexV }));
+    signV.position.set(0, rad - 0.8, -(rad - 0.4));
+    iScene.add(signV);
+    const solved = !!(info._sci && info._sci.__vault);
+    if (solved) { // already opened this boarding: door stays open, crystal shines
+      vaultDoor.visible = false;
+      crystal.visible = true;
+      panels.forEach((p) => { p.lit = true; p.halo.material.color.setRGB(1.6, 1.3, 0.4); });
+    }
+    puzzle = { panels, door: vaultDoor, crystal, progress: solved ? 4 : 0, solved, cool: 0 };
+  }
+
   // The RESIDENT. 👽 Friendly — big eyes like a Connie, its own glyph console, and
   // it hums in prime numbers (the Navigator explains). It lives in ONE particular
   // room of the station — finding it is part of the exploring.
@@ -4599,6 +4705,7 @@ function enterStation(info, cb) {
       depot: { amb: 0xf0e2c8, ambI: 1.25, pt: 0xffc878, ptI: 44 },
       garden: { amb: 0xe8f6e2, ambI: 1.5, pt: 0xf2ffe8, ptI: 46 },
       observatory: { amb: 0x2a2430, ambI: 1.0, pt: 0xff4838, ptI: 14 },
+      vault: { amb: 0x2e2618, ambI: 1.05, pt: 0xffd870, ptI: 24 },
     };
     const m = MOOD[arch] || { amb: 0xf4efe6, ambI: 1.4, pt: 0xfff0d8, ptI: 40 };
     iScene.add(new THREE.AmbientLight(m.amb, m.ambI));
@@ -4623,12 +4730,12 @@ function enterStation(info, cb) {
     "background:rgba(12,18,34,0.86);border:1px solid #24304d;border-radius:8px;color:#9fb3da;" +
     "padding:6px 14px;font:600 13px system-ui,sans-serif;z-index:15;";
   const ARCH_LABEL = { hub: "📦 cargo hub", depot: "⛽ fuel depot", garden: "🌿 greenhouse",
-    observatory: "🔭 observatory", lab: "🔬 science lab" };
+    observatory: "🔭 observatory", lab: "🔬 science lab", vault: "🏛 the Founders' Vault" };
   hintEl.textContent = "🐍 " + info.name + (ARCH_LABEL[arch] ? " · " + ARCH_LABEL[arch] : "") +
     " — arrows float · drift to a glowing screen for science · E to return to your ship";
   document.getElementById("app").appendChild(hintEl);
 
-  interior = { scene: iScene, cam, connie, vel: { x: 0, y: 0 }, consoles, alien,
+  interior = { scene: iScene, cam, connie, vel: { x: 0, y: 0 }, consoles, alien, puzzle,
                keys: {}, hintEl, cb, len, rad, drifters, last: 0,
                spin: !!info.spin, ground: !!info.ground,
                rooms, roomIndex, baseInfo: info, sci: info._sci || {} };
@@ -4739,6 +4846,44 @@ function updateInterior() {
   // Camera eases along the module to keep her in frame.
   it.cam.position.x += (c.position.x * 0.7 - it.cam.position.x) * 0.04;
   it.cam.lookAt(c.position.x * 0.85, 0, -it.rad * 0.3);
+
+  // 🏛 The Vault puzzle: touch the worlds in order from the star. Right panel
+  // lights gold; wrong panel resets the sequence (gently — a moment's lockout and
+  // a Navigator hint, never a punishment). All four → the vault opens.
+  if (it.puzzle && !it.puzzle.solved) {
+    const pz = it.puzzle;
+    if (now > pz.cool) {
+      for (const p of pz.panels) {
+        if (p.lit) continue;
+        if (Math.hypot(c.position.x - p.x, c.position.y - p.y) > 1.0) continue;
+        if (p.rank === pz.progress) {
+          p.lit = true;
+          p.halo.material.color.setRGB(1.6, 1.3, 0.4); // gold — locked in
+          pz.progress++;
+          if (it.cb && it.cb.onPuzzle) it.cb.onPuzzle({ kind: "progress", name: p.name, step: pz.progress, of: pz.panels.length });
+          if (pz.progress >= pz.panels.length) {
+            pz.solved = true;
+            pz.door.visible = false;
+            pz.crystal.visible = true;
+            if (it.sci) it.sci.__vault = true; // stays open for the rest of this boarding
+            if (it.cb && it.cb.onScience) it.cb.onScience("vault");
+          }
+        } else {
+          pz.progress = 0;
+          for (const q of pz.panels) { q.lit = false; q.halo.material.color.setRGB(0.9, 0.2, 0.15); }
+          pz.cool = now + 1.4; // red flash, brief pause, then the halos go dark again
+          if (it.cb && it.cb.onPuzzle) it.cb.onPuzzle({ kind: "wrong", name: p.name });
+        }
+        break;
+      }
+    } else if (now > pz.cool - 0.7) {
+      for (const q of pz.panels) if (!q.lit) q.halo.material.color.setRGB(0.23, 0.2, 0.31);
+    }
+  }
+  if (it.puzzle && it.puzzle.crystal.visible) {
+    it.puzzle.crystal.rotation.y += dt * 1.2; // the prize turns slowly, catching light
+    it.puzzle.crystal.rotation.x += dt * 0.5;
+  }
 
   // Science: drift close to a live screen and it fires (once each per BOARDING —
   // hopping between rooms and back can't re-farm a spent screen).

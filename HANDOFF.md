@@ -9,6 +9,24 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-16 latest+2): 🏛 THE FOUNDERS' VAULT — a real puzzle (Mom's idea)
+
+Cradle Station (over Hundun) now ends in a 4th room: THE FOUNDERS' VAULT. Four
+pedestals show HIS worlds scrambled (painted icons: half-molten Sia, ringed Hundun,
+Comet Konnie, disc-wrapped Centdra); touch them IN ORDER FROM THE STAR and the
+golden door opens on a slowly-turning science crystal — +50 science, once per
+boarding. Wrong touch = gentle red flash, 1.4 s lockout, and a rotating Navigator
+hint (hint-first voice, never the answer); the online Navigator is taught to coach
+the same way and only reveal Sia→Hundun→Konnie→Centdra if he's stuck and asks.
+The teaching payload is real: heat sorts solar systems (rock bakes close, ice
+survives past the frost line) — his system obeys the same law ours does.
+Browser-verified end-to-end: plan = garden→depot→hub→vault, wrong-touch resets,
+correct order opens, science awarded exactly once, solved state survives re-entry,
+zero console errors. All 13 suites + navigator 18/18 + boot smoke green.
+**Flag:** rung 4 is the whole point here — watch him solve it; if it's too easy,
+harder puzzle ideas (Kepler timing locks, prime sequences with the alien) would
+slot into the same panels-plus-door machinery.
+
 ## Status (2026-07-16 latest+1): 🚪 MULTI-ROOM STATIONS — stuff to EXPLORE (his ask)
 
 Every station is now a seeded CHAIN of 2–3 connected modules; adjacent rooms are

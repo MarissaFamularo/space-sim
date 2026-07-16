@@ -972,11 +972,12 @@ const SCIENCE_FACTS = {
   astro: ["🔭 Telescope time! Up here there's no air to blur the stars — that's exactly why we put Hubble and JWST in space instead of on mountains.",
         "🌍 Earth-watching logged! Astronauts call it the Overview Effect — seeing your whole world in one window changes how you think about it."],
   salvage: ["📼 You recovered the station's old log! Final entry: 'Meteor strike. Power failing. We got everyone to the escape craft — leave the lights off on your way out.' Space junk is why real stations fly dodge maneuvers every year.",],
+  vault: ["🏛✨ <b>THE FOUNDERS' VAULT OPENS!</b> You knew your own system — that's the whole key. And the ORDER of worlds isn't random anywhere: close to a star it's too hot for ice, so rock and lava worlds bake in tight; past the frost line, ices survive and worlds grow big and cold. Sia, then Hundun, then the comet's path, then Centdra in the disc — sorted by the star's heat. Every solar system tells this same story, including ours.",],
   basewreck: ["📼 The base log, final entry: 'They came at night — a whole herd of the big armored ones, straight through the walls. Turns out we built our greenhouse on their favorite feeding ground. Nobody was hurt; we grabbed the seed vault and moved to the new base. New rule: check where the LOCALS eat before you build.' Wild animals aren't villains — they were here first, and they only wanted the plants.",],
   alien: ["👽🎵 The resident hums at you — in PRIME NUMBERS. 2, 3, 5, 7, 11… Math is the one language every scientist expects the universe to share. It taps its console and gifts you its notes: ALIEN SCIENCE!",
         "👽📐 It draws you a right triangle and hums three notes: 3, 4, 5. Pythagoras works in every star system — that's WHY scientists think math is how we'd talk to aliens first."],
 };
-const SCIENCE_VALUE = { bio: 10, materials: 10, astro: 10, salvage: 15, basewreck: 15, alien: 25 };
+const SCIENCE_VALUE = { bio: 10, materials: 10, astro: 10, salvage: 15, basewreck: 15, alien: 25, vault: 50 };
 let factRotor = 0;
 function awardScience(kind) {
   const pts = SCIENCE_VALUE[kind] || 10;
@@ -1036,6 +1037,13 @@ function boardStation() {
     { name: st.name, abandoned: !!st.abandoned, alien: hasAlien, seedKey,
       spin: !!st.centrifuge }, // your centrifuge station: gravity inside!
     { onScience: awardScience,
+      onPuzzle: (ev) => { // 🏛 the Vault coaches like the Navigator: hint first
+        if (ev.kind === "wrong") {
+          copilotSay(vaultHints[(vaultHintRotor++) % vaultHints.length]);
+        } else if (ev.kind === "progress" && ev.step < ev.of) {
+          copilotSay("🏛 <b>" + ev.name + "</b> lights up gold — " + ev.step + " of " + ev.of + ". Keep going, outward from the star!");
+        }
+      },
       onExit: () => copilotSay("🚀 Back aboard your ship — still docked, tanks " +
         (st.abandoned ? "empty as ever (this old wreck has nothing left)." : "topped off. Undock with a gentle throttle when you're ready.")) });
   copilotSay(st.abandoned
@@ -1373,6 +1381,14 @@ function updateMeteorRain() {
       "fresh craters exactly this way to age a surface.");
   }
 }
+
+// 🏛 Vault hints, in the Navigator's hint-first teaching voice (never the answer).
+let vaultHintRotor = 0;
+const vaultHints = [
+  "🏛 The pedestals go dark and reset — no harm done! Think about YOUR system: which world hugs Youngcow tightest? The hottest one starts the sequence.",
+  "🏛 Reset — try again! The sign says <b>from the star</b>: closest first, farthest last. Where does the lava world live, and where do things stay icy?",
+  "🏛 Almost! Picture the map of your system, sunward out. (Real astronomy hint: heat sorts worlds — rock bakes close in, ice survives far out.)",
+];
 
 // ---- 🛰 Space stations: propagate their circular orbits, offer docking ----
 // Dock = drift within 150 m at under 10 m/s relative. Working stations refuel the
