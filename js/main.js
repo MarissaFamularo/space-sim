@@ -3,7 +3,7 @@
 // and wires the copilot. Integrates physics.js + render.js + builder.js per the contract.
 
 import { PARTS } from "./mods.js";
-import { BODIES, SYSTEM, STATIONS, isSol, setSystem, returnToSol, newCraft, newSimState, computeStats, findPart, bodyStateAt, dominantBody } from "./state.js";
+import { BODIES, SYSTEM, STATIONS, isSol, setSystem, returnToSol, newCraft, newSimState, computeStats, findPart, makeInstance, bodyStateAt, dominantBody } from "./state.js";
 import { generateSystem, galaxyPos, interstellarVector, GAME_LY } from "./stargen.js";
 import { FAMOUS_LIST } from "./famous.js";
 import { Physics } from "./physics.js";
@@ -14,6 +14,7 @@ import { Copilot } from "./copilot.js";
 import { pickConnie } from "./connies.js";
 import { Menu } from "./menu.js";
 import { Tracking } from "./tracking.js";
+import { School } from "./school.js";
 
 const canvas = document.getElementById("scene");
 let craft = newCraft();
@@ -613,7 +614,36 @@ Menu.init({
     copilotSay("✈ <b>Welcome to the Space Plane Hangar!</b> This is where planes, probes, and space stations get built — wings glide in air, a Centrifuge Ring spins for gravity, and a Station Hub makes your build deployable as a real station. Build it, then ✨ Teleport it to orbit!");
   },
   onTracking: () => Tracking.show(),
+  onSchool: () => School.show(),
   onSettingsChange: (s) => Render.setQuality(s.graphics),
+});
+
+// 🎒 Space School (the little-sibling classroom): school.js owns the lesson overlays
+// and speaks out loud; main hands it the same levers the keyboard has. The school
+// rocket is stock parts on the ordinary launch path — no special physics anywhere.
+School.init({
+  // Put the school rocket on the pad, palette hidden (she never sees the builder).
+  // Stage rule mirrors builder.js reflowStages: parts above a decoupler are the
+  // next stage; the decoupler falls with the booster.
+  prepRocket(stack) {
+    craft.parts.length = 0; // in place — everyone holds the reference
+    craft.name = "School Rocket";
+    let stage = 0;
+    for (const id of stack) {
+      const def = findPart(PARTS, id);
+      craft.parts.push(makeInstance(id, stage));
+      if (def && def.type === "decoupler") stage += 1;
+    }
+    enterBuild();
+    Builder.hide();
+  },
+  launchRocket: () => launch(),
+  stageRocket: () => doStage(),
+  setThrottle: (v) => { sim.craft.throttle = v; },
+  setWarp: (v) => { sim.timeWarp = v; }, // the teacher fast-forwards the boring coasts
+  deployChute: () => deployChute(false),
+  resetGame: () => reset(),
+  toCenter: () => Menu.showCenter(),
 });
 Render.setQuality(Menu.getSettings().graphics);
 Menu.showTitle();
@@ -641,7 +671,7 @@ function wireCopilot() {
 const keys = {};
 window.addEventListener("keydown", (e) => {
   if (e.target && e.target.tagName === "INPUT") return;
-  if (Menu.isOpen() || Tracking.isOpen()) return; // menus own the keys while open
+  if (Menu.isOpen() || Tracking.isOpen() || School.isOpen()) return; // menus own the keys while open
   if (Render.isInside()) return; // the station interior owns the keys while aboard
   keys[e.key] = true;
   if (e.repeat) return;
@@ -1542,6 +1572,7 @@ function frame(t) {
   updateBasesSim();
   updateMeteorRain();
   updateInterstellar();
+  School.onTick(sim); // 🎒 flight coaching (no-op unless a school flight is up)
 
   Render.update(sim);
   updateBanner();

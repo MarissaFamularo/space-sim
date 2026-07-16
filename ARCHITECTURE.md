@@ -426,3 +426,23 @@ Render.enterStation(info, cb)       // info gains .spin — centrifuge interior:
   and console kinds. Famous addresses hand-pinned (harbor=hub, selene=depot,
   Pandora & Youngcow homes=garden, Gene's=hub, Jool outpost=lab). Ground bases and
   the derelict keep their existing looks.
+
+## CONTRACT REVISION 2026-07-16d — 🎒 Space School (the little-sibling classroom, Mom's ask)
+
+- **New module school.js** (DOM-only overlays, menu.js-style; owns no game state):
+  `School.init({prepRocket, launchRocket, stageRocket, setThrottle, setWarp,
+  deployChute, resetGame, toCenter})`, `show()`, `isOpen()` (a full-screen room is up —
+  main.js blocks flight keys on it, same guard as Menu/Tracking), `isFlying()`,
+  `onTick(sim)` (called once per frame; drives the flight coaching, no-op otherwise).
+  Also exports pure `SchoolCore` (build-order checker, sticker-book validator, flight
+  phase machine, `spaceAltitude()`) — node-tested in tests/school_test.mjs.
+- **Menu.init gains `onSchool`** (fourth campus building). No other Menu change.
+- **New storage key `spacesim.school.v1`** — `{v:1, name (≤12 chars), stickers:
+  {build, space, land}}`, written only by school.js, validated on load (garbage →
+  fresh book). HER save; Rule-2 protected like every other key. School writes NO
+  other key — a school flight (pod/tank/decoupler stack) cannot deploy satellites
+  or stations, so his persisted world is untouchable from school mode.
+- **The school flight uses the ordinary launch path** (main.js launch/doStage/
+  deployChute; the craft is stock parts on the shared craft object) — physics
+  untouched. The teacher's only powers are the same levers the keyboard has
+  (throttle, stage, chute, time-warp), always announced out loud.

@@ -199,6 +199,7 @@ to a sane default — a mangled localStorage must never kill the boot.
 | `spacesim.visitedSystems.v1` | `[{ seed, star, planets }]`, max 12, most-recent first | main.js `rememberVisit()` (main.js:395-399) | main.js `loadVisited()` (main.js:392-394), feeds the galaxy map | `JSON.parse \|\| []` in try/catch |
 | `spacesim_anthropic_key` | raw API key string (no JSON) | copilot.js `setKey()` (copilot.js:55) via the in-app 🔑 button | copilot.js `getKey()` (copilot.js:54); `hasKey()` = length > 10 | try/catch → `""` (Navigator falls back to offline stub). NEVER log, echo, or commit this value. |
 | `spacesim.wishlist.v1` | `[{ when: "YYYY-MM-DD", idea }]`, max 40, ideas capped 160 chars, case-insensitive deduped (2026-07-12) | copilot.js `saveWish()` — from `[[WISH: …]]` markers the model appends (online) or idea-shaped messages in the offline stub | copilot.js `loadWishes()`: the snapshot's `wishlist` field (last 15) + the offline "what's in the wish book?" reply | `JSON.parse \|\| []` in try/catch; his IDEAS — treat like saves (Rule 2) |
+| `spacesim.school.v1` | `{ v: 1, name (≤12 chars), stickers: {build, space, land} }` (2026-07-16) | school.js `saveSchool()` | school.js `loadSchool()` via pure `SchoolCore.validateSaved` (node-tested) | Any junk → a fresh empty sticker book. HIS LITTLE SISTER'S save — Rule 2 applies to her too. School mode writes no other key. |
 
 Schema details worth knowing before you touch anything:
 

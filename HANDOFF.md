@@ -9,6 +9,66 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-16 latest+3): 🎒 SPACE SCHOOL — his little sister can play now (Mom's ask)
+
+Mom's ask: the 5-year-old sister (great at typing, can't read yet) wants to play.
+Built: a fourth Space Center building, **🎒 SPACE SCHOOL** — a talking classroom
+(browser speechSynthesis, offline, zero assets; falls back to silent text) where every
+instruction is SPOKEN, buttons are huge, and words are one-per-button. She types her
+name once for her astronaut badge (the typing she's proud of), then three lessons:
+
+1. **🧩 BUILD IT** — five blinking slots filled bottom-up like a tower (🔥 engine →
+   ⛽ tank → ✂ decoupler → 🐍 pod → ☂ parachute — real capsule anatomy). Wrong tap =
+   friendly wobble + spoken pointing hint, never a scold, never auto-fixed.
+2. **🚀 FLY IT** — her rocket on the real pad, SHE taps the 5-4-3-2-1 countdown and the
+   big red button: REAL physics, straight up. Crossing the top of the air = confetti,
+   "you are in SPACE!", teacher cuts the engine out loud ("now we FLOAT" — freefall is
+   the lesson) and gently time-warps the coast (5x; taps always happen at 1x).
+3. **☂ COME HOME** — falling, she taps ✂ (booster falls away — staging is LOAD-BEARING,
+   see below) then ☂; touchdown at the chute's ~3.5 m/s. Stickers + certificate.
+
+**The physics found the design (predict-then-check, tests/school_test.mjs, 43 checks):**
+the booster comes home with ~2.3 t of unburned fuel — ballistic coefficient so high the
+stack NEVER slows below the chute's 250 m/s opening limit and hits the ground at
+~500 m/s (node-proven negative test). Dropping the empty bottom is what saves the
+flight, exactly like real rockets. So the ✂ tap is the mission-critical lesson, with
+two honest safety nets: the teacher stages FOR her below 3 km ("I helped —") and the
+existing auto-chute below 2.5 km. Her first flight is un-loseable by physics, not fudge.
+
+**Isolation (Rule 2):** her whole save is ONE new key `spacesim.school.v1` (name +
+3 stickers, garbage-tolerant load, node-tested; catalogued in constants-and-storage
+skill + ARCHITECTURE "CONTRACT REVISION 2026-07-16d"). School writes NO other key, and
+the school stack (no probe core / hub) cannot deploy satellites or stations — his
+persisted world is untouchable from school mode. His five keys verified untouched in
+the browser run. Physics/parts.js/Navigator safety block untouched; Navigator taught
+one Space School knowledge paragraph (navigator_check ALL GREEN).
+
+**Verified:** all 14 node suites green (school suite: build-order, sticker-book
+validator, phase machine, and the full mission flown twice with real Physics — taps
+and no-taps paths both land soft; apogee 33 km, heat 0.10 max, touchdown 3.5 m/s).
+Browser-verified end-to-end on the hook-injected scratch copy (Browser pane, zero
+console errors the whole session): boot → center shows the schoolhouse → name typed →
+FLY IT locked until built → build with a wrong-tap hint → countdown → real launch →
+space celebrate + engine cut + warp 5 + sticker → falling at 21.5 km → ✂ tap staged
+(mass 5.75→0.9 t) → ☂ tap ("Parachute out!", and the no-tap run says "I helped") →
+landed → certificate "ASTRONAUT ELLIE" with 3 stickers → exit → VAB palette intact →
+Moon-teleport regression 0.0007% error. Canvas verified lit via litFraction 0.9999
+(WebGL screenshots don't composite between harness tool calls — DOM shots captured).
+
+**Flagged / rung 4 (play-test with HER):**
+- **Speech is the whole UX and headless can't hear it** — first real run: is the voice
+  clear, loud enough, pacing right? speak() uses the default en-US voice, rate 0.95.
+  If it's robotic or skips, the one knob is `speak()` in school.js.
+- The 3D view behind the flight overlay is verified rendering but not eyeballed —
+  glance that the rocket/plume look right behind her big buttons.
+- Grown-up panels HIDE during school flights (a click-shield also blocks stray taps);
+  verified restored after. If her brother's pad had an UNSAVED build, entering a school
+  flight clears it (same as Reset) — craft was never persisted; accepted trade.
+- Cards match by emoji + spoken word; if she struggles, real SVG part silhouettes in
+  the slots (shape-matching) is the natural next rung.
+- Crash path (friendly "Connies always are" + TRY AGAIN) is code+phase-machine tested
+  only — hard to reach honestly with the nets in place. Fine.
+
 ## Status (2026-07-16 latest+2): 🏛 THE FOUNDERS' VAULT — a real puzzle (Mom's idea)
 
 Cradle Station (over Hundun) now ends in a 4th room: THE FOUNDERS' VAULT. Four

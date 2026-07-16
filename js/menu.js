@@ -4,7 +4,7 @@
 // mode. Pure DOM/SVG overlays on top of the running 3D scene; owns no game state.
 //
 // API (used by main.js):
-//   Menu.init({ onVAB, onHangar, onTracking, onSettingsChange })
+//   Menu.init({ onVAB, onHangar, onTracking, onSchool, onSettingsChange })
 //   Menu.showTitle() / Menu.showCenter() / Menu.hideAll()
 //   Menu.getSettings() -> { graphics: "fancy"|"fast" }
 
@@ -237,6 +237,26 @@ function showCenter() {
       <text x="155" y="416" text-anchor="middle" font-size="12" fill="#9fb3da">every ship, probe &amp; station — live</text>
     </g>
 
+    <!-- SPACE SCHOOL (the little-sibling classroom — Mom's ask) -->
+    <g class="ksp-bld" data-go="school">
+      <g class="ksp-glow">
+        <rect x="300" y="285" width="90" height="60" rx="4" fill="#e8b64c" stroke="#b3822a" stroke-width="2"/>
+        <path d="M295 285 L345 252 L395 285 Z" fill="#c8503c" stroke="#93392b" stroke-width="2"/>
+        <!-- bell in the gable -->
+        <circle cx="345" cy="272" r="7" fill="#fff3d6" stroke="#93392b" stroke-width="2"/>
+        <path d="M342 270 a3.5 3.5 0 0 1 7 0 l1 4 l-9 0 Z" fill="#8a5a12"/>
+        <!-- door + windows -->
+        <rect x="332" y="318" width="26" height="27" rx="3" fill="#6d4713"/>
+        <rect x="308" y="296" width="16" height="14" rx="2" fill="#fff3d6"/>
+        <rect x="366" y="296" width="16" height="14" rx="2" fill="#fff3d6"/>
+        <!-- kid-drawn rocket chalkboard -->
+        <rect x="337" y="294" width="17" height="18" rx="2" fill="#20301f"/>
+        <path d="M345 297 l3 6 l-2 0 l0 4 l-2 0 l0 -4 l-2 0 Z" fill="#ffd24a"/>
+      </g>
+      <text x="337" y="395" text-anchor="middle" font-size="16" font-weight="800" fill="#ffe0a8">🎒 SPACE SCHOOL</text>
+      <text x="337" y="416" text-anchor="middle" font-size="12" fill="#d9b989">new astronauts start here</text>
+    </g>
+
     <!-- VAB -->
     <g class="ksp-bld" data-go="vab">
       <g class="ksp-glow">
@@ -296,6 +316,7 @@ function showCenter() {
       if (go === "vab" && handlers.onVAB) handlers.onVAB();
       if (go === "hangar" && handlers.onHangar) handlers.onHangar();
       if (go === "tracking" && handlers.onTracking) handlers.onTracking();
+      if (go === "school" && handlers.onSchool) handlers.onSchool();
     });
   });
 
