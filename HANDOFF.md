@@ -37,7 +37,19 @@ Deployed player stations keep the generic EXTERIOR mesh (older flag, still open)
    hint bar names the kind. Derelict + alien + ground bases unchanged.
 3. Navigator taught berthing + station kinds (safety untouched, 18/18); all 13 node
    suites green; boot smoke green.
-4. **Spin gravity grounds the room too** (follow-up, Mom's check): in a CENTRIFUGE
+4. **INTERIOR GRAPHICS PASS** (follow-up, his note: "only different in color, no
+   details"): the indoor version of the graphics pass — procedural painted-canvas
+   textures, zero assets. Every module now has a riveted panel-quilt wall (seams,
+   rivets, vents, placards, the archetype's accent stripe — hazard chevrons on
+   depots), HATCHES with crank wheels on both end caps, ISS-blue HANDRAILS (real
+   station fact), a clamped ceiling conduit run, visible light-fixture housings, and
+   diamond-plate DECK GRATING in gravity rooms. Archetype furniture got denser:
+   stenciled "CARGO" crates, tank crank-valves, leafy bushes + misting pipe,
+   star-chart posters, a whiteboard mid-orbit-derivation, glowing sample vials + a
+   microscope; the derelict hangs a torn panel with drooping cables. Browser-verified:
+   all 7 interior variants boarded (hub/depot/garden/observatory/lab/spin/derelict),
+   zero console errors, screenshots captured.
+5. **Spin gravity grounds the room too** (follow-up, Mom's check): in a CENTRIFUGE
    station interior the clutter now sits on the floor and consoles/plant shelves
    stand at floor height, same as ground bases — his rule ("gravity means nothing
    floats") applies to spin gravity, which is the whole lesson of the ring.

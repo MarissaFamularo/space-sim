@@ -3825,6 +3825,141 @@ function interiorKeyDown(e) {
 }
 function interiorKeyUp(e) { if (interior) interior.keys[e.key] = false; }
 
+// ---- Interior detail textures (the graphics-pass treatment, indoors): painted
+// canvases, procedural + seeded, zero assets — same recipe as the planet faces
+// and the riveted rocket skins. All are per-boarding and disposed by exitStation.
+function interiorWallTexture(arch, hex, rng) {
+  const cv = document.createElement("canvas");
+  cv.width = 256; cv.height = 256;
+  const ctx = cv.getContext("2d");
+  const base = new THREE.Color(hex);
+  ctx.fillStyle = "#" + base.getHexString();
+  ctx.fillRect(0, 0, 256, 256);
+  // Per-panel value variation, then seams and rivets — a real module is a quilt.
+  for (let px = 0; px < 4; px++) for (let py = 0; py < 4; py++) {
+    ctx.fillStyle = "rgba(" + (rng() > 0.5 ? "255,255,255" : "10,10,14") + "," + (0.03 + rng() * 0.06).toFixed(3) + ")";
+    ctx.fillRect(px * 64, py * 64, 64, 64);
+  }
+  ctx.strokeStyle = "rgba(10,12,16,0.30)";
+  ctx.lineWidth = 2;
+  for (let x = 0; x <= 256; x += 64) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 256); ctx.stroke(); }
+  for (let y = 0; y <= 256; y += 64) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(256, y); ctx.stroke(); }
+  ctx.fillStyle = "rgba(10,12,16,0.35)";
+  for (let x = 4; x < 256; x += 32) for (let y = 4; y < 256; y += 64) {
+    ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2); ctx.fill();
+  }
+  // A few slatted vents and small placards, seeded around the quilt.
+  for (let v = 0; v < 3; v++) {
+    const vx = 10 + rng() * 200, vy = 10 + rng() * 200;
+    ctx.fillStyle = "rgba(10,12,16,0.30)";
+    ctx.fillRect(vx, vy, 34, 18);
+    ctx.fillStyle = "rgba(220,226,238,0.35)";
+    for (let s = 0; s < 4; s++) ctx.fillRect(vx + 3, vy + 3 + s * 4, 28, 2);
+  }
+  for (let p = 0; p < 4; p++) {
+    ctx.fillStyle = ["#d8b83a", "#4a6ab8", "#dfe3ea"][Math.floor(rng() * 3)];
+    ctx.globalAlpha = 0.75;
+    ctx.fillRect(12 + rng() * 210, 12 + rng() * 220, 14 + rng() * 12, 7);
+    ctx.globalAlpha = 1;
+  }
+  // Archetype accent: a stripe with its own personality.
+  const STRIPE = { hub: "#4a6ab8", depot: "#d8b83a", garden: "#3f8a3a", observatory: "#a03028" };
+  if (STRIPE[arch]) {
+    ctx.fillStyle = STRIPE[arch];
+    ctx.globalAlpha = 0.85;
+    ctx.fillRect(0, 118, 256, 9);
+    if (arch === "depot") { // hazard chevrons on the depot stripe
+      ctx.fillStyle = "#2a2622";
+      for (let x = 0; x < 256; x += 24) {
+        ctx.beginPath(); ctx.moveTo(x, 127); ctx.lineTo(x + 12, 118); ctx.lineTo(x + 18, 118);
+        ctx.lineTo(x + 6, 127); ctx.closePath(); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(3, 2);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function interiorDeckTexture() {
+  const cv = document.createElement("canvas");
+  cv.width = 128; cv.height = 128;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "#585e6a"; ctx.fillRect(0, 0, 128, 128);
+  ctx.strokeStyle = "rgba(20,22,28,0.8)"; ctx.lineWidth = 3;
+  for (let i = -128; i < 256; i += 16) { // diamond-plate grating
+    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + 128, 128); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(i + 128, 0); ctx.lineTo(i, 128); ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function crateTexture(rng) {
+  const cv = document.createElement("canvas");
+  cv.width = 64; cv.height = 64;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "#c8a45a"; ctx.fillRect(0, 0, 64, 64);
+  ctx.strokeStyle = "rgba(60,44,20,0.55)"; ctx.lineWidth = 3;
+  ctx.strokeRect(4, 4, 56, 56);
+  ctx.fillStyle = "#3a2c14";
+  ctx.font = "700 11px system-ui";
+  ctx.fillText("CARGO", 10, 22);
+  ctx.fillText(String(100 + Math.floor(rng() * 900)), 10, 36);
+  ctx.beginPath(); ctx.moveTo(40, 52); ctx.lineTo(46, 42); ctx.lineTo(52, 52); ctx.closePath(); ctx.fill(); // this way up
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function starChartTexture(rng) {
+  const cv = document.createElement("canvas");
+  cv.width = 96; cv.height = 64;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "#0a1020"; ctx.fillRect(0, 0, 96, 64);
+  ctx.strokeStyle = "rgba(120,150,210,0.35)"; ctx.lineWidth = 1;
+  ctx.strokeRect(2, 2, 92, 60);
+  const pts = [];
+  ctx.fillStyle = "#dfe8ff";
+  for (let i = 0; i < 14; i++) {
+    const x = 8 + rng() * 80, y = 8 + rng() * 48;
+    pts.push([x, y]);
+    ctx.fillRect(x, y, 2, 2);
+  }
+  ctx.strokeStyle = "rgba(160,190,255,0.5)"; // a constellation someone drew in
+  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < 6; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.stroke();
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function whiteboardTexture(rng) {
+  const cv = document.createElement("canvas");
+  cv.width = 96; cv.height = 64;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "#eef0f4"; ctx.fillRect(0, 0, 96, 64);
+  ctx.strokeStyle = "#8a2c20"; ctx.lineWidth = 2; // somebody's orbit sketch
+  ctx.beginPath(); ctx.ellipse(38, 34, 24, 13, 0.3, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = "#2a4a9a";
+  ctx.beginPath(); ctx.arc(38, 34, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "#2a4a9a"; ctx.lineWidth = 1.5;
+  for (let i = 0; i < 3; i++) { // scribbled equations
+    ctx.beginPath(); ctx.moveTo(66, 14 + i * 10);
+    for (let x = 0; x < 22; x += 4) ctx.lineTo(66 + x, 12 + i * 10 + rng() * 5);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function enterStation(info, cb) {
   if (interior) exitStation();
   const rng = mulberry32(hashStr("interior:" + info.seedKey));
@@ -3852,14 +3987,19 @@ function enterStation(info, cb) {
     const kinds = ["hub", "depot", "garden", "observatory", "lab"];
     arch = ARCH_PINNED[info.seedKey] || kinds[Math.floor(rng() * kinds.length)];
   }
+  // Gravity room? (planet surface OR spinning centrifuge — his rule: nothing floats)
+  const grounded = !!info.ground || !!info.spin;
 
   // Hull: a cylinder seen from INSIDE, with end caps. Wall tint says what kind of
   // place this is (seeded pastel only for labs/bases, like before).
   const ARCH_WALL = { hub: 0x7e8894, depot: 0x9a8e78, garden: 0xaac8a2, observatory: 0x39415a };
   const wallColor = derelict ? 0x3a3236
     : ARCH_WALL[arch] || new THREE.Color().setHSL(rng(), 0.12, 0.72).getHex();
+  // Painted panel quilt (seams, rivets, vents, placards, the archetype's stripe) —
+  // the same procedural-canvas treatment the rocket skins and planet faces got.
+  const wallTex = interiorWallTexture(arch, wallColor, rng);
   const wallMat = new THREE.MeshStandardMaterial({
-    color: wallColor, roughness: 0.9, metalness: 0.1, side: THREE.BackSide,
+    map: wallTex, roughness: 0.9, metalness: 0.1, side: THREE.BackSide,
   });
   const hull = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, len, 28, 1, true), wallMat);
   hull.rotation.z = Math.PI / 2; // axis along X
@@ -3880,6 +4020,108 @@ function enterStation(info, cb) {
     frame.rotation.y = Math.PI / 2;
     frame.position.x = x;
     iScene.add(frame);
+  }
+
+  // ---- The hardware every real module has (his ask: MORE DETAIL) ----
+  const steelMat = new THREE.MeshStandardMaterial({
+    color: derelict ? 0x3a3438 : 0x9aa2ae, roughness: 0.6, metalness: 0.3,
+  });
+  steelMat._isClone = true;
+  // Hatches on both end caps: door, rim, and a wheel you'd crank to seal it.
+  for (const sx of [-1, 1]) {
+    const door = new THREE.Mesh(new THREE.CircleGeometry(rad * 0.42, 24),
+      new THREE.MeshStandardMaterial({
+        color: derelict ? 0x2c2528 : 0x6a7280, roughness: 0.7, metalness: 0.25,
+      }));
+    door.material._isClone = true;
+    door.position.set(sx * (len / 2 - 0.03), -rad * 0.12, 0);
+    door.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
+    iScene.add(door);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(rad * 0.42, 0.05, 8, 26), steelMat);
+    rim.position.copy(door.position);
+    rim.rotation.y = Math.PI / 2;
+    iScene.add(rim);
+    const wheel = new THREE.Mesh(new THREE.TorusGeometry(rad * 0.14, 0.035, 8, 20), steelMat);
+    wheel.position.set(sx * (len / 2 - 0.14), -rad * 0.12, 0);
+    wheel.rotation.y = Math.PI / 2;
+    iScene.add(wheel);
+    for (let s = 0; s < 3; s++) {
+      const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, rad * 0.26, 6), steelMat);
+      spoke.position.copy(wheel.position);
+      spoke.rotation.x = (s / 3) * Math.PI;
+      iScene.add(spoke);
+    }
+  }
+  // Handrails down both walls — the real ISS is COVERED in these (astronauts move
+  // hand over hand, and every rail is the same blue so your eye finds them fast).
+  if (!derelict) {
+    const railMat = new THREE.MeshStandardMaterial({ color: 0x4a6ab8, roughness: 0.5, metalness: 0.2 });
+    railMat._isClone = true;
+    for (const zs of [-1, 1]) {
+      const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, len - 2, 8), railMat);
+      rail.rotation.z = Math.PI / 2;
+      rail.position.set(0, 0.15, zs * (rad - 0.28));
+      iScene.add(rail);
+      for (let x = -len / 2 + 1.4; x < len / 2 - 1; x += 2.2) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.16, 6), railMat);
+        post.position.set(x, 0.15, zs * (rad - 0.2));
+        post.rotation.x = zs * Math.PI / 2;
+        iScene.add(post);
+      }
+    }
+  }
+  // A conduit bundle along the ceiling, clamped every couple of meters.
+  for (let c = 0; c < 3; c++) {
+    const conduit = new THREE.Mesh(new THREE.CylinderGeometry(0.045 - c * 0.008, 0.045 - c * 0.008, len - 0.8, 8), steelMat);
+    conduit.rotation.z = Math.PI / 2;
+    conduit.position.set(0, rad - 0.22, -0.28 + c * 0.16);
+    iScene.add(conduit);
+  }
+  for (let x = -len / 2 + 1.4; x < len / 2 - 1; x += 2.2) {
+    const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.06, 0.5), steelMat);
+    clamp.position.set(x, rad - 0.19, -0.12);
+    iScene.add(clamp);
+  }
+  // Visible light fixtures: two ceiling bars in the room's mood color (they're what
+  // "lights" a room — a room with no fixtures reads as a rendering, not a place).
+  const FIXTURE = { hub: 0xdfe8ff, depot: 0xffd9a0, garden: 0xf2ffe8, observatory: 0xff6a50 };
+  if (!derelict) {
+    const fixColor = new THREE.Color(FIXTURE[arch] || 0xfff0d8).multiplyScalar(1.25); // just past white: a soft glow
+    for (const fx of [-len * 0.22, len * 0.22]) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.05, 0.24),
+        new THREE.MeshBasicMaterial({ color: fixColor }));
+      bar.position.set(fx, rad - 0.34, 0.3);
+      iScene.add(bar);
+      const housing = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.07, 0.3), steelMat);
+      housing.position.set(fx, rad - 0.3, 0.3);
+      iScene.add(housing);
+    }
+  }
+  // Gravity rooms get a real DECK: diamond-plate grating underfoot.
+  if (grounded) {
+    const deckTex = interiorDeckTexture();
+    deckTex.repeat.set(Math.max(2, Math.round(len / 2)), 2);
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(len - 0.5, 0.08, 2.4),
+      new THREE.MeshStandardMaterial({ map: deckTex, roughness: 0.85, metalness: 0.25 }));
+    deck.material._isClone = true;
+    deck.position.set(0, -(rad - 0.95) - 0.39, 0);
+    iScene.add(deck);
+  }
+  // The derelict hangs its wounds out: a torn panel and cables drooping from it.
+  if (derelict) {
+    const torn = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.8),
+      new THREE.MeshBasicMaterial({ color: 0x060608 }));
+    torn.position.set(len * 0.18, 0.6, -rad + 0.07);
+    torn.rotation.z = 0.15;
+    iScene.add(torn);
+    for (let c = 0; c < 3; c++) {
+      const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.9 + rng() * 0.5, 6),
+        new THREE.MeshStandardMaterial({ color: c === 0 ? 0x6a2a20 : 0x2a2e36, roughness: 0.9 }));
+      cable.material._isClone = true;
+      cable.position.set(len * 0.18 - 0.4 + c * 0.35, 0.2 - rng() * 0.2, -rad + 0.18);
+      cable.rotation.z = (rng() - 0.5) * 0.8;
+      iScene.add(cable);
+    }
   }
 
   // Windows: starfield outside (tiny baked canvas) — or, in a GROUND base, the
@@ -3961,10 +4203,8 @@ function enterStation(info, cb) {
     iScene.add(screen);
     consoles.push({ x, y, kind, screen, done: false });
   };
-  // In ANY gravity interior — a ground base OR a spinning centrifuge station (his
-  // rule: gravity means nothing floats) — everything stands at FLOOR height, where
-  // a standing, jumping Connie can actually reach the screens.
-  const grounded = !!info.ground || !!info.spin;
+  // In ANY gravity interior everything stands at FLOOR height, where a standing,
+  // jumping Connie can actually reach the screens.
   const floorY = -(rad - 0.95);
   const conY = grounded ? floorY + 0.55 : null;
   if (derelict) {
@@ -4035,8 +4275,10 @@ function enterStation(info, cb) {
 
   // ---- Archetype furniture: what makes a hub a hub and a garden a garden ----
   if (arch === "hub") {
-    // Cargo hub: strapped crate stacks, a loading arm, hazard stripes by the door.
-    const crateMat = new THREE.MeshStandardMaterial({ color: 0xc8a45a, roughness: 0.85 });
+    // Cargo hub: stenciled crate stacks, a loading arm, hazard stripes by the door.
+    const crateMat = new THREE.MeshStandardMaterial({
+      map: crateTexture(rng), roughness: 0.85,
+    });
     crateMat._isClone = true;
     for (let s = 0; s < 3; s++) {
       const sx = -len / 2 + 1.6 + s * (len - 3) / 3;
@@ -4076,8 +4318,17 @@ function enterStation(info, cb) {
       const gauge = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.2),
         new THREE.MeshBasicMaterial({ color: new THREE.Color(1.4, 0.9, 0.2) })); // amber, blooms
       gauge.position.set(tank.position.x, tank.position.y + 1.0, -(rad - 1.05));
-      
       iScene.add(gauge);
+      // Every tank gets a crank valve on top — turn to open, lefty-loosey.
+      const valve = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.03, 8, 18),
+        new THREE.MeshStandardMaterial({ color: 0xa03028, roughness: 0.55, metalness: 0.3 }));
+      valve.material._isClone = true;
+      valve.position.set(tank.position.x, tank.position.y + 0.95, -(rad - 1.0));
+      valve.rotation.x = Math.PI / 2;
+      iScene.add(valve);
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.25, 8), tankMatI);
+      stem.position.set(tank.position.x, tank.position.y + 0.85, -(rad - 1.0));
+      iScene.add(stem);
     }
     const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, len - 1.4, 10), tankMatI);
     pipe.rotation.z = Math.PI / 2;
@@ -4120,6 +4371,27 @@ function enterStation(info, cb) {
       bar.position.set(-len * 0.22 + s * len * 0.44, rad - 0.7, 0);
       iScene.add(bar);
     }
+    for (let b = 0; b < 4; b++) { // leafy bushes: clustered spheres, each one different
+      const bush = new THREE.Group();
+      const bushMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color().setHSL(0.3 + rng() * 0.06, 0.45, 0.3 + rng() * 0.12), roughness: 0.9,
+      });
+      bushMat._isClone = true;
+      for (let k = 0; k < 5; k++) {
+        const puff = new THREE.Mesh(new THREE.SphereGeometry(0.12 + rng() * 0.14, 8, 6), bushMat);
+        puff.position.set((rng() - 0.5) * 0.35, rng() * 0.3, (rng() - 0.5) * 0.35);
+        bush.add(puff);
+      }
+      bush.position.set(-len / 2 + 1.5 + b * (len - 3) / 3, -rad + 0.95, -(rad - 0.95));
+      iScene.add(bush);
+    }
+    const mister = new THREE.Mesh( // misting pipe over the beds, tiny nozzles and all
+      new THREE.CylinderGeometry(0.03, 0.03, len - 2.4, 8),
+      new THREE.MeshStandardMaterial({ color: 0xbfd8c8, roughness: 0.5, metalness: 0.3 }));
+    mister.material._isClone = true;
+    mister.rotation.z = Math.PI / 2;
+    mister.position.set(0, -rad + 1.9, -(rad - 0.8));
+    iScene.add(mister);
   } else if (arch === "observatory") {
     // Observatory: one HUGE cupola window (nebula + a ringed world), a telescope
     // aimed through it, and dim RED lighting — astronomers guard their night eyes.
@@ -4161,6 +4433,44 @@ function enterStation(info, cb) {
     const mount = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.12, 1.1, 8), scopeMat);
     mount.position.set(len * 0.12 - 0.6, -1.1, -rad + 1.6);
     iScene.add(mount);
+    for (let p = 0; p < 2; p++) { // star charts pinned by the cupola, constellations inked in
+      const chart = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.6),
+        new THREE.MeshBasicMaterial({ map: starChartTexture(rng) }));
+      chart.position.set(-len * 0.28 + p * 1.15, 0.4 - p * 0.9, -rad + 0.09);
+      chart.rotation.z = (rng() - 0.5) * 0.12;
+      iScene.add(chart);
+    }
+  } else if (arch === "lab" || arch === "base") {
+    // The classic lab earns its detail too: a whiteboard mid-derivation, a sample
+    // rack, and a little microscope on a bench.
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.72),
+      new THREE.MeshBasicMaterial({ map: whiteboardTexture(rng) }));
+    const boardY = grounded ? floorY + 1.35 : 0.75;
+    board.position.set(-len * 0.3, boardY, -rad + 0.09);
+    iScene.add(board);
+    const benchMat = new THREE.MeshStandardMaterial({ color: 0x7a828e, roughness: 0.6, metalness: 0.25 });
+    benchMat._isClone = true;
+    const benchY = grounded ? floorY + 0.15 : -0.9;
+    const bench = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 0.55), benchMat);
+    bench.position.set(len * 0.3, benchY, -(rad - 0.85));
+    iScene.add(bench);
+    for (let r = 0; r < 6; r++) { // sample rack: little glowing vials
+      const vial = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.16, 8),
+        new THREE.MeshStandardMaterial({
+          color: 0xd8f4e8, roughness: 0.2, emissive: new THREE.Color().setHSL(0.3 + rng() * 0.4, 0.7, 0.3),
+          emissiveIntensity: 0.7, transparent: true, opacity: 0.85,
+        }));
+      vial.material._isClone = true;
+      vial.position.set(len * 0.3 - 0.55 + (r % 3) * 0.18, benchY + 0.13, -(rad - 0.85) + Math.floor(r / 3) * 0.2 - 0.1);
+      iScene.add(vial);
+    }
+    const scopeBody = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.3, 8), benchMat);
+    scopeBody.position.set(len * 0.3 + 0.45, benchY + 0.22, -(rad - 0.85));
+    scopeBody.rotation.z = -0.35;
+    iScene.add(scopeBody);
+    const scopeBase = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.06, 10), benchMat);
+    scopeBase.position.set(len * 0.3 + 0.5, benchY + 0.06, -(rad - 0.85));
+    iScene.add(scopeBase);
   }
 
   // The RESIDENT. 👽 Friendly — big eyes like a Connie, its own glyph console,
