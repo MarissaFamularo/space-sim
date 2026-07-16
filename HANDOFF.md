@@ -9,6 +9,68 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-16): 🐄✨ THE YOUNGCOW SYSTEM — his full spec (via Mom), plus warp burns + antimatter
+
+His design, built end-to-end: a BABY solar system ("Youngcow", famous.js — aliases
+youngcow/hundun/sia/centdra/ember land on it, in FAMOUS_LIST + galaxy map).
+
+**Flagged / NOT verified at rung 4 — worth a play-test with him (exact steps below):**
+- Dino-birds + plant tufts, ground-base structures/interiors, and ring-rock strikes are
+  **code-verified only** — no scripted landing was flown. Play-test: Starmap → Youngcow →
+  Launch from Hundun's pad → land near the pad (bases are ~3 km off, glowing greenhouse +
+  gold beacon) → the Navigator nudges "press B" → walk both interiors (science base:
+  gravity, greenhouse, consoles; Old Nest: wreck, claw scrapes, log console = the herd
+  story). While landed, wait ~1–7 min at warp ≤100: ring rocks streak down; ~1/3 hit and
+  break a chute/legs/solar/wing/dock FOR THAT FLIGHT (never his saved design — Rule 2).
+- Inside Comet Konnie's coma the sky washes olive-tan (you ARE inside a comet's haze —
+  arguably honest, but it's a taste call; the tail/coma live in one block in
+  makeBodyGroup if it needs dialing down).
+- Ember's stretched orbit ring: drawn correct (code + shared-math with node-tested
+  bodyStateAt) but only glimpsed in map screenshots — check the ellipse LOOKS obvious.
+- Stations feel samey inside + docking parks far out — HIS NEXT ASK, deliberately not
+  started ("do everything with the new system first and then we can talk about stations").
+
+**Shipped, browser-verified (headless: boot-smoke, flight-check regression, plus a
+scripted Youngcow tour + warp-burn/antimatter flight — all green, zero console errors):**
+1. **ELLIPTICAL RAILS** (gated contract change, ARCHITECTURE.md updated): body defs may
+   carry `ecc`/`periAngle`; `bodyStateAt` Kepler-solves (new `solveKepler`), orbit rings
+   + Tracking Center draw true ellipses. Node-tested (tests/ellipse_test.mjs, 15 checks:
+   vis-viva, second law, closure, e=0 identity). First users: Ember (e=0.45), Comet
+   Konnie (e=0.6).
+2. **THE YOUNGCOW SYSTEM**: young yellow dwarf + protoplanetary dust disc (ALMA-style
+   gap lanes); tidally-locked lava **Sia** (molten hemisphere aimed at the star per
+   frame — browser-verified on the limb); home **Hundun** (green, ringed, launchable,
+   g0 8.6) with elliptical lava moon **Ember**, lumpy accreting tinyMoon **Pebble**
+   INSIDE the ring (displaced watertight sphere), grazing armored **dino-birds** +
+   plants, **two ground bases** (B to enter; real-gravity interiors — nothing floats,
+   his rule; wrecked one tells a kid-safe herd-stampede story, new science kind
+   `basewreck` +15), and **ring-rock strikes** (`Render.spawnMeteor` + main
+   updateMeteorRain); **Comet Konnie** (comets named for discoverers!) — low-but-nonzero
+   gravity, ORBITABLE (browser-verified: stable 1 km orbit at 3 m/s), coma + tail that
+   points away from the star and grows sunward; **Centdra** still forming in the disc
+   with a fast circumplanetary disc; leftover-asteroid swarm (young flag). famous_test
+   grew to 83 checks.
+3. **ANNIHILATION BEAM DRIVE** (parts.js, gated; ids stable): antimatter engine, ve
+   2,000 km/s, violet LASER-LANCE plume tier (ve ≥ 1e6), bespoke "beam" part mesh.
+   Honest teaching: CERN/PET real, nanogram supply, ~600 yr to the nearest star.
+4. **BURN WHILE TIME-WARPING** (gated Rule-3 change, ARCHITECTURE.md updated): thrust
+   no longer pins substeps to 0.1 s — accuracy caps (≤2% mass, ≤80 m/s per substep) +
+   fuel/mass now drain PER SUBSTEP (the old per-call bookkeeping was 8% off across a
+   warped frame — found by predict-first testing, tests/warpburn_test.mjs, 10 checks:
+   Δv exact to Tsiolkovsky, near-straight brachistochrone < 0.5% deviation, warpLimited
+   honest, pad burns still fine). main.js no longer zeroes warp on throttle (steering
+   still snaps to real time). Browser-verified: 1,327 km/s gained under 1000x warp,
+   fuel drained, no crash.
+5. **Navigator taught everything** (safety block untouched — navigator_check 18/18):
+   Youngcow paragraph (his design, say so proudly; every fact tied to real astronomy —
+   HL Tauri, Kepler's 2nd law, Arrokoth, comet naming, PDS 70c), antimatter + warp-burn
+   lines, snapshot gains `flight.nearBase`. WORLD_FACTS for all six new worlds.
+
+**Verified**: all 12 node suites green (293 checks, +2 new suites); navigator_check
+18/18; headless browser: boot smoke ALL GREEN, Moon-lap flight regression ALL GREEN,
+Youngcow scripted tour ALL GREEN (screenshots in the session scratchpad). Kid's saves
+untouched: no localStorage schema changed; parts.js only APPENDED a new id.
+
 ## Status (2026-07-12 later still): 📖 THE WISH BOOK (Mom's ask: "keep a list of his ideas")
 
 He tells the Navigator ideas in real time; Mom wants to ask for them later. Shipped, all

@@ -54,6 +54,13 @@ const WORLD_FACTS = {
   Earth: "The only world where your parachute, your lungs, and your snack supply all work.",
   "Alpha Centauri B": "Alpha Centauri B is real — an orange star a bit smaller than our Sun. It and A swing around each other about every 80 years. (B's REAL path is a stretched ellipse, 11 to 35 AU from A — we drew the average.)",
   "Proxima Centauri": "Proxima Centauri is the true nearest star to our Sun — 4.24 light-years away. It's a tiny red dwarf with a real planet, Proxima b, discovered in 2016!",
+  // The Youngcow System (HIS design) — every fact ties to real astronomy.
+  Sia: "Sia is tidally locked: one face always toward the star (molten), one always dark (frozen). Our Moon is locked to Earth the exact same way — that's why we only ever see one side.",
+  Hundun: "Hundun's ring still sheds stones — watch the sky! Counting fresh craters is genuinely how scientists age a planet's surface. And keep an eye out for the locals: big, armored, and strictly vegetarian.",
+  Ember: "Ember rides a STRETCHED (elliptical) orbit — watch the map: it sprints through the close pass and crawls at the far end. That's Kepler's second law, discovered in 1609, happening live.",
+  Pebble: "Pebble is still gathering itself out of Hundun's ring — too small and lumpy for its own gravity to squeeze it round. Real small worlds like Arrokoth are potatoes for the same reason.",
+  "Comet Konnie": "Comets are named after their discoverers — Halley, Hale-Bopp… and Konnie. Its tail always points AWAY from the star (starlight pushes it), and escape speed here is about bicycle speed. Jump gently!",
+  Centdra: "Centdra is a planet still BEING BORN, wrapped in its own disc of infalling rock. Astronomers really photographed a disc like this around the young planet PDS 70c in 2021.",
 };
 
 // Any star in the active system: the sun role, plus star-styled companions
@@ -642,6 +649,7 @@ window.addEventListener("keydown", (e) => {
     else startEva();
   }
   if (e.key === " ") { e.preventDefault(); doStage(); }
+  if (e.key === "b" || e.key === "B") boardBase();
   if (e.key === "z" || e.key === "Z") sim.craft.throttle = 1;
   if (e.key === "x" || e.key === "X") sim.craft.throttle = 0;
   if (e.key === ".") stepWarp(+1);
@@ -669,8 +677,11 @@ function applyControls(dt) {
   // to see the planet, the map frame widens to see the system.
   if (keys["="] || keys["+"]) Render.zoomMap(Math.exp(-2.2 * dt)); // zoom in
   if (keys["-"] || keys["_"]) Render.zoomMap(Math.exp(2.2 * dt));  // zoom out
-  // Time warp only makes sense while coasting; thrusting or steering snaps back to real time.
-  if (sim.craft.throttle > 0 || steering) sim.timeWarp = 1;
+  // Steering snaps back to real time (you can't aim at 500,000x). BURNS may run under
+  // warp now (his ask): physics integrates them honestly — cruise engines fly a real
+  // near-straight brachistochrone when thrust beats gravity — and sim.warpLimited
+  // caps the effective rate whenever the substeps can't keep up.
+  if (steering) sim.timeWarp = 1;
 }
 
 // ---- crash / landing banner ----
@@ -955,10 +966,11 @@ const SCIENCE_FACTS = {
   astro: ["🔭 Telescope time! Up here there's no air to blur the stars — that's exactly why we put Hubble and JWST in space instead of on mountains.",
         "🌍 Earth-watching logged! Astronauts call it the Overview Effect — seeing your whole world in one window changes how you think about it."],
   salvage: ["📼 You recovered the station's old log! Final entry: 'Meteor strike. Power failing. We got everyone to the escape craft — leave the lights off on your way out.' Space junk is why real stations fly dodge maneuvers every year.",],
+  basewreck: ["📼 The base log, final entry: 'They came at night — a whole herd of the big armored ones, straight through the walls. Turns out we built our greenhouse on their favorite feeding ground. Nobody was hurt; we grabbed the seed vault and moved to the new base. New rule: check where the LOCALS eat before you build.' Wild animals aren't villains — they were here first, and they only wanted the plants.",],
   alien: ["👽🎵 The resident hums at you — in PRIME NUMBERS. 2, 3, 5, 7, 11… Math is the one language every scientist expects the universe to share. It taps its console and gifts you its notes: ALIEN SCIENCE!",
         "👽📐 It draws you a right triangle and hums three notes: 3, 4, 5. Pythagoras works in every star system — that's WHY scientists think math is how we'd talk to aliens first."],
 };
-const SCIENCE_VALUE = { bio: 10, materials: 10, astro: 10, salvage: 15, alien: 25 };
+const SCIENCE_VALUE = { bio: 10, materials: 10, astro: 10, salvage: 15, basewreck: 15, alien: 25 };
 let factRotor = 0;
 function awardScience(kind) {
   const pts = SCIENCE_VALUE[kind] || 10;
@@ -1027,6 +1039,94 @@ function boardStation() {
       : hasAlien
       ? "🚪👽 <b>You float into " + st.name + "… and someone is HOME.</b> Big eyes, gentle hum, very friendly. Drift over and see what it's studying!"
       : "🚪 <b>Welcome aboard " + st.name + "!</b> Float with the arrow keys — in zero-g you push once and coast. Glowing screens are experiments waiting for a scientist. That's you.");
+}
+
+// ---- 🏠 Ground bases (Hundun): land near one, press B, go inside ----
+// Bases live on the HOME body's style (famous.js); they sit at fixed surface
+// angles, so distance is just arc length. Range is generous — it's for a kid.
+const BASE_RANGE_M = 2500;
+let baseHintShownFor = null; // one nudge per landing, not a nag
+function nearestBase() {
+  if (sim.status !== "landed" || !sim.landed) return null;
+  const b = BODIES[sim.landed.body];
+  if (!b || !b.style || !Array.isArray(b.style.bases)) return null;
+  const phiCraft = Math.atan2(sim.landed.offset.y, sim.landed.offset.x);
+  let best = null;
+  for (const base of b.style.bases) {
+    let dPhi = Math.abs(phiCraft - base.phi) % (Math.PI * 2);
+    if (dPhi > Math.PI) dPhi = Math.PI * 2 - dPhi;
+    const dist = dPhi * b.radius;
+    if (dist < BASE_RANGE_M && (!best || dist < best.dist)) best = { base, dist };
+  }
+  return best;
+}
+function updateBasesSim() {
+  const nb = nearestBase();
+  sim.baseNear = nb ? { name: nb.base.name, dist: nb.dist, wrecked: !!nb.base.wrecked } : null;
+  if (nb && baseHintShownFor !== nb.base.id) {
+    baseHintShownFor = nb.base.id;
+    copilotSay("🏠 <b>" + nb.base.name + "</b> is only " + Math.round(nb.dist) +
+      " m away" + (nb.base.wrecked ? " — or what's left of it." : ".") +
+      " Press <b>B</b> to go inside!");
+  }
+  if (!nb && sim.status !== "landed") baseHintShownFor = null; // re-arm after liftoff
+}
+function boardBase() {
+  if (Render.isInside()) return;
+  const nb = nearestBase();
+  if (!nb) return;
+  const base = nb.base;
+  Render.enterStation(
+    { name: base.name, abandoned: !!base.wrecked, alien: false, ground: true,
+      seedKey: SYSTEM.key + "/" + base.id },
+    { onScience: awardScience,
+      onExit: () => copilotSay("🚀 Back out on the surface, ship waiting where you parked it.") });
+  copilotSay(base.wrecked
+    ? "🚪🔦 <b>You step into " + base.name + ".</b> Real gravity — nothing floats here, and everything that fell is still where it landed. Look at those long scrapes down the walls… something big shouldered through. Find the log screen and learn what happened."
+    : "🚪🏠 <b>Welcome to " + base.name + "!</b> Real planet gravity underfoot — walk with ← →, jump with ↑. The greenhouse is thriving and the science screens are glowing. This is what a working off-world outpost looks like.");
+}
+
+// ---- ☄️ Ring-rock rain (Hundun, style.meteorRain): the young ring still sheds ----
+// Flight-only damage: a hit decrements a per-stage part COUNT on sim.craft (the same
+// fields staging already changes) — the kid's saved rocket design is NEVER touched.
+let meteorLessonSaid = false;
+function updateMeteorRain() {
+  if (sim.mode !== "flight" || sim.status === "crashed" || Render.isInside()) return;
+  const key = sim.landed ? sim.landed.body : (sim.orbit && sim.orbit.bodyKey);
+  const b = key && BODIES[key];
+  const exposed = b && b.style && b.style.meteorRain &&
+    (sim.status === "landed" || (sim.altitude || 0) < 30000);
+  if (!exposed) { sim._meteorNext = 0; return; }
+  const t = sim.time || 0;
+  if (!sim._meteorNext) { sim._meteorNext = t + 25 + Math.random() * 60; return; }
+  if (t < sim._meteorNext) return;
+  if (sim.timeWarp > 100) { sim._meteorNext = t + 60; return; } // strikes land in (near) real time
+  sim._meteorNext = t + 90 + Math.random() * 300;
+  // Most rocks miss. A hit breaks one exposed, non-essential part — for THIS flight.
+  const breakables = [
+    ["chuteCount", "Parachute"], ["legCount", "Landing Legs"], ["solarCount", "Solar Panels"],
+    ["wingCount", "Delta Wings"], ["dockCount", "Docking Port"],
+  ].filter(([f]) => (sim.craft[f] || 0) > 0);
+  const hit = Math.random() < 0.33;
+  Render.spawnMeteor(sim, hit && breakables.length > 0);
+  if (hit && breakables.length) {
+    const [field, label] = breakables[Math.floor(Math.random() * breakables.length)];
+    sim.craft[field] = Math.max(0, (sim.craft[field] || 0) - 1);
+    copilotSay("☄️💥 <b>A ring rock clipped the ship — the " + label + " is smashed!</b> " +
+      (meteorLessonSaid ? "" :
+        "Hundun sits under a young, messy ring, and young rings shed stones (early Earth " +
+        "was pummeled the same way — look at the Moon's craters). Check your ship before " +
+        "you fly home — and maybe park farther from the ring's shadow next time."));
+    meteorLessonSaid = true;
+  } else if (hit) {
+    copilotSay("☄️ <b>WHUMP.</b> A ring rock slammed down and the whole hull rang — but " +
+      "nothing broke this time. The bare rocket body is tough; it's the delicate bits " +
+      "(chutes, panels, legs) that meteors love to smash.");
+  } else {
+    copilotSay("☄️ A streak of light — a ring rock just hit the plain nearby! Hundun's " +
+      "young ring rains stones like this all the time. Real planetary scientists count " +
+      "fresh craters exactly this way to age a surface.");
+  }
 }
 
 // ---- 🛰 Space stations: propagate their circular orbits, offer docking ----
@@ -1161,6 +1261,8 @@ function frame(t) {
   // instant as the craft's, or at time-warp the station visibly lags kilometers
   // behind its true spot (his play-test report: "teleports you very far away").
   updateStationsSim();
+  updateBasesSim();
+  updateMeteorRain();
 
   Render.update(sim);
   updateBanner();

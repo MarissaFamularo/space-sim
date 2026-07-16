@@ -9,8 +9,13 @@ Do not change a shared shape without updating this file.**
 
 ## Coordinate & units conventions (Phase 4: heliocentric)
 - Physics is **planar 2D**: positions/velocities are `{x, y}` in the orbital plane, meters & m/s.
-- The world origin is the **center of the SUN**. Every body rides a fixed circular CCW orbit
-  around its parent (`state.js bodyStateAt(key, t)`); Earth moves, the pad moves with it.
+- The world origin is the **center of the SUN**. Every body rides a fixed CCW orbit around
+  its parent (`state.js bodyStateAt(key, t)`); Earth moves, the pad moves with it. Rails are
+  **circular by default**; a body def may carry `ecc` (< 0.9, plus optional `periAngle`) for
+  a REAL elliptical rail — `orbitRadius` is then the semi-major axis, `omega` the mean
+  motion, and bodyStateAt Kepler-solves (`solveKepler`) the true focus-centered position and
+  velocity (CONTRACT REVISION 2026-07-16). Hohmann guidance treats eccentric targets by
+  their semi-major axis; course correction (which reads bodyStateAt) covers the arrival.
 - Render lifts the 2D plane into 3D: physics `(x, y)` → Three.js `(x, y, 0)` (orbit in the XY plane),
   MINUS a per-frame **floating origin** (the craft in flight) so float32 survives Neptune distances.
   The subtraction happens in float64 inside render.js before any THREE.Vector3 is touched.
@@ -194,6 +199,11 @@ Physics.step(sim, dtSeconds)        // advance sim.craft by dt under SUPERPOSED 
                                     //   with its planet). Semi-implicit Euler with ADAPTIVE substeps
                                     //   (0.02 s landing burns → hour-long interplanetary coasts),
                                     //   capped per call; sets sim.warpLimited when the cap bites.
+                                    //   REVISION 2026-07-16 (warp burns): thrusting no longer pins
+                                    //   the substep to 0.1 s — accuracy caps (≤2% mass burned and
+                                    //   ≤80 m/s gained per substep) let burns run under time warp,
+                                    //   and fuel/mass now drain PER SUBSTEP (Tsiolkovsky-honest
+                                    //   across hour-long burned frames; tests/warpburn_test.mjs).
                                     //   Collisions vs every body: soft-land/crash on solid worlds,
                                     //   sink/melt on gas giants and the Sun.
 Physics.maxStableStep(sim)          // -> the substep bound step() will use (dynamics/tunneling/thrust).
@@ -350,3 +360,28 @@ Render.enterStation(info, cb)       // info gains .spin — centrifuge interior:
   (r = a·√q/(1+√q)) because the Laplace SOI formula assumes a tiny mass ratio; physics.step
   treats any star-styled non-solid body like the sun on impact (burnedUp, not
   sankIntoClouds).
+
+## CONTRACT REVISION 2026-07-16 — The Youngcow build (his spec)
+
+- **Elliptical rails** (`ecc`/`periAngle` on body defs) — see the coordinate conventions
+  section above. First users: Ember (Hundun's lava moon, e=0.45) and Comet Konnie (e=0.6).
+- **The Youngcow System** (famous.js): young yellow dwarf + protoplanetary disc. New
+  body-style flags render.js understands: `protoDisc {inner,outer}` + `young` (star),
+  `rings` (existing), `lumpy` (displaced watertight sphere — Pebble), `comet` (coma +
+  sun-averted tail, grows near periapsis), `formingDisc` (fast circumplanetary disc —
+  Centdra), `lockedLava` + face kind `lavaLocked` (molten hemisphere aimed at the star —
+  Sia), `life: "dinobird"` (grazing armored herbivores + plant tufts near the ground),
+  `meteorRain` (ring-rock strikes), `bases: [{id,name,wrecked,phi}]` (ground bases at
+  fixed surface angles).
+- **Ground bases**: main.js `updateBasesSim()`/`boardBase()` — land within 2.5 km,
+  press **B**, `Render.enterStation` gains `info.ground` (planet-gravity interior: walk
+  mode, nothing floats, floor-height consoles, surface windows; wrecked variant carries
+  the herd-stampede story via new science kind `basewreck`). `sim.baseNear` mirrors
+  `sim.stationNear` for the Navigator.
+- **`Render.spawnMeteor(sim, hitShip)`** (recorded API extension): visual ring-rock
+  strike; main.js `updateMeteorRain()` rolls events over `meteorRain` worlds (< 30 km or
+  landed, warp ≤ 100) and a hit decrements ONE per-stage part count on sim.craft
+  (chute/legs/solar/wings/dock) — flight-only, never the saved craft (Rule 2).
+- **New stock part** `engine_antimatter` ("Annihilation Beam Drive", ve 2,000 km/s,
+  shape "beam"): plume gains a `beam` tier (violet laser lance) for ve ≥ 1,000 km/s.
+- **Warp burns** — see the Physics.step revision note above (per-substep fuel/mass).

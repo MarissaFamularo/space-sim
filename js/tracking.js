@@ -262,7 +262,22 @@ function loop() {
     if (r < 4 || r > 30000) continue;
     ctx.strokeStyle = "rgba(120,150,210,0.22)";
     ctx.beginPath();
-    ctx.arc(pp.x, pp.y, r, 0, Math.PI * 2);
+    if (b.ecc) {
+      // true ellipse, parent at the focus (same math as the 3D orbit ring);
+      // built in WORLD coords then projected, since toPx flips y
+      const pw = bodyStateAt(b.parent, t).pos;
+      const e = b.ecc, w = b.periAngle || 0, s = Math.sqrt(1 - e * e);
+      const cw = Math.cos(w), sw = Math.sin(w), a = b.orbitRadius;
+      for (let i = 0; i <= 96; i++) {
+        const E = (i / 96) * Math.PI * 2;
+        const px = a * (Math.cos(E) - e), py = a * s * Math.sin(E);
+        const q = toPx({ x: pw.x + px * cw - py * sw, y: pw.y + px * sw + py * cw });
+        if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
+      }
+      ctx.closePath();
+    } else {
+      ctx.arc(pp.x, pp.y, r, 0, Math.PI * 2);
+    }
     ctx.stroke();
   }
 

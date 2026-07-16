@@ -35,8 +35,8 @@ const approx = (a, b, tol) => Math.abs(a - b) <= tol * Math.abs(b);
     a.bodies.earth.radius === b.bodies.earth.radius, "");
 }
 
-// --- 3. Role keys + flyability rules hold in both famous systems ---
-for (const seed of ["Kerbol", "Pandora"]) {
+// --- 3. Role keys + flyability rules hold in every famous system ---
+for (const seed of ["Kerbol", "Pandora", "Youngcow"]) {
   const sys = generateSystem(seed);
   const B = sys.bodies;
   check(`${seed}: roles sun/earth/moon exist`, !!(B.sun && B.earth && B.moon), "");
@@ -127,6 +127,55 @@ for (const seed of ["Kerbol", "Pandora"]) {
     B.polyphemus.orbitRadius + B.polyphemus.soiRadius < B.acb.orbitRadius - B.acb.soiRadius, "");
   check("the two companions' SOIs never overlap each other",
     B.proxima.orbitRadius - B.acb.orbitRadius > B.proxima.soiRadius + B.acb.soiRadius, "");
+}
+
+// --- 5c. The Youngcow System (his design): a baby solar system ---
+{
+  for (const [alias, want] of [["Youngcow", "Youngcow"], ["hundun", "Youngcow"],
+    ["The Youngcow System", "Youngcow"], ["Sia", "Youngcow"], ["Centdra", "Youngcow"]]) {
+    const sys = generateSystem(alias);
+    check(`"${alias}" → ${want}`, sys.seed === want && sys.famous === "youngcow", `got seed=${sys.seed}`);
+  }
+  const sys = generateSystem("Youngcow");
+  const B = sys.bodies;
+  check("Youngcow is flagged young (extra asteroids/comets)", sys.young === true, "");
+  check("star wears a protoplanetary disc (style.protoDisc inner<outer)",
+    !!B.sun.style.protoDisc && B.sun.style.protoDisc.inner < B.sun.style.protoDisc.outer, "");
+  check("four planet-slots: Sia, Hundun, Comet Konnie, Centdra",
+    ["sia", "earth", "comet", "centdra"].every((k) => B[k] && B[k].parent === "sun"), "");
+  check("Sia is the innermost, tidally-locked lava world",
+    B.sia.orbitRadius < B.earth.orbitRadius && B.sia.face.kind === "lavaLocked", "");
+  check("Hundun has a ring + life + two ground bases (one wrecked)",
+    B.earth.style.rings === true && B.earth.style.life === "dinobird" &&
+    Array.isArray(B.earth.style.bases) && B.earth.style.bases.length === 2 &&
+    B.earth.style.bases.filter((b) => b.wrecked).length === 1, "");
+  // Ember: the first body on a real elliptical rail
+  check("Ember rides an elliptical rail (e=0.45)", B.moon.ecc === 0.45, "");
+  check("Ember's whole ellipse stays inside Hundun's SOI",
+    B.moon.orbitRadius * (1 + B.moon.ecc) < B.earth.soiRadius,
+    `apo=${(B.moon.orbitRadius * 1.45).toExponential(2)} soi=${B.earth.soiRadius.toExponential(2)}`);
+  check("Ember's periapsis clears Hundun itself",
+    B.moon.orbitRadius * (1 - B.moon.ecc) > B.earth.radius * 3, "");
+  // Pebble: lumpy accreting moonlet inside the ring — formation flying only
+  check("Pebble is a tinyMoon (can't be orbited — fly formation)",
+    B.pebble.tinyMoon === true && B.pebble.style.lumpy === true, "");
+  check("Pebble sits closer than Ember (inside the ring region)",
+    B.pebble.orbitRadius < B.moon.orbitRadius * (1 - B.moon.ecc), "");
+  // Comet Konnie: low-but-nonzero gravity, orbitable, dives inside home's orbit
+  check("Comet Konnie is eccentric and dives inside Hundun's orbit",
+    B.comet.ecc === 0.6 && B.comet.orbitRadius * (1 - B.comet.ecc) < B.earth.orbitRadius, "");
+  check("comet is NOT a tinyMoon (you can orbit + land on it)", !B.comet.tinyMoon,
+    `soi=${(B.comet.soiRadius / 1000).toFixed(1)} km vs r=${(B.comet.radius / 1000).toFixed(1)} km`);
+  {
+    const vEsc = Math.sqrt(2 * B.comet.mu / B.comet.radius);
+    check("comet escape speed ≈ bike speed (1–10 m/s)", vEsc > 1 && vEsc < 10,
+      `${vEsc.toFixed(1)} m/s`);
+  }
+  // Centdra: still forming, inside the protoplanetary disc, own material disc
+  check("Centdra orbits inside the protoplanetary disc",
+    B.centdra.orbitRadius > B.sun.style.protoDisc.inner &&
+    B.centdra.orbitRadius < B.sun.style.protoDisc.outer, "");
+  check("Centdra wears its own forming disc", B.centdra.style.formingDisc === true, "");
 }
 
 // --- 6. FAMOUS_LIST entries resolve and match their builders ---

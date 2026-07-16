@@ -59,6 +59,13 @@ let craftHeight = 0;
 
 let earthClouds = null;    // drifting cloud shell (child of Earth's group, async-loaded)
 let bhDisk = null;         // black hole accretion disk (spun in updateFlight)
+// Young-system dressing (the Youngcow build, 2026-07-16) — all children of body
+// groups, so dispose rides along; these are just per-frame animation handles.
+let protoDisc = null;      // protoplanetary dust disc around a young star (slow spin)
+let youngSwarm = null;     // leftover asteroid/comet rubble band (very slow spin)
+let formingDiscs = [];     // [{mesh}] fast circumplanetary discs on still-forming worlds
+let cometTails = [];       // [{key, group, len}] tails aimed away from the star per frame
+let lockedShells = [];     // [{key, mesh}] molten hemispheres aimed AT the star (tidal lock)
 
 // Galaxy layer: OTHER star systems drawn on the map when zoomed way out. Positions
 // come from main (relative to the ACTIVE system); clicking one travels there.
@@ -135,6 +142,10 @@ const _m4 = new THREE.Matrix4();
 
 // Phase 5 scene objects: near-surface rocks, landing reticle, deployed rover, satellites.
 let rockField = null;
+let plantField = null;     // instanced plant tufts on living worlds (Hundun)
+let dinoFlock = null;      // [{group, neck}] armored dino-bird grazers
+const PLANT_COUNT = 64;
+let meteors = [];          // ☄️ falling ring rocks: {p0, p1, t0, life, line, flash}
 const ROCK_COUNT = 240;
 const ROCK_ARC = 130; // meters of ground between rock slots
 let reticle = null;
@@ -417,6 +428,18 @@ function makePlanetCanvas(key) {
             ctx.globalAlpha = 1;
           }
           craters(30, "#241010", face.accent, 6);
+          break;
+        }
+        case "lavaLocked": {
+          // The base sphere is the FROZEN night side (a molten shell covers the day
+          // side, aimed at the star per frame): near-black rock, dull ember veins
+          // leaking through where the crust cracked.
+          fill(face.base);
+          craters(50, "#140a08", "#3a2418", 7);
+          streaks([face.accent], 10, 90, 1.5, 30);
+          ctx.globalAlpha = 0.35;
+          streaks([face.accent2], 6, 60, 1, 30);
+          ctx.globalAlpha = 1;
           break;
         }
         case "desert": {
@@ -706,6 +729,7 @@ function init(canvasEl) {
 function buildWorldObjects() {
   ALL_KEYS = ["sun", ...PLANET_KEYS];
   bhDisk = null; // re-created by makeBodyGroup if this system has one
+  protoDisc = null; youngSwarm = null; formingDiscs = []; cometTails = []; lockedShells = [];
   // Black hole systems are lit by the accretion disk: dimmer, colder key light.
   if (sunLight) {
     const bh = !!(BODIES.sun && BODIES.sun.blackHole);
@@ -805,7 +829,28 @@ function makeBodyGroup(key) {
       emissive: style.color, emissiveIntensity: key === "moon" ? 0.12 : 0.18,
     });
   }
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(b.radius, detail[0], detail[1]), mat);
+  const geo = new THREE.SphereGeometry(b.radius, detail[0], detail[1]);
+  // Lumpy bodies (a still-accreting moonlet like Pebble): displace every vertex by
+  // seeded noise keyed on its DIRECTION (not its index), so the sphere's duplicated
+  // seam vertices move together and the mesh stays watertight. Squash one axis a bit —
+  // small young bodies haven't pulled themselves round yet (that takes ~400+ km of
+  // self-gravity; real Arrokoth/67P are exactly this kind of potato).
+  if (style.lumpy) {
+    const pos = geo.getAttribute("position");
+    const ph = (hashStr(key) % 628) / 100; // seeded phase, same potato every visit
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i) / b.radius, y = pos.getY(i) / b.radius, z = pos.getZ(i) / b.radius;
+      // Smooth low-frequency bumps, a continuous function of DIRECTION only — the
+      // sphere's duplicated seam vertices share positions, so the mesh stays watertight.
+      const f = 1
+        + 0.22 * Math.sin(2.3 * x + ph) * Math.sin(1.9 * y + ph * 1.7) * Math.sin(2.6 * z + ph * 0.6)
+        + 0.14 * Math.sin(4.1 * x + 5.0 * y + ph) * Math.sin(3.3 * z + 2.2 * y)
+        + 0.07 * Math.sin(7.2 * x + 6.1 * z + ph * 2.3);
+      pos.setXYZ(i, pos.getX(i) * f, pos.getY(i) * f * 0.8, pos.getZ(i) * f);
+    }
+    geo.computeVertexNormals();
+  }
+  const mesh = new THREE.Mesh(geo, mat);
   // Texture poles point along world +/-X, not +/-Y: the launchpad sits at the body's
   // +Y, and he rightly complained he was launching from the north-pole ice cap.
   // Now the pad is on the EQUATOR (and equators face the orbital plane, like reality).
@@ -866,6 +911,240 @@ function makeBodyGroup(key) {
     }));
     ring.rotation.x = 0.45; // tilt out of the orbital plane
     g.add(ring);
+  }
+
+  // ---- Young-system dressing (the Youngcow build) ----
+
+  // Protoplanetary dust disc around a young star: DUST, not plasma — warm tans at low
+  // alpha, normal blending (the black-hole disk's past-white additive look would lie;
+  // this is the stuff planets are made FROM, lit by the star inside it).
+  if (style.protoDisc) {
+    const { inner, outer } = style.protoDisc;
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = 256;
+    const ctx = cv.getContext("2d");
+    const rng = mulberry32(hashStr(key + "-protodisc"));
+    const grad = ctx.createRadialGradient(128, 128, 40, 128, 128, 128);
+    grad.addColorStop(0.0, "rgba(210,180,140,0)");
+    grad.addColorStop(0.15, "rgba(214,186,148,0.34)");
+    grad.addColorStop(0.55, "rgba(190,158,120,0.26)");
+    grad.addColorStop(0.85, "rgba(150,122,96,0.14)");
+    grad.addColorStop(1.0, "rgba(120,100,84,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+    // Carve the gaps real ALMA images show — lanes where baby planets are sweeping
+    // up dust (HL Tauri's rings made astronomers gasp in 2014).
+    ctx.globalCompositeOperation = "destination-out";
+    for (let i = 0; i < 4; i++) {
+      const r = 52 + rng() * 68;
+      ctx.strokeStyle = "rgba(0,0,0,0.55)";
+      ctx.lineWidth = 2 + rng() * 4;
+      ctx.beginPath(); ctx.arc(128, 128, r, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.globalCompositeOperation = "source-over";
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    protoDisc = new THREE.Mesh(
+      new THREE.RingGeometry(inner, outer, 96),
+      new THREE.MeshBasicMaterial({
+        map: tex, transparent: true, side: THREE.DoubleSide, depthWrite: false,
+      })
+    );
+    // Map planar ring UVs radially so the painted radial gradient lands as annuli.
+    {
+      const pos = protoDisc.geometry.getAttribute("position"), uv = protoDisc.geometry.getAttribute("uv");
+      for (let i = 0; i < uv.count; i++) {
+        const rr = Math.hypot(pos.getX(i), pos.getY(i));
+        const frac = (rr - inner) / (outer - inner);
+        // sample the radial gradient along a canvas radius: u from disc center outward
+        uv.setXY(i, 0.5 + frac * 0.34 + 0.15, 0.5);
+      }
+    }
+    protoDisc.frustumCulled = false;
+    g.add(protoDisc);
+  }
+
+  // Leftover rubble: a sparse band of asteroid/comet points across the young system.
+  if (style.young) {
+    const COUNT = 900;
+    const positions = new Float32Array(COUNT * 3);
+    const rng = mulberry32(hashStr(key + "-swarm"));
+    // Band limits: from half the innermost planet's orbit out past the disc.
+    let aMin = Infinity, aMax = 0;
+    for (const k of PLANET_KEYS) {
+      const bb = BODIES[k];
+      if (bb.parent === "sun") { aMin = Math.min(aMin, bb.orbitRadius); aMax = Math.max(aMax, bb.orbitRadius); }
+    }
+    if (!isFinite(aMin)) { aMin = b.radius * 50; aMax = b.radius * 500; }
+    for (let i = 0; i < COUNT; i++) {
+      const rr = aMin * 0.5 + Math.pow(rng(), 0.7) * (aMax * 1.25 - aMin * 0.5);
+      const th = rng() * Math.PI * 2;
+      positions[i * 3 + 0] = rr * Math.cos(th);
+      positions[i * 3 + 1] = rr * Math.sin(th);
+      positions[i * 3 + 2] = (rng() - 0.5) * rr * 0.04; // thin, slightly puffy band
+    }
+    const pgeo = new THREE.BufferGeometry();
+    pgeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    youngSwarm = new THREE.Points(pgeo, new THREE.PointsMaterial({
+      color: 0xcabfa8, size: 2.5, sizeAttenuation: false,
+      transparent: true, opacity: 0.75, depthWrite: false,
+    }));
+    youngSwarm.frustumCulled = false;
+    g.add(youngSwarm);
+  }
+
+  // A still-forming world's own fast disc of infalling material (a real
+  // circumplanetary disk — the Moon likely condensed from one after the big impact).
+  if (style.formingDisc) {
+    const inner = b.radius * 1.4, outer = b.radius * 3.6;
+    const dgeo = new THREE.RingGeometry(inner, outer, 96, 3);
+    const pos = dgeo.getAttribute("position"), uv = dgeo.getAttribute("uv");
+    for (let i = 0; i < uv.count; i++) {
+      const rr = Math.hypot(pos.getX(i), pos.getY(i));
+      uv.setXY(i, (rr - inner) / (outer - inner), 0.5);
+    }
+    const cv = document.createElement("canvas");
+    cv.width = 256; cv.height = 8;
+    const ctx = cv.getContext("2d");
+    const rng = mulberry32(hashStr(key + "-formdisc"));
+    for (let x = 0; x < 256; x++) {
+      const hot = 1 - x / 256; // inner edge glows — infalling rock runs HOT
+      const a = (0.12 + 0.5 * hot) * (0.55 + rng() * 0.45);
+      ctx.fillStyle = `rgba(${Math.round(255 - 40 * (1 - hot))},${Math.round(170 + 50 * hot)},${Math.round(90 + 60 * hot)},${a})`;
+      ctx.fillRect(x, 0, 1, 8);
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const disc = new THREE.Mesh(dgeo, new THREE.MeshBasicMaterial({
+      map: tex, transparent: true, side: THREE.DoubleSide, depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      color: new THREE.Color(1.15, 1.0, 0.85), // a whisper past white: the hot rim blooms
+    }));
+    disc.rotation.x = 0.35;
+    formingDiscs.push({ mesh: disc });
+    g.add(disc);
+  }
+
+  // A comet: fuzzy coma + an ion tail aimed away from the star per frame, growing as
+  // it dives sunward (real tails are the sun's doing — they always point AWAY).
+  if (style.comet) {
+    const tailGroup = new THREE.Group();
+    const len = b.radius * 60;
+    const tail = new THREE.Mesh(
+      new THREE.ConeGeometry(b.radius * 2.2, len, 12, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: 0x9fd8f0, transparent: true, opacity: 0.28,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      })
+    );
+    // Cone points +Y with its middle at origin: shift so the TIP sits at the nucleus
+    // and the skirt streams behind, then flip so "behind" is -Y of the group.
+    tail.rotation.z = Math.PI;
+    tail.position.y = len * 0.5;
+    tailGroup.add(tail);
+    const coma = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: plumeGlowTexture(), color: 0xcfeeff, transparent: true, opacity: 0.5,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    coma.scale.setScalar(b.radius * 8);
+    tailGroup.add(coma);
+    tailGroup.frustumCulled = false;
+    cometTails.push({ key, group: tailGroup, len });
+    g.add(tailGroup);
+  }
+
+  // Ground bases (Hundun): little surface outposts, parented to the body group at
+  // fixed surface angles so they ride the planet for free. One alive, one wrecked.
+  if (style.bases) {
+    for (const base of style.bases) {
+      const bg = new THREE.Group();
+      const S = Math.max(12, b.radius * 3e-5); // structure scale (~15 m on Hundun)
+      const domeMat = new THREE.MeshStandardMaterial({
+        color: base.wrecked ? 0x5a524a : 0xd8dde6, roughness: 0.6, metalness: 0.2,
+        emissive: base.wrecked ? 0x000000 : 0x2a3a4a, emissiveIntensity: 0.4,
+      });
+      if (base.wrecked) {
+        // The wreck: a dome with a bite out of it, a toppled habitat, scattered
+        // debris, a bent mast. Ruined, not scary — the story lives inside.
+        const dome = new THREE.Mesh(new THREE.SphereGeometry(S, 20, 12, 0.7, Math.PI * 1.5, 0, Math.PI / 2), domeMat);
+        bg.add(dome);
+        const fallen = new THREE.Mesh(new THREE.CylinderGeometry(S * 0.35, S * 0.35, S * 1.6, 12), domeMat);
+        fallen.rotation.z = Math.PI / 2 - 0.15;
+        fallen.position.set(S * 1.6, S * 0.3, S * 0.4);
+        bg.add(fallen);
+        for (let i = 0; i < 5; i++) {
+          const junk = new THREE.Mesh(new THREE.BoxGeometry(S * 0.3, S * 0.2, S * 0.25), domeMat);
+          junk.position.set((i - 2) * S * 0.7, S * 0.1, ((i * 7) % 3 - 1) * S * 0.6);
+          junk.rotation.set(i, i * 2.3, 0);
+          bg.add(junk);
+        }
+        const mast = new THREE.Mesh(new THREE.CylinderGeometry(S * 0.04, S * 0.06, S * 1.4, 6), domeMat);
+        mast.rotation.z = 0.7; // bent
+        mast.position.set(-S * 1.2, S * 0.5, 0);
+        bg.add(mast);
+      } else {
+        const dome = new THREE.Mesh(new THREE.SphereGeometry(S, 24, 14, 0, Math.PI * 2, 0, Math.PI / 2), domeMat);
+        bg.add(dome);
+        for (const sx of [-1, 1]) { // habitat tubes off the dome
+          const hab = new THREE.Mesh(new THREE.CylinderGeometry(S * 0.35, S * 0.35, S * 1.5, 12), domeMat);
+          hab.rotation.z = Math.PI / 2;
+          hab.position.set(sx * S * 1.4, S * 0.35, 0);
+          bg.add(hab);
+        }
+        const green = new THREE.Mesh( // the greenhouse — it glows green, life inside
+          new THREE.BoxGeometry(S * 0.9, S * 0.5, S * 0.9),
+          new THREE.MeshStandardMaterial({
+            color: 0x9adba8, roughness: 0.3, metalness: 0,
+            emissive: 0x3adb6a, emissiveIntensity: 0.8, transparent: true, opacity: 0.85,
+          }));
+        green.position.set(0, S * 0.25, S * 1.5);
+        bg.add(green);
+        const mast = new THREE.Mesh(new THREE.CylinderGeometry(S * 0.04, S * 0.06, S * 1.8, 6), domeMat);
+        mast.position.set(-S * 1.2, S * 0.9, 0);
+        bg.add(mast);
+        const beacon = new THREE.Mesh(new THREE.SphereGeometry(S * 0.1, 8, 6),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.3, 0.4) })); // blooms
+        beacon.position.set(-S * 1.2, S * 1.8, 0);
+        bg.add(beacon);
+      }
+      // Sit on the surface at the base's fixed angle, local "up" = radial.
+      const ux = Math.cos(base.phi), uy = Math.sin(base.phi);
+      bg.position.set(ux * b.radius, uy * b.radius, 0);
+      bg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(ux, uy, 0));
+      g.add(bg);
+    }
+  }
+
+  // Tidal lock (Sia): a molten hemisphere shell aimed at the star every frame. The
+  // star-facing side never changes — that's what tidally locked MEANS — so the day
+  // side is a lava ocean and the far side (painted on the base sphere) is frozen rock.
+  if (style.lockedLava) {
+    const shellGeo = new THREE.SphereGeometry(b.radius * 1.004, 48, 32, 0, Math.PI);
+    const cv = document.createElement("canvas");
+    cv.width = 256; cv.height = 128;
+    const ctx = cv.getContext("2d");
+    const rng = mulberry32(hashStr(key + "-lockedlava"));
+    ctx.fillStyle = "#4a1c0c"; ctx.fillRect(0, 0, 256, 128);
+    for (let i = 0; i < 40; i++) { // molten rivers + hot pools
+      ctx.strokeStyle = rng() > 0.5 ? "#ff5a1a" : "#ffc24a";
+      ctx.globalAlpha = 0.5 + rng() * 0.5;
+      ctx.lineWidth = 1 + rng() * 3;
+      const x0 = rng() * 256, y0 = rng() * 128;
+      ctx.beginPath(); ctx.moveTo(x0, y0);
+      ctx.bezierCurveTo(x0 + (rng() - 0.5) * 120, y0 + (rng() - 0.5) * 60,
+                        x0 + (rng() - 0.5) * 120, y0 + (rng() - 0.5) * 60,
+                        x0 + (rng() - 0.5) * 180, y0 + (rng() - 0.5) * 90);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const shell = new THREE.Mesh(shellGeo, new THREE.MeshStandardMaterial({
+      map: tex, roughness: 1, metalness: 0,
+      emissive: 0xff6a22, emissiveIntensity: 0.55, emissiveMap: tex,
+    }));
+    lockedShells.push({ key, mesh: shell });
+    g.add(shell);
   }
 
   g.visible = false; // shown in flight
@@ -1075,15 +1354,20 @@ function addBlackHoleDressing(g, b) {
   g.add(glow);
 }
 
-// Circle tracing a body's orbit, centered on its PARENT (positioned per frame).
+// Line tracing a body's orbit, centered on its PARENT (positioned per frame).
+// Circular for most bodies; bodies with `ecc` get their true ellipse (parent at the
+// focus — the ring visibly swings close and far, matching where the body really flies).
 function makeOrbitRing(key) {
   const b = BODIES[key];
   const SEG = 256;
   const positions = new Float32Array((SEG + 1) * 3);
+  const e = b.ecc || 0, w = b.periAngle || 0;
+  const s = Math.sqrt(1 - e * e), cw = Math.cos(w), sw = Math.sin(w);
   for (let i = 0; i <= SEG; i++) {
-    const t = (i / SEG) * Math.PI * 2;
-    positions[i * 3 + 0] = b.orbitRadius * Math.cos(t);
-    positions[i * 3 + 1] = b.orbitRadius * Math.sin(t);
+    const t = (i / SEG) * Math.PI * 2; // eccentric anomaly (circle when e=0)
+    const px = b.orbitRadius * (Math.cos(t) - e), py = b.orbitRadius * s * Math.sin(t);
+    positions[i * 3 + 0] = px * cw - py * sw;
+    positions[i * 3 + 1] = px * sw + py * cw;
     positions[i * 3 + 2] = 0;
   }
   const geo = new THREE.BufferGeometry();
@@ -1149,19 +1433,21 @@ function plumeGlowTexture(cool = false) {
 }
 
 const PLUME_PARTICLES = 150;
-function makeExhaustPlume(r, len, hot = false) {
+function makeExhaustPlume(r, len, hot = false, beam = false) {
   const group = new THREE.Group();
 
   // HDR colors (pushed past 1.0) so the flame catches the bloom pass. `hot` engines
   // (ion / fusion torch, exhaust >= 20 km/s) burn BLUE-white — hotter flame, bluer
-  // light, same physics as a gas stove vs a candle.
+  // light, same physics as a gas stove vs a candle. `beam` engines (antimatter,
+  // exhaust >= 1,000 km/s) fire a violet-white LASER LANCE — annihilation makes
+  // gamma rays, the brightest beam physics allows.
   const coreMat = new THREE.MeshBasicMaterial({
-    color: hot ? new THREE.Color(1.3, 1.6, 2.0) : new THREE.Color(1.6, 1.35, 0.95),
+    color: beam ? new THREE.Color(1.8, 1.4, 2.4) : hot ? new THREE.Color(1.3, 1.6, 2.0) : new THREE.Color(1.6, 1.35, 0.95),
     transparent: true, opacity: 0.9,
     blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
   });
   const outerMat = new THREE.MeshBasicMaterial({
-    color: hot ? new THREE.Color(0.45, 0.95, 1.9) : new THREE.Color(1.5, 0.55, 0.16),
+    color: beam ? new THREE.Color(1.0, 0.45, 1.9) : hot ? new THREE.Color(0.45, 0.95, 1.9) : new THREE.Color(1.5, 0.55, 0.16),
     transparent: true, opacity: 0.32,
     blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
   });
@@ -1175,15 +1461,32 @@ function makeExhaustPlume(r, len, hot = false) {
   outer.position.y = -len * 0.775;
   group.add(outer);
 
+  // The laser lance: one ultra-long skinny cone past both flame cones. Purely a
+  // LOOK — the thrust the physics applies is the PartDef's, beam or no beam.
+  let beamMesh = null;
+  if (beam) {
+    const beamLen = len * 6;
+    beamMesh = new THREE.Mesh(
+      new THREE.ConeGeometry(r * 0.16, beamLen, 10, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: new THREE.Color(2.2, 1.7, 2.6), transparent: true, opacity: 0.75,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      })
+    );
+    beamMesh.rotation.x = Math.PI;
+    beamMesh.position.y = -beamLen / 2;
+    group.add(beamMesh);
+  }
+
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: plumeGlowTexture(hot), blending: THREE.AdditiveBlending,
+    map: plumeGlowTexture(hot || beam), blending: THREE.AdditiveBlending,
     transparent: true, depthWrite: false,
   }));
   glow.scale.setScalar(r * 4.5);
   group.add(glow);
 
-  // The flame lights the rocket: warm (or fusion-blue) light below the nozzle.
-  const light = new THREE.PointLight(hot ? 0x86b8ff : 0xffa040, 600, 400, 2);
+  // The flame lights the rocket: warm (or fusion-blue / annihilation-violet) light.
+  const light = new THREE.PointLight(beam ? 0xc09aff : hot ? 0x86b8ff : 0xffa040, 600, 400, 2);
   light.position.set(0, -1.2, 0);
   group.add(light);
 
@@ -1208,7 +1511,7 @@ function makeExhaustPlume(r, len, hot = false) {
   group.add(points);
 
   group.visible = false;
-  return { group, core, outer, glow, light, points, pdata, r, len, hot };
+  return { group, core, outer, glow, light, points, pdata, r, len, hot, beam, beamMesh };
 }
 
 // Called every flight frame. Throttle drives length/brightness; a per-frame flicker
@@ -1237,6 +1540,10 @@ function updatePlume(sim, dom) {
   plume.outer.material.opacity = (inVacuum ? 0.22 : 0.32) * (0.8 + 0.4 * Math.random());
   plume.glow.scale.setScalar(plume.r * (4.5 + throttle * 2.5) * flick);
   plume.light.intensity = 500 * throttle * (0.85 + 0.3 * Math.random());
+  if (plume.beamMesh) { // the lance barely flickers — lasers don't gutter like flames
+    plume.beamMesh.scale.set(0.9 + 0.15 * flick, 0.7 + 0.35 * throttle, 0.9 + 0.15 * flick);
+    plume.beamMesh.material.opacity = 0.6 + 0.25 * throttle;
+  }
 
   // Trail particles: spawn at the nozzle, stream down, cool from white-orange to ember.
   const pos = plume.points.geometry.getAttribute("position");
@@ -1258,7 +1565,8 @@ function updatePlume(sim, dom) {
     }
     pos.setXYZ(i, pos.getX(i) + p.vx * dt, pos.getY(i) + p.vy * dt, pos.getZ(i) + p.vz * dt);
     const f = 1 - p.life / p.max; // 1 fresh -> 0 dead
-    if (plume.hot) col.setXYZ(i, 0.8 * f * f, 1.2 * f * f, 2.0 * f);       // blue sparks
+    if (plume.beam) col.setXYZ(i, 1.6 * f, 0.7 * f * f, 2.2 * f);          // violet sparks
+    else if (plume.hot) col.setXYZ(i, 0.8 * f * f, 1.2 * f * f, 2.0 * f);  // blue sparks
     else col.setXYZ(i, 1.7 * f, (1.25 * f) * f, 0.55 * f * f * f);         // embers
   }
   pos.needsUpdate = true;
@@ -1621,7 +1929,8 @@ function buildCraftMesh(craft) {
   // shows when sim thrust + throttle + fuel say the engines are truly burning).
   const eng = defs.find((d) => d.type === "engine") || defs[0];
   plume = makeExhaustPlume(eng.radius || 0.5, Math.max(3.5, total * 0.85),
-    (eng.exhaustVelocity || 0) >= 20000);
+    (eng.exhaustVelocity || 0) >= 20000,
+    (eng.exhaustVelocity || 0) >= 1000000);
   plume.group.position.y = -total / 2;
   group.add(plume.group);
 
@@ -1935,6 +2244,43 @@ function makePartObject(def, h, r) {
         strut.rotation.x = Math.sin(a) * 0.35;
         grp.add(strut);
       }
+      return grp;
+    }
+    case "beam": {
+      // Annihilation drive: an armored antimatter trap (magnetic bottle — the fuel
+      // must NEVER touch the walls) over a gamma-ray focusing dish. Violet accents;
+      // the "nozzle" is just a ring — the beam itself is the engine bell.
+      const grp = new THREE.Group();
+      const headMat = MAT ? MAT.engine : mat;
+      const trap = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.62, r * 0.62, h * 0.42, 20), headMat);
+      trap.position.y = h * 0.26;
+      grp.add(trap);
+      const bottleMat = new THREE.MeshStandardMaterial({
+        color: 0x8a6ae0, metalness: 0.4, roughness: 0.35,
+        emissive: 0x6a3ae0, emissiveIntensity: 0.5,
+      });
+      for (let i = 0; i < 2; i++) { // containment hoops around the trap
+        const hoop = new THREE.Mesh(new THREE.TorusGeometry(r * 0.66, r * 0.06, 8, 24), bottleMat);
+        hoop.rotation.x = Math.PI / 2;
+        hoop.position.y = h * (0.14 + 0.24 * i);
+        grp.add(hoop);
+      }
+      const core = new THREE.Mesh( // the annihilation point, glowing past white
+        new THREE.SphereGeometry(r * 0.2, 14, 10),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.2, 2.2) })
+      );
+      core.position.y = -h * 0.05;
+      grp.add(core);
+      const dish = new THREE.Mesh( // gamma dish, open end down
+        new THREE.CylinderGeometry(r * 0.9, r * 0.34, h * 0.34, 22, 1, true),
+        headMat
+      );
+      dish.position.y = -h * 0.28;
+      grp.add(dish);
+      const exitRing = new THREE.Mesh(new THREE.TorusGeometry(r * 0.88, r * 0.07, 8, 26), bottleMat);
+      exitRing.rotation.x = Math.PI / 2;
+      exitRing.position.y = -h * 0.46;
+      grp.add(exitRing);
       return grp;
     }
     case "chute": {
@@ -2402,6 +2748,36 @@ function updateFlight(sim) {
 
   // The accretion disk spins (fast near a black hole — truthfully, much faster).
   if (bhDisk) bhDisk.rotation.set(0.45, 0, (t * 0.05) % (Math.PI * 2));
+
+  // Young-system dressing animation (all cheap: rotations + one quaternion each).
+  if (protoDisc) protoDisc.rotation.z = (t * 0.002) % (Math.PI * 2);   // dust creeps
+  if (youngSwarm) youngSwarm.rotation.z = (t * 0.0012) % (Math.PI * 2);
+  for (const fd of formingDiscs) {
+    fd.mesh.rotation.set(0.35, 0, (t * 0.4) % (Math.PI * 2));          // infall is FAST
+  }
+  for (const ct of cometTails) {
+    const st = states[ct.key];
+    if (!st) continue;
+    const sun = states.sun || { pos: { x: 0, y: 0 } };
+    const dx = st.pos.x - sun.pos.x, dy = st.pos.y - sun.pos.y;
+    const d = Math.hypot(dx, dy) || 1;
+    // Point the tail AWAY from the star, and let it grow as the comet dives sunward
+    // (at periapsis it's ~3x the apoapsis tail — the sun boils the ice off).
+    ct.group.quaternion.setFromUnitVectors(_v1.set(0, 1, 0), _v2.set(dx / d, dy / d, 0));
+    const a = BODIES[ct.key].orbitRadius || d;
+    const grow = Math.min(3.5, Math.max(0.6, a / d));
+    ct.group.scale.set(Math.sqrt(grow), grow, Math.sqrt(grow));
+  }
+  for (const ls of lockedShells) {
+    const st = states[ls.key];
+    if (!st) continue;
+    const sun = states.sun || { pos: { x: 0, y: 0 } };
+    const dx = sun.pos.x - st.pos.x, dy = sun.pos.y - st.pos.y;
+    const d = Math.hypot(dx, dy) || 1;
+    // The molten hemisphere faces the star — always the same face: tidal lock.
+    ls.mesh.quaternion.setFromUnitVectors(_v1.set(0, 0, 1), _v2.set(dx / d, dy / d, 0));
+  }
+  updateMeteors(t); // ☄️ falling ring rocks (Hundun)
   // Centrifuge wheels turn with game time — steady spin, that's the gravity trick.
   for (const sp of craftSpinners) sp.rotation.y = (t * sp.userData.spin) % (Math.PI * 2);
 
@@ -2515,6 +2891,143 @@ function ensureGroundPatch(body) {
   groundPatchKey = body.key;
 }
 
+// ☄️ A ring rock falls out of the sky near (or onto) the craft. Pure spectacle —
+// main.js decides whether it broke anything. World coords; animated in updateFlight.
+function spawnMeteor(sim, hitShip) {
+  if (!scene || !sim || !sim.craft) return;
+  const t = sim.time || 0;
+  const dom = dominantBody(sim.craft.pos, t);
+  const rm = Math.hypot(dom.rel.x, dom.rel.y) || 1;
+  const ux = dom.rel.x / rm, uy = dom.rel.y / rm;      // local up
+  const tx = -uy, ty = ux;                             // along-surface direction
+  const Rb = dom.body.radius;
+  const groundX = dom.center.x + ux * Rb, groundY = dom.center.y + uy * Rb;
+  const off = hitShip ? 0 : (60 + Math.random() * 800) * (Math.random() < 0.5 ? -1 : 1);
+  const p1 = hitShip
+    ? { x: sim.craft.pos.x, y: sim.craft.pos.y }
+    : { x: groundX + tx * off, y: groundY + ty * off };
+  const p0 = { x: p1.x + ux * 9000 + tx * 2500 * (Math.random() - 0.5),
+               y: p1.y + uy * 9000 + ty * 2500 * (Math.random() - 0.5) };
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({
+    color: new THREE.Color(2.2, 1.8, 1.2), transparent: true, opacity: 0.95, // blooms
+  }));
+  line.frustumCulled = false;
+  scene.add(line);
+  const flash = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: plumeGlowTexture(), color: 0xffd090, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  flash.position.set(0, 0, 0);
+  flash.frustumCulled = false;
+  scene.add(flash);
+  meteors.push({ p0, p1, t0: t, life: 1.3, line, flash });
+}
+
+function updateMeteors(t) {
+  for (let i = meteors.length - 1; i >= 0; i--) {
+    const m = meteors[i];
+    const f = (t - m.t0) / m.life;
+    if (f >= 1.4 || f < 0) { // done (or the clock warped away) — clean up
+      scene.remove(m.line); m.line.geometry.dispose(); m.line.material.dispose();
+      scene.remove(m.flash); m.flash.material.dispose();
+      meteors.splice(i, 1);
+      continue;
+    }
+    const fall = Math.min(1, f / 0.75); // falls for 75% of life, then the flash
+    const hx = m.p0.x + (m.p1.x - m.p0.x) * fall, hy = m.p0.y + (m.p1.y - m.p0.y) * fall;
+    const tf = Math.max(0, fall - 0.22);
+    const tx0 = m.p0.x + (m.p1.x - m.p0.x) * tf, ty0 = m.p0.y + (m.p1.y - m.p0.y) * tf;
+    const pos = m.line.geometry.getAttribute("position");
+    pos.setXYZ(0, tx0 - ORIGIN.x, ty0 - ORIGIN.y, 0);
+    pos.setXYZ(1, hx - ORIGIN.x, hy - ORIGIN.y, 0);
+    pos.needsUpdate = true;
+    m.line.material.opacity = fall >= 1 ? 0 : 0.95;
+    if (fall >= 1) { // impact flash swells and fades
+      const g = Math.min(1, (f - 0.75) / 0.55);
+      m.flash.position.set(m.p1.x - ORIGIN.x, m.p1.y - ORIGIN.y, 0);
+      m.flash.scale.setScalar(40 + g * 260);
+      m.flash.material.opacity = 0.9 * (1 - g);
+    }
+  }
+}
+
+// One armored dino-bird: a big plant-eater — bird bones, dinosaur size, scale
+// armor down the back (his design). Built once, repositioned per frame.
+function makeDinoBird(i) {
+  const g = new THREE.Group();
+  const hide = new THREE.MeshStandardMaterial({
+    color: [0x7a6a4a, 0x6a7a4a, 0x8a705a][i % 3], roughness: 0.9, metalness: 0,
+    emissive: 0x3a3020, emissiveIntensity: 0.25,
+  });
+  const plate = new THREE.MeshStandardMaterial({
+    color: 0x9aa2aa, roughness: 0.5, metalness: 0.3,
+    emissive: 0x4a5058, emissiveIntensity: 0.2,
+  });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.4, 14, 10), hide);
+  body.scale.set(1.7, 1.0, 0.9);
+  body.position.y = 2.2;
+  g.add(body);
+  for (let k = 0; k < 4; k++) { // armor scales down the spine
+    const sc = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.7, 5), plate);
+    sc.position.set(-1.2 + k * 0.85, 3.3 - Math.abs(k - 1.5) * 0.12, 0);
+    g.add(sc);
+  }
+  for (const sx of [-0.7, 0.7]) { // two stout legs
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 2.2, 8), hide);
+    leg.position.set(sx, 1.1, sx * 0.35);
+    g.add(leg);
+  }
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.55, 2.4, 8), hide);
+  tail.rotation.z = Math.PI / 2 - 0.25;
+  tail.position.set(-2.6, 2.4, 0);
+  g.add(tail);
+  const neck = new THREE.Group(); // pivots at the shoulder so the head can graze
+  const nk = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.42, 2.0, 8), hide);
+  nk.rotation.z = -0.9;
+  nk.position.set(0.8, 0.7, 0);
+  neck.add(nk);
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.2, 8), hide); // beaky
+  head.rotation.z = -Math.PI / 2 + 0.2;
+  head.position.set(1.75, 1.25, 0);
+  neck.add(head);
+  const crest = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.5, 5), plate);
+  crest.position.set(1.5, 1.75, 0);
+  neck.add(crest);
+  for (const sz of [-0.18, 0.18]) { // kind eyes — it only eats plants
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0x1a1408 }));
+    eye.position.set(1.55, 1.45, sz);
+    neck.add(eye);
+  }
+  neck.position.set(1.4, 2.6, 0);
+  g.add(neck);
+  g.visible = false;
+  return { group: g, neck };
+}
+
+function ensureDinoLife() {
+  if (plantField) return;
+  plantField = new THREE.InstancedMesh(
+    new THREE.ConeGeometry(0.9, 2.4, 6),
+    new THREE.MeshStandardMaterial({
+      color: 0x3f8a3a, roughness: 0.9, metalness: 0,
+      emissive: 0x1e4a1c, emissiveIntensity: 0.3,
+    }),
+    PLANT_COUNT);
+  plantField.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  plantField.frustumCulled = false;
+  plantField.visible = false;
+  scene.add(plantField);
+  dinoFlock = [];
+  for (let i = 0; i < 5; i++) {
+    const d = makeDinoBird(i);
+    scene.add(d.group);
+    dinoFlock.push(d);
+  }
+}
+
 // =====================================================================
 // Phase 5: near-surface rocks + landing reticle (the "how close am I" cues),
 // the deployed rover with wheel tracks, and satellites.
@@ -2573,6 +3086,56 @@ function updateSurfaceExtras(sim, dom) {
       rockField.visible = true;
     } else rockField.visible = false;
   }
+  // LIFE (Hundun): armored dino-birds grazing among plant tufts. Deterministic per
+  // ground slot like the rocks; they amble a little and dip their heads to eat.
+  const lively = near && dom.body.style && dom.body.style.life === "dinobird";
+  if (lively) {
+    ensureDinoLife();
+    const Rb = dom.body.radius;
+    const cx = dom.center.x - ORIGIN.x, cy = dom.center.y - ORIGIN.y;
+    const phi = Math.atan2(dom.rel.y, dom.rel.x);
+    const t = sim.time || 0;
+    // Plant tufts: instanced cones in a band along the ground track.
+    const P_ARC = 26;
+    for (let i = 0; i < PLANT_COUNT; i++) {
+      const slot = Math.round((phi * Rb) / P_ARC) - PLANT_COUNT / 2 + i;
+      const rr = mulberry32(((slot * 2654435761) ^ hashStr(dom.body.key) ^ 0x51ee) >>> 0);
+      const phiK = (slot * P_ARC) / Rb + ((rr() - 0.5) * P_ARC * 0.9) / Rb;
+      const psi = ((rr() - 0.5) * 260) / Rb;
+      const size = 0.8 + rr() * 1.6;
+      const cpk = Math.cos(phiK), spk = Math.sin(phiK);
+      const cps = Math.cos(psi), sps = Math.sin(psi);
+      _v3.set(cx + Rb * cpk * cps, cy + Rb * spk * cps, Rb * sps);
+      _q1.setFromUnitVectors(_v1.set(0, 1, 0), _v2.set(cpk, spk, 0));
+      _s3.set(size, size * (1.1 + rr() * 0.7), size);
+      _m4.compose(_v3, _q1, _s3);
+      plantField.setMatrixAt(i, _m4);
+    }
+    plantField.instanceMatrix.needsUpdate = true;
+    plantField.visible = true;
+    // The flock: a few big grazers spread along the track, each ambling ±40 m.
+    const D_ARC = 210;
+    for (let i = 0; i < dinoFlock.length; i++) {
+      const d = dinoFlock[i];
+      const slot = Math.round((phi * Rb) / D_ARC) - Math.floor(dinoFlock.length / 2) + i;
+      const rr = mulberry32(((slot * 2654435761) ^ hashStr(dom.body.key) ^ 0xd1d0) >>> 0);
+      const wander = Math.sin(t * 0.012 + rr() * 6.28) * 40; // slow amble along the track
+      const phiK = (slot * D_ARC + (rr() - 0.5) * D_ARC * 0.5 + wander) / Rb;
+      const psi = ((rr() - 0.5) * 200) / Rb;
+      const cpk = Math.cos(phiK), spk = Math.sin(phiK);
+      const cps = Math.cos(psi), sps = Math.sin(psi);
+      d.group.position.set(cx + Rb * cpk * cps, cy + Rb * spk * cps, Rb * sps);
+      d.group.quaternion.setFromUnitVectors(_v1.set(0, 1, 0), _v2.set(cpk, spk, 0));
+      // Graze cycle: head dips to the plants and comes back up, offset per animal.
+      const dip = Math.max(0, Math.sin(t * 0.11 + i * 2.1));
+      d.neck.rotation.z = -0.25 - dip * 0.85;
+      d.group.visible = true;
+    }
+  } else {
+    if (plantField) plantField.visible = false;
+    if (dinoFlock) for (const d of dinoFlock) d.group.visible = false;
+  }
+
   // Reticle: where you'll touch down, colored by whether this fall speed survives.
   if (reticle) {
     const showR = near && alt < 3000 && alt > 2 && sim.status !== "landed";
@@ -3260,20 +3823,51 @@ function enterStation(info, cb) {
     iScene.add(frame);
   }
 
-  // Windows: starfield outside (tiny baked canvas), glowing gently.
+  // Windows: starfield outside (tiny baked canvas) — or, in a GROUND base, the
+  // planet itself: sky, plains, and if you're lucky a dino-bird on the horizon.
   const nWin = derelict ? 1 : 2 + Math.floor(rng() * 3);
   for (let i = 0; i < nWin; i++) {
     const cv = document.createElement("canvas");
     cv.width = 64; cv.height = 48;
     const ctx = cv.getContext("2d");
-    ctx.fillStyle = "#050a18"; ctx.fillRect(0, 0, 64, 48);
-    ctx.fillStyle = "#fff";
-    for (let k = 0; k < 30; k++) ctx.fillRect(rng() * 64, rng() * 48, 1, 1);
+    if (info.ground) {
+      const sky = ctx.createLinearGradient(0, 0, 0, 30);
+      sky.addColorStop(0, "#7ab0d8"); sky.addColorStop(1, "#c8d8a8");
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, 64, 30);
+      ctx.fillStyle = "#4a7a44"; ctx.fillRect(0, 30, 64, 18); // the plains
+      ctx.fillStyle = "#3a5a34";
+      for (let k = 0; k < 8; k++) ctx.fillRect(rng() * 64, 32 + rng() * 12, 2, 3); // plant tufts
+      if (rng() > 0.5) { // a grazing dino-bird silhouette, far off
+        const dx = 10 + rng() * 40;
+        ctx.fillStyle = "#2a3a28";
+        ctx.fillRect(dx, 26, 6, 3); ctx.fillRect(dx + 5, 22, 2, 5); ctx.fillRect(dx + 1, 29, 1, 3); ctx.fillRect(dx + 4, 29, 1, 3);
+      }
+    } else {
+      ctx.fillStyle = "#050a18"; ctx.fillRect(0, 0, 64, 48);
+      ctx.fillStyle = "#fff";
+      for (let k = 0; k < 30; k++) ctx.fillRect(rng() * 64, rng() * 48, 1, 1);
+    }
     const win = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.9),
       new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv) }));
     const wx = -len / 2 + 1.5 + (i + 0.5) * (len - 3) / nWin;
     win.position.set(wx, 0.3 + rng() * 0.8, -rad + 0.08);
     iScene.add(win);
+  }
+
+  // A wrecked GROUND base wears its story: long claw-scrape marks down the walls
+  // (three parallel gouges — something big and armored shouldered through here).
+  if (info.ground && derelict) {
+    const gougeMat = new THREE.MeshStandardMaterial({ color: 0x1c1518, roughness: 1 });
+    for (let s = 0; s < 3; s++) {
+      const gx = -len / 2 + 2 + s * (len - 4) / 3;
+      for (let k = 0; k < 3; k++) {
+        const gouge = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.6, 0.05), gougeMat);
+        gouge.material._isClone = true;
+        gouge.position.set(gx + k * 0.28, 0.2 + rng() * 0.5, -rad + 0.1);
+        gouge.rotation.z = 0.35 + rng() * 0.2;
+        iScene.add(gouge);
+      }
+    }
   }
 
   // Science consoles: glowing racks the Connie floats up to. Kinds rotate; the
@@ -3291,46 +3885,64 @@ function enterStation(info, cb) {
     iScene.add(screen);
     consoles.push({ x, y, kind, screen, done: false });
   };
+  // In a gravity interior (ground base) everything stands at FLOOR height — a
+  // standing, jumping Connie has to be able to reach the screens.
+  const floorY = -(rad - 0.95);
+  const conY = info.ground ? floorY + 0.55 : null;
   if (derelict) {
-    addConsole(0.5, -0.4, "salvage", new THREE.Color(0.5, 0.12, 0.1)); // dying ember of a screen
+    addConsole(0.5, conY != null ? conY : -0.4,
+      info.ground ? "basewreck" : "salvage", new THREE.Color(0.5, 0.12, 0.1)); // dying ember
   } else {
     const kinds = ["bio", "materials", "astro"];
     const n = 1 + Math.floor(rng() * 3);
     for (let i = 0; i < n; i++) {
       addConsole(-len / 2 + 1.6 + i * (len - 3) / Math.max(1, n - 0.5) + rng(),
-        -0.6 + rng() * 1.2, kinds[Math.floor(rng() * kinds.length)],
+        conY != null ? conY : -0.6 + rng() * 1.2, kinds[Math.floor(rng() * kinds.length)],
         new THREE.Color(0.15, 1.6, 0.8)); // HDR: it blooms
     }
-    // A plant rack — things grow up here, in every direction at once.
+    // A plant rack — on a station things grow in every direction at once; in a
+    // ground base it's a proper greenhouse shelf (extra sprouts — Hundun is ALIVE).
+    const shelfY = info.ground ? floorY + 0.05 : -1.1;
     const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.5),
       new THREE.MeshStandardMaterial({ color: 0x8a919c }));
     shelf.material._isClone = true;
-    shelf.position.set(len * 0.22, -1.1, -rad + 0.6);
+    shelf.position.set(len * 0.22, shelfY, -rad + 0.6);
     iScene.add(shelf);
-    for (let i = 0; i < 5; i++) {
+    const nSprout = info.ground ? 9 : 5;
+    for (let i = 0; i < nSprout; i++) {
       const sprout = new THREE.Mesh(new THREE.SphereGeometry(0.09 + rng() * 0.08, 8, 6),
         new THREE.MeshStandardMaterial({ color: 0x4fae54, roughness: 0.8 }));
       sprout.material._isClone = true;
-      sprout.position.set(len * 0.22 - 0.5 + i * 0.24, -0.98 + rng() * 0.1, -rad + 0.6);
+      sprout.position.set(len * 0.22 - 0.55 + i * (1.1 / nSprout) + rng() * 0.06,
+        shelfY + 0.12 + rng() * 0.1, -rad + 0.6);
       iScene.add(sprout);
     }
   }
 
-  // Floating clutter: cargo bags on a live station; years of drifting junk on a wreck.
+  // Clutter: FLOATING cargo in zero-g — but a GROUND base has real gravity, so
+  // everything sits properly on the floor (his rule: gravity means nothing floats).
   const nJunk = derelict ? 16 : 5 + Math.floor(rng() * 4);
   const drifters = [];
   for (let i = 0; i < nJunk; i++) {
+    const bh = 0.15 + rng() * 0.25;
     const box = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2 + rng() * 0.3, 0.15 + rng() * 0.25, 0.2),
+      new THREE.BoxGeometry(0.2 + rng() * 0.3, bh, 0.2),
       new THREE.MeshStandardMaterial({
         color: derelict ? 0x4a4448 : [0xc8b48a, 0xdfe3ea, 0x8fa8c8][Math.floor(rng() * 3)],
         roughness: 0.85,
       }));
     box.material._isClone = true;
-    box.position.set((rng() - 0.5) * (len - 2), (rng() - 0.5) * (rad), (rng() - 0.5) * rad * 0.8);
-    box.rotation.set(rng() * 3, rng() * 3, rng() * 3);
-    iScene.add(box);
-    drifters.push({ m: box, w: (rng() - 0.5) * (derelict ? 0.8 : 0.25) });
+    if (info.ground) {
+      box.position.set((rng() - 0.5) * (len - 2), -(rad - 0.95) - 0.35 + bh / 2, (rng() - 0.5) * rad * 0.5);
+      box.rotation.set(0, rng() * 3, derelict ? (rng() - 0.5) * 0.5 : 0); // wreck junk lies askew
+      iScene.add(box);
+      drifters.push({ m: box, w: 0 }); // grounded: it does NOT drift
+    } else {
+      box.position.set((rng() - 0.5) * (len - 2), (rng() - 0.5) * (rad), (rng() - 0.5) * rad * 0.8);
+      box.rotation.set(rng() * 3, rng() * 3, rng() * 3);
+      iScene.add(box);
+      drifters.push({ m: box, w: (rng() - 0.5) * (derelict ? 0.8 : 0.25) });
+    }
   }
 
   // The RESIDENT. 👽 Friendly — big eyes like a Connie, its own glyph console,
@@ -3403,12 +4015,17 @@ function enterStation(info, cb) {
   document.getElementById("app").appendChild(hintEl);
 
   interior = { scene: iScene, cam, connie, vel: { x: 0, y: 0 }, consoles, alien,
-               keys: {}, hintEl, cb, len, rad, drifters, last: 0, spin: !!info.spin };
+               keys: {}, hintEl, cb, len, rad, drifters, last: 0,
+               spin: !!info.spin, ground: !!info.ground };
   if (info.spin) {
     // Centrifuge station: the ring's spin presses you to the floor — gravity you can
     // stand on. Same room, different physics; the hint teaches the difference.
     hintEl.textContent = "🐍🌀 " + info.name + " — the ring is SPINNING, you have gravity! ← → walk · ↑ jump · E to return";
     connie.position.set(-len * 0.3, -(rad - 0.95), 0); // start standing, not floating
+  } else if (info.ground) {
+    // Ground base: PLANET gravity — the honest kind. Walk, jump, nothing floats.
+    hintEl.textContent = "🐍🏠 " + info.name + " — real ground, real gravity! ← → walk · ↑ jump · walk to a glowing screen · E to go back out";
+    connie.position.set(-len * 0.3, -(rad - 0.95), 0); // standing on the floor
   }
   window.addEventListener("keydown", interiorKeyDown);
   window.addEventListener("keyup", interiorKeyUp);
@@ -3442,9 +4059,9 @@ function updateInterior() {
   it.last = now;
   const c = it.connie;
   const mx = it.len / 2 - 0.8, my = it.rad - 0.9;
-  if (it.spin) {
-    // Centrifuge gravity: walk on the floor, jump, come back DOWN — spin gravity is
-    // real gravity as far as your boots can tell (that's the whole lesson).
+  if (it.spin || it.ground) {
+    // Centrifuge OR planet gravity: walk on the floor, jump, come back DOWN — spin
+    // gravity is real gravity as far as your boots can tell (that's the whole lesson).
     const onFloor = c.position.y <= -my + 0.03;
     const want = (it.keys.ArrowRight ? 2.0 : 0) - (it.keys.ArrowLeft ? 2.0 : 0);
     it.vel.x += (want - it.vel.x) * Math.min(1, (onFloor ? 9 : 1.2) * dt);
@@ -3675,5 +4292,6 @@ export const Render = Object.freeze({
   setArrow,
   zoomMap,
   setQuality,
+  spawnMeteor, // ☄️ ring-rock strikes (recorded in ARCHITECTURE.md, 2026-07-16)
   debug,
 });

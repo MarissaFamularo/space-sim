@@ -104,6 +104,20 @@ export const PARTS = [
     attachTop: true, attachBottom: false,
   },
   {
+    // The FARTHEST-future engine here: matter + ANTIMATTER annihilate into pure gamma
+    // rays — the brightest "laser" physics allows — and the beam is the exhaust.
+    // Exhaust at 2,000 km/s: ~17x the fusion torch, ~700x a chemical rocket. Real
+    // physics, imaginary fuel tank: all the antimatter humans have EVER made is a few
+    // billionths of a gram (CERN makes it an atom at a time). Even this monster needs
+    // ~600 years to the nearest star — ask the Navigator for the honest math.
+    id: "engine_antimatter",
+    type: "engine",
+    name: "Annihilation Beam Drive",
+    dryMass: 3.2, thrust: 700, exhaustVelocity: 2000000,
+    height: 2.0, radius: 0.8, shape: "beam",
+    attachTop: true, attachBottom: false,
+  },
+  {
     // You can't just bump into a station and stick — you need the matching ring.
     // Rides on the nose (like Apollo's probe-and-drogue) or inline in the stack.
     id: "docking_port",

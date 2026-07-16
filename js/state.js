@@ -75,6 +75,14 @@ export function buildCatalog(defs, order, scale = SCALE) {
     if (d.face) body.face = d.face;
     if (d.gen) body.gen = true;
     if (d.blackHole) body.blackHole = true;
+    // Optional ELLIPTICAL rail (2026-07-16, his ask: a lava moon on a stretched orbit).
+    // `a` stays the semi-major axis; omega below is then the MEAN motion, and
+    // bodyStateAt solves Kepler's equation for the true position. e is capped: rails
+    // must never cross their parent (periapsis a(1-e) has to clear the parent's radius).
+    if (d.ecc) {
+      body.ecc = Math.min(d.ecc, 0.9);
+      body.periAngle = d.periAngle || 0;
+    }
     if (d.parent) {
       const p = out[d.parent];
       body.omega = Math.sqrt(p.mu / (body.orbitRadius ** 3)); // circular two-body rate, CCW
@@ -151,14 +159,44 @@ export function returnToSol() {
 
 export function isSol() { return SYSTEM.key === "sol"; }
 
+// Kepler's equation E - e·sinE = M, solved by Newton's method. Converges in a handful
+// of steps for any e < 0.9 (our cap). Pure, deterministic.
+export function solveKepler(M, e) {
+  let E = M + e * Math.sin(M);
+  for (let i = 0; i < 8; i++) {
+    const f = E - e * Math.sin(E) - M;
+    E -= f / (1 - e * Math.cos(E));
+    if (Math.abs(f) < 1e-12) break;
+  }
+  return E;
+}
+
 // World (Sun-centered) position/velocity of a body's CENTER at sim time t (seconds).
 // Recursive through the parent chain: Moon = Earth's state + Moon's circle around Earth.
+// Bodies with `ecc` ride a REAL elliptical rail (Kepler-solved, parent at the focus,
+// fast near periapsis / slow near apoapsis — the true second-law motion); everyone
+// else keeps the classic circle. Both are CCW.
 export function bodyStateAt(key, t = 0) {
   const b = BODIES[key];
   if (!b || !b.parent) return { pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 }, angle: 0 };
   const parent = bodyStateAt(b.parent, t);
-  const th = (b.phase0 || 0) + b.omega * t;
   const a = b.orbitRadius;
+  if (b.ecc) {
+    const e = b.ecc, n = b.omega, w = b.periAngle || 0;
+    const E = solveKepler((b.phase0 || 0) + n * t, e);
+    const cosE = Math.cos(E), sinE = Math.sin(E);
+    const s = Math.sqrt(1 - e * e);
+    const px = a * (cosE - e), py = a * s * sinE;            // perifocal frame
+    const rr = 1 - e * cosE;                                  // r / a
+    const pvx = (-a * n * sinE) / rr, pvy = (a * n * s * cosE) / rr;
+    const cw = Math.cos(w), sw = Math.sin(w);
+    return {
+      pos: { x: parent.pos.x + px * cw - py * sw, y: parent.pos.y + px * sw + py * cw },
+      vel: { x: parent.vel.x + pvx * cw - pvy * sw, y: parent.vel.y + pvx * sw + pvy * cw },
+      angle: w + Math.atan2(s * sinE, cosE - e), // periapsis angle + true anomaly
+    };
+  }
+  const th = (b.phase0 || 0) + b.omega * t;
   const v = a * b.omega;
   return {
     pos: { x: parent.pos.x + a * Math.cos(th), y: parent.pos.y + a * Math.sin(th) },

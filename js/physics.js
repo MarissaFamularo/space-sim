@@ -140,7 +140,22 @@ export const Physics = {
     const air = airAt(c.pos, states);
     if (air) h = Math.min(h, 0.05);
     const thrusting = (c.throttle || 0) > 0 && (c.thrust || 0) > 0 && (c.fuelRemaining || 0) > 0;
-    if (thrusting) h = Math.min(h, 0.1);
+    if (thrusting) {
+      // BURN UNDER TIME WARP (2026-07-16, his ask). The old blanket 0.1 s pin snapped
+      // every burn to real time. Replaced with the two accuracy limits that actually
+      // matter, so low-thrust/high-ve cruisers (ion, torch, antimatter) can burn
+      // through warp — and when thrust beats local gravity the path runs near-STRAIGHT
+      // at the target, a real brachistochrone, honestly integrated (no faked lines).
+      // Launch/landing burns stay finely integrated via limits 1–3 above (and at
+      // warp 1 the frame dt is far smaller than these caps anyway).
+      const throttle = Math.min(1, Math.max(0, c.throttle || 0));
+      const thrustN = (c.thrust || 0) * 1000 * throttle;
+      const massKg = Math.max(1, (c.mass || 0) * 1000);
+      const mdot = thrustN / Math.max(1, c.exhaustVelocity || 1); // kg/s
+      const hMass = mdot > 0 ? (0.02 * massKg) / mdot : Infinity; // ≤2% of mass burned per substep
+      const hDv = (80 * massKg) / Math.max(1, thrustN);           // ≤80 m/s gained per substep
+      h = Math.min(h, Math.max(0.1, Math.min(hMass, hDv)));
+    }
     return Math.max(0.02, Math.min(h, 20000));
   },
 
@@ -177,20 +192,17 @@ export const Physics = {
     if (c.thrust && ve > 0 && fuel > 0 && throttle > 0) {
       thrustKN = c.thrust * throttle; // kN
     }
-    let thrustN = thrustKN * 1000; // N
+    const thrustN = thrustKN * 1000; // N
     let massKg = (c.mass || 0) * 1000; // kg
 
-    // Fuel burn by mass: massFlow = thrust_N / ve (kg/s). Cap by remaining fuel.
-    let burnKg = 0;
-    if (thrustN > 0 && ve > 0) {
-      burnKg = (thrustN / ve) * dt; // kg burned this step
-      const fuelKg = fuel * 1000;
-      if (burnKg >= fuelKg) {
-        const frac = fuelKg > 0 ? fuelKg / burnKg : 0;
-        thrustN *= frac;
-        burnKg = fuelKg;
-      }
-    }
+    // Fuel flow: massFlow = thrust_N / ve (kg/s) — bookkept PER SUBSTEP below
+    // (2026-07-16, the warp-burn change): a warped frame can span hours of burning,
+    // so the mass must fall as the tank drains WITHIN the frame (Tsiolkovsky-honest —
+    // warpburn_test holds it to 1%), and thrust cuts off at the substep the tank
+    // actually runs dry instead of weakening the whole frame.
+    const mdot = thrustN > 0 && ve > 0 ? thrustN / ve : 0; // kg/s
+    let fuelKgLeft = fuel * 1000;
+    let burnedKg = 0;
 
     // --- integrate (semi-implicit / symplectic Euler with ADAPTIVE sub-stepping) ---
     // The stable substep spans 0.02 s (landing burn in LEO) to hours (coasting between
@@ -229,12 +241,18 @@ export const Physics = {
         acc.x += g.x; acc.y += g.y;
       }
 
-      // Thrust along heading.
-      if (thrustN > 0 && massKg > 0) {
+      // Thrust along heading; the tank drains and the ship lightens substep by substep.
+      if (thrustN > 0 && massKg > 0 && fuelKgLeft > 0) {
+        const want = mdot * h;
+        const burn = Math.min(want, fuelKgLeft);
+        const eff = want > 0 ? burn / want : 0; // < 1 only on the substep the tank dries
         const hv = headingVec(angle);
-        const at = thrustN / massKg;
+        const at = (thrustN * eff) / massKg;
         acc.x += hv.x * at;
         acc.y += hv.y * at;
+        fuelKgLeft -= burn;
+        burnedKg += burn;
+        massKg = Math.max(1, massKg - burn);
       }
 
       // Atmosphere: drag (and the parachute) push against the LOCAL AIR, which moves with
@@ -349,11 +367,11 @@ export const Physics = {
       sim.heat = Math.max(0, sim.heat - (sim.heat / HEAT_TAU) * dt);
     }
 
-    // burn fuel + reduce mass (only if we actually integrated a thrusting step)
-    if (burnKg > 0) {
-      const frac = sim.warpLimited ? (tNow - (sim.time || 0)) / dt : 1; // only what we flew
-      c.fuelRemaining = Math.max(0, fuel - (burnKg * frac) / 1000);
-      c.mass = Math.max(0, (c.mass || 0) - (burnKg * frac) / 1000);
+    // Commit fuel + mass: exactly what the flown substeps actually burned (a
+    // warp-limited frame burns only the sim time it truly integrated).
+    if (burnedKg > 0) {
+      c.fuelRemaining = Math.max(0, fuel - burnedKg / 1000);
+      c.mass = Math.max(0, (c.mass || 0) - burnedKg / 1000);
     }
 
     // advance sim clock to the END of what we actually integrated.

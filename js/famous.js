@@ -192,10 +192,109 @@ function pandoraSystem() {
   };
 }
 
+// ---------- THE YOUNGCOW SYSTEM (his own design, 2026-07-16) — a BABY solar system ----------
+// A young yellow dwarf still wearing its protoplanetary disc. Four worlds, all small and
+// young: tidally-locked lava Sia; ringed home Hundun with its armored dino-birds, two
+// ground bases, a lava moon on a genuinely ELLIPTICAL rail (first body to use `ecc`),
+// and a lumpy still-accreting moonlet; a real comet (named Konnie — comets are named
+// after their discoverers!); and Centdra, a planet still FORMING out in the disc.
+function youngcowSystem() {
+  const defs = {
+    sun: { name: "Youngcow", radius: 6.3e8, g0: 250, parent: null, a: 0,
+           solid: false, atmo: null, phase0: 0, gen: true,
+           style: { color: 0xffdf6e, star: true, glow: "255,223,110", young: true } },
+    // SIA — the lava world, tidally LOCKED: the same face always points at the star
+    // (like our Moon at Earth), so one side is molten ocean and the other frozen rock.
+    sia: { name: "Sia", radius: 2.8e6, g0: 4.5, parent: "sun", a: 0.25 * AU,
+           solid: true, atmo: null, phase0: 1.3, gen: true,
+           style: { color: 0xb0502a, lockedLava: true },
+           face: { kind: "lavaLocked", base: "#2a1410", accent: "#ff5a1a", accent2: "#ffc24a" } },
+    // HUNDUN — the main world and home. Ringed (young systems are messy), alive
+    // (armored plant-eating dino-birds), and hosting two ground bases: one working
+    // science base, one wreck. Asteroids from the ring still hit the ground here.
+    earth: { name: "Hundun", radius: 5.2e6, g0: 8.6, parent: "sun", a: 0.8 * AU,
+             solid: true, atmo: { height: 7.5e4, seaLevelDensity: 1.15 }, phase0: 0, gen: true, home: true,
+             style: { color: 0x4a9a5a, halo: 0x7ac88a, rings: true, life: "dinobird", meteorRain: true,
+                      // Ground bases: phi is the fixed surface angle (the launchpad sits
+                      // at +Y = PI/2, so both are a ~3 km hop from the pad — findable).
+                      bases: [
+                        { id: "base_sci", name: "Hundun Science Base", wrecked: false, phi: Math.PI / 2 - 0.006 },
+                        { id: "base_old", name: "Old Nest Base", wrecked: true, phi: Math.PI / 2 + 0.006 },
+                      ] },
+             face: { kind: "terra", base: "#2a6a3e", accent: "#4a9a5a", accent2: "#c8b06a" } },
+    // EMBER — the lava moon on a STRETCHED orbit (e = 0.45): watch it sprint through
+    // its close pass and crawl at the far end — Kepler's second law, live in the sky.
+    moon: { name: "Ember", radius: 9.0e5, g0: 1.3, parent: "earth", a: 4.5e7,
+            solid: true, atmo: null, phase0: 0.7, gen: true, ecc: 0.45, periAngle: 0.8,
+            style: { color: 0xd06a3a },
+            face: { kind: "lava", base: "#3a1a10", accent: "#ff6a2a", accent2: "#ffc24a" } },
+    // PEBBLE — a moonlet INSIDE Hundun's ring, still collecting material. So small and
+    // lumpy you can't orbit it (tinyMoon — fly formation like a real 67P mission).
+    pebble: { name: "Pebble", radius: 6.0e4, g0: 0.02, parent: "earth", a: 2.2e7,
+              solid: true, atmo: null, phase0: 3.2, gen: true,
+              style: { color: 0x9a8a76, lumpy: true },
+              face: { kind: "rocky", base: "#9a8a76", accent: "#6a5e4e", accent2: "#c8bca8" } },
+    // COMET KONNIE — the third object isn't a planet at all. A dirty snowball on an
+    // eccentric rail that dives inside Hundun's orbit and swings back out to the disc.
+    // Gravity is very low but NOT zero: escape speed ≈ bike speed.
+    comet: { name: "Comet Konnie", radius: 3.0e4, g0: 0.004, parent: "sun", a: 1.5 * AU,
+             solid: true, atmo: null, phase0: 4.5, gen: true, ecc: 0.6, periAngle: 2.4,
+             style: { color: 0xbfe8f2, comet: true },
+             face: { kind: "ice", base: "#cfe4ea", accent: "#9ab4c0", accent2: "#f0fbff" } },
+    // CENTDRA — still FORMING, far out inside the protoplanetary disc, wrapped in its
+    // own fast-spinning disc of infalling material (a real circumplanetary disk!).
+    centdra: { name: "Centdra", radius: 4.0e6, g0: 6.0, parent: "sun", a: 3.5 * AU,
+               solid: true, atmo: { height: 5.0e4, seaLevelDensity: 0.08 }, phase0: 2.0, gen: true,
+               style: { color: 0xc09a5a, formingDisc: true },
+               face: { kind: "lava", base: "#4a2e18", accent: "#e08a3a", accent2: "#8a5e36" } },
+  };
+  const order = ["sun", "sia", "earth", "moon", "pebble", "comet", "centdra"];
+  const bodies = buildCatalog(defs, order);
+  // The system-wide protoplanetary disc, sized off Centdra's (already-scaled) orbit:
+  // inner edge ~2.2 AU, outer ~5.5 AU. Render reads this off the star's style.
+  bodies.sun.style.protoDisc = {
+    inner: bodies.centdra.orbitRadius * (2.2 / 3.5),
+    outer: bodies.centdra.orbitRadius * (5.5 / 3.5),
+  };
+  return {
+    key: "gen:youngcow",
+    name: "The Youngcow System",
+    seed: "Youngcow",
+    blackHole: false,
+    starClass: "G",
+    starLabel: "young yellow dwarf with a protoplanetary disc",
+    homeName: "Hundun",
+    moonName: "Ember",
+    planetCount: 4,
+    frostAU: 2.0,
+    young: true, // young system: extra asteroids + comets in the render dressing
+    bodies,
+    planetKeys: order.slice(1),
+    stations: [
+      { id: "st_home", name: "Cradle Station", body: "earth", altR: 2.5, phase0: 1.0 },
+    ],
+    famous: "youngcow",
+    blurb: "🐄✨ <b>Welcome to the YOUNGCOW SYSTEM — a BABY solar system, designed by " +
+      "you-know-who!</b> This yellow dwarf is like our Sun as a toddler, still wearing its " +
+      "<b>protoplanetary disc</b> — real telescopes (ALMA) photograph discs exactly like " +
+      "this around young stars. <b>Sia</b> is tidally locked: one face always toward the " +
+      "star, molten; the other, frozen dark. Home is <b>Hundun</b> — ringed, green, and " +
+      "ALIVE: armored dino-birds graze the plains (they only eat plants). Two bases wait on " +
+      "the surface, and watch the sky — ring rocks still fall here. Its moon <b>Ember</b> " +
+      "rides a genuinely STRETCHED orbit: watch the map — it sprints through the close pass " +
+      "and crawls at the far end, exactly Kepler's second law. Little <b>Pebble</b> is still " +
+      "gathering itself inside the ring — too lumpy and light to orbit, so fly formation. " +
+      "The third \"planet\" is no planet: <b>Comet Konnie</b> (comets are named for their " +
+      "discoverers!) dives sunward and swings back out — you can LAND on it; escape speed " +
+      "is bicycle speed. And far out in the disc, <b>Centdra</b> is still being born, " +
+      "wrapped in its own spinning disc of infalling rock. 🚀",
+  };
+}
+
 // ---------- Registry ----------
 // Aliases are normalized (lowercase, letters+digits only) so "The Kerbal System",
 // "kerbin", "KSP", "avatar", "Alpha Centauri"… all land on the same canonical system.
-const BUILDERS = { kerbol: kerbolSystem, pandora: pandoraSystem };
+const BUILDERS = { kerbol: kerbolSystem, pandora: pandoraSystem, youngcow: youngcowSystem };
 const ALIASES = {
   kerbol: "kerbol", kerbin: "kerbol", kerbal: "kerbol", ksp: "kerbol",
   kerbalsystem: "kerbol", kerbolsystem: "kerbol", thekerbolsystem: "kerbol",
@@ -204,12 +303,16 @@ const ALIASES = {
   alphacentauri: "pandora", alphacentauria: "pandora", alphacentaurib: "pandora",
   proxima: "pandora", proximacentauri: "pandora", centauri: "pandora",
   pandorasystem: "pandora", avatarsystem: "pandora", thepandorasystem: "pandora",
+  youngcow: "youngcow", youngcowsystem: "youngcow", theyoungcowsystem: "youngcow",
+  hundun: "youngcow", hundunsystem: "youngcow", sia: "youngcow",
+  centdra: "youngcow", cometkonnie: "youngcow", ember: "youngcow",
 };
 
 // Shown in the Starmap panel and pre-lit on the galaxy map.
 export const FAMOUS_LIST = [
   { seed: "Kerbol", name: "The Kerbol System", hint: "the Kerbal Space Program worlds — Kerbin, the Mun, Jool…", color: 0xffd75e },
   { seed: "Pandora", name: "The Pandora System", hint: "from Avatar — your home is a moon of a gas giant, under three real suns", color: 0x4a7ac8 },
+  { seed: "Youngcow", name: "The Youngcow System", hint: "HIS design — a baby solar system: protoplanetary disc, ringed Hundun, dino-birds, a comet you can land on", color: 0xffdf6e },
 ];
 
 // null if the name isn't famous — the seeded generator takes over as usual.
