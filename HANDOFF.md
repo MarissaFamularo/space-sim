@@ -55,6 +55,31 @@ landed → certificate "ASTRONAUT ELLIE" with 3 stickers → exit → VAB palett
 Moon-teleport regression 0.0007% error. Canvas verified lit via litFraction 0.9999
 (WebGL screenshots don't composite between harness tool calls — DOM shots captured).
 
+**Lesson 4 shipped same day (Mom's yes): 🌍 GO AROUND THE WORLD.** Unlocks after the
+CAME HOME sticker (falling back is what makes "you must go SIDEWAYS" land). New build:
+six slots — the BIG tank ("around the world takes LOTS of rocket food") and a HEAT
+SHIELD ("coming home from orbit is fast and HOT"). The flight is the REAL two-burn
+ascent profile: her ➡ LEAN tap starts the teacher's gravity turn (setAngle — the
+teacher "holds the steering wheel", announced; steering is the one control a 5-year-old
+can't work), engine cuts itself when the apoapsis is set ("we threw the ball high
+enough"), coast up the hill, then HER 🔥 PUSH-sideways tap at the top catches the
+orbit — the single most important idea in spaceflight, in her hands. Then: a full lap
+at warp 100 (half-lap callout "you're over the OTHER SIDE of the world"), 🏠 COME HOME
+→ tail-first 🔥 deorbit push (teacher cuts it when the periapsis dips into the air),
+✂ booster off, glowing shielded reentry with the Apollo line, ☂, touchdown, 4th
+sticker. **A one-continuous-burn ascent was tried and REJECTED by the node test: this
+stack carries more than escape Δv and flew straight past orbit onto an escape path —
+the two-burn profile isn't pedagogy garnish, it's what makes the mission fly.**
+Nets: teacher lean-assist at 12 km, push-assist if the top passes untapped, fuel-out
+falls back into the Lesson-3 nets (stage + chute), assist-stage + auto-chute on the
+way home. Verified: school suite grew to 66 checks incl. the full orbit mission with
+real physics (insertion margin 1.15 t, lap holds above 15 km, reentry peaks 2,544 m/s
+at heat 0.11 behind the shield, touchdown 4.0 m/s exactly as predicted); browser run
+end-to-end (build w/ wrong-tap → countdown → lean → coast → push → 22×81 km orbit →
+lap → deorbit → stage → glow line → chute → landed → 4-sticker certificate), zero
+console errors. Push-assist and fuel-out paths are machine-tested (node), not flown
+in the browser — they're nets, not the happy path.
+
 **Rung-4 feedback already in (Mom flew it, same day):**
 - "After the space cheer it just goes on and on — it doesn't say what to do." TRUE:
   the coast over the top was a silent ~25 s. Fixed: ~5 s after the celebration the

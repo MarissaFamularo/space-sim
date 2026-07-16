@@ -445,4 +445,13 @@ Render.enterStation(info, cb)       // info gains .spin — centrifuge interior:
 - **The school flight uses the ordinary launch path** (main.js launch/doStage/
   deployChute; the craft is stock parts on the shared craft object) — physics
   untouched. The teacher's only powers are the same levers the keyboard has
-  (throttle, stage, chute, time-warp), always announced out loud.
+  (throttle, stage, chute, time-warp, steering), always announced out loud.
+- **Lesson 4 (same day): GO AROUND THE WORLD.** `School.init` gains `setAngle`
+  (the teacher holds the wheel — said out loud; steering is the one control a
+  5-year-old can't work). Second stack `SchoolCore.ORBIT_STACK` (big tank + heat
+  shield). The ascent is the real two-burn profile — gravity-turn burn to set the
+  apoapsis, engine-off coast, sideways push at the top (`SchoolCore.ascentAngle` /
+  `retroAngle` / `radialSpeed`, pure + node-tested); a single continuous burn was
+  tried and REJECTED: this stack carries more than escape Δv and flies straight
+  past orbit onto an escape path (chronicled in tests/school_test.mjs). Sticker
+  book gains `stickers.orbit` (additive; old books load with it false).

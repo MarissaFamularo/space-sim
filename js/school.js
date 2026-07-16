@@ -25,7 +25,8 @@
 // Pure, node-testable core lives in SchoolCore (no DOM): the build-order checker,
 // the saved-sticker-book validator, and the flight phase machine.
 
-import { BODIES } from "./state.js";
+import { BODIES, bodyStateAt } from "./state.js";
+import { Physics } from "./physics.js";
 
 // ---- the sticker book (HER save — a new versioned key, nobody else's data) ----
 const SCHOOL_KEY = "spacesim.school.v1";
@@ -40,13 +41,21 @@ const SCHOOL_KEY = "spacesim.school.v1";
 // physics lesson, not a nicety.
 const SCHOOL_STACK = ["engine_sparrow", "tank_small", "decoupler", "command_pod", "parachute"];
 
+// Lesson 4's rocket: GOING AROUND THE WORLD needs the BIG tank (~4,400 m/s of Δv vs
+// ~3,200 for insertion — node-proven margin) and a HEAT SHIELD under the pod: coming
+// home from orbit means hitting the air at ~2.5 km/s, a real fireball without one.
+const ORBIT_STACK = ["engine_sparrow", "tank_large", "decoupler", "heat_shield", "command_pod", "parachute"];
+
 // Card deck shown to the kid, in a FIXED scrambled order (deterministic on purpose —
 // a 5-year-old learns the game faster when the cards don't move between plays).
+// Each build lesson deals only ITS stack's cards out of this master deck.
 const CARDS = [
   { partId: "command_pod",   emoji: "🐍", word: "POD" },
   { partId: "engine_sparrow", emoji: "🔥", word: "ENGINE" },
+  { partId: "heat_shield",   emoji: "🛡", word: "SHIELD" },
   { partId: "parachute",     emoji: "☂",  word: "PARACHUTE" },
   { partId: "decoupler",     emoji: "✂",  word: "STAGE" },
+  { partId: "tank_large",    emoji: "⛽", word: "BIG FUEL" },
   { partId: "tank_small",    emoji: "⛽", word: "FUEL" },
 ];
 
@@ -59,6 +68,14 @@ const SLOT_LINES = {
   tank_small: {
     ask: "Now the FUEL TANK! Fuel is the rocket's food — no fuel, no fire!",
     hint: "Almost! Now we need the FUEL TANK — the one with the fuel drop!",
+  },
+  tank_large: {
+    ask: "Now the BIG FUEL TANK! Going around the whole world takes LOTS of rocket food!",
+    hint: "Almost! This trip needs the BIG FUEL TANK — the one with the fuel drop!",
+  },
+  heat_shield: {
+    ask: "Now the HEAT SHIELD! Coming home from orbit is super fast and super HOT — the shield takes the fire, just like Apollo's did!",
+    hint: "Almost! Now the HEAT SHIELD goes under the pod — the round one that takes the heat!",
   },
   decoupler: {
     ask: "Now the DECOUPLER! When the fuel is all gone, it lets the empty bottom FALL AWAY — rockets get lighter as they fly!",
@@ -87,34 +104,37 @@ function spaceAltitude() {
 // ---------------------------------------------------------------------------
 export const SchoolCore = {
   SCHOOL_STACK,
+  ORBIT_STACK,
   CARDS,
   spaceAltitude,
 
-  makeBuildState() { return { placed: 0 }; },
+  makeBuildState(stack = SCHOOL_STACK) { return { placed: 0, stack }; },
 
   // Tap a card: right card for the blinking slot goes in; wrong card gets a friendly
   // pointing hint (never scolds, never auto-fixes — Rule 4 of the house doctrine).
   tryPlace(state, partId) {
-    const want = SCHOOL_STACK[state.placed];
+    const stack = state.stack || SCHOOL_STACK;
+    const want = stack[state.placed];
     if (!want) return { ok: false, done: true, say: "The rocket is already built!" };
     if (partId !== want) return { ok: false, done: false, say: SLOT_LINES[want].hint };
     state.placed += 1;
-    const done = state.placed >= SCHOOL_STACK.length;
+    const done = state.placed >= stack.length;
     return {
       ok: true, done,
-      say: done ? "You built a REAL rocket! Time to fly it!" : SLOT_LINES[SCHOOL_STACK[state.placed]].ask,
+      say: done ? "You built a REAL rocket! Time to fly it!" : SLOT_LINES[stack[state.placed]].ask,
     };
   },
 
   // Saved sticker book -> always a clean shape (garbage in storage is dropped
   // silently, same rule the mod loader follows — a mangled save can't break boot).
+  // `orbit` was added 2026-07-16 (Lesson 4) — older books load with it false.
   validateSaved(raw) {
-    const clean = { v: 1, name: "", stickers: { build: false, space: false, land: false } };
+    const clean = { v: 1, name: "", stickers: { build: false, space: false, land: false, orbit: false } };
     if (!raw || typeof raw !== "object") return clean;
     if (typeof raw.name === "string") clean.name = raw.name.slice(0, 12);
     const s = raw.stickers;
     if (s && typeof s === "object") {
-      for (const k of ["build", "space", "land"]) clean.stickers[k] = s[k] === true;
+      for (const k of ["build", "space", "land", "orbit"]) clean.stickers[k] = s[k] === true;
     }
     return clean;
   },
@@ -138,6 +158,70 @@ export const SchoolCore = {
   // teacher does it FOR her, out loud (failing safely is the pedagogy — her first
   // flight cannot be lost to a missed tap; main.js's own auto-chute is the second net).
   ASSIST_STAGE_ALT: 3000,
+
+  // ---- Lesson 4: GO AROUND THE WORLD (orbit) ----
+  // Target orbit altitude and the "you're really in orbit" gate: periapsis safely
+  // above the drag (air top + 8 km). Deorbit aims the periapsis DEEP into the air.
+  orbitAltitude() { return 70000; },
+  orbitPeGate() { return (BODIES.earth.atmosphere ? BODIES.earth.atmosphere.height : 7000) + 8000; },
+  DEORBIT_PE: 2000,
+  ASSIST_LEAN_ALT: 12000,   // if she never taps ➡ LEAN, the teacher leans at 12 km
+  LEAN_READY_SPEED: 120,    // the ➡ LEAN button appears once she's really moving
+
+  // The teacher's steering (SHE flies the engine; the wheel is held out loud).
+  // Gravity-turn schedule: tilt off vertical grows with the fraction of orbital
+  // speed already banked — 0° on the pad, horizontal as v approaches v_orbit.
+  // Angle convention (physics.js headingVec): 0 = world +Y, CCW positive; local
+  // vertical at position (rx,ry) relative to Earth is atan2(-ux, uy), and orbits
+  // here are CCW, so prograde = vertical + 90°.
+  ascentAngle({ rx, ry, speed, vTarget }) {
+    const m = Math.hypot(rx, ry) || 1;
+    const vertical = Math.atan2(-(rx / m), ry / m);
+    const frac = Math.max(0, Math.min(1, speed / vTarget));
+    const tilt = (Math.PI / 2) * Math.pow(frac, 0.6);
+    return vertical + tilt;
+  },
+  // Point the tail at the way we're going: heading = opposite the (Earth-relative)
+  // velocity. headingVec(a) = (-sin a, cos a) = -v̂  =>  a = atan2(v̂x, -v̂y).
+  retroAngle({ vx, vy }) {
+    const m = Math.hypot(vx, vy) || 1;
+    return Math.atan2(vx / m, -(vy / m));
+  },
+  // Climb/descent rate relative to Earth (radial speed): + going up, - coming down.
+  radialSpeed({ rx, ry, vx, vy }) {
+    const m = Math.hypot(rx, ry) || 1;
+    return (rx * vx + ry * vy) / m;
+  },
+
+  // The orbit-mission phase machine (pure; node-tested like flightEvent).
+  // The ascent is the REAL two-burn profile (like every actual launch): burn up and
+  // over until the apoapsis reaches orbit height, coast up the hill with the engine
+  // off, then a SIDEWAYS push at the top catches the orbit. A single continuous burn
+  // was tried and rejected — this stack carries more than escape Δv, and burning it
+  // all in one go flings the ship right past orbit onto an escape path (node-proven).
+  //   phases: boost -> turn (her ➡ tap) -> coastUp (apo set, engine off) ->
+  //           circle (her 🔥 tap at the top) -> lap (going around) -> homeReady ->
+  //           homeburn (her 🔥 tap) -> coastdown (tap ✂) -> reenter -> chute -> landed.
+  //   snapshot: { alt, speed, status, fuel, isOrbit, pe, apo, vr, swept, staged,
+  //               chuteDeployed, heat, halfSaid, glowSaid, pushShown, descending }
+  orbitEvent(phase, snap) {
+    if (snap.status === "crashed") return phase === "crashed" ? null : "crashed";
+    if (phase === "boost" && snap.speed >= this.LEAN_READY_SPEED) return "leanReady";
+    // The honest failure: tank dry before the orbit closed — fall back under the nets.
+    if ((phase === "turn" || phase === "circle") && snap.fuel <= 0 && !snap.isOrbit) return "fuelOut";
+    if (phase === "turn" && snap.apo >= this.orbitAltitude()) return "apoSet";
+    if (phase === "coastUp" && !snap.pushShown && snap.vr < 50) return "pushReady";
+    if (phase === "coastUp" && snap.pushShown && snap.vr < -30) return "pushAssist";
+    if (phase === "circle" && snap.isOrbit && snap.pe > this.orbitPeGate()) return "orbitIn";
+    if (phase === "lap" && !snap.halfSaid && snap.swept > Math.PI) return "lapHalf";
+    if (phase === "lap" && snap.swept >= 2 * Math.PI) return "lapDone";
+    if (phase === "homeburn" && snap.pe < this.DEORBIT_PE) return "deorbitCut";
+    if (phase === "coastdown" && snap.staged) return "staged";
+    if (phase === "reenter" && !snap.glowSaid && snap.heat > 0.05) return "glow";
+    if ((phase === "reenter" || phase === "coastdown") && snap.chuteDeployed) return "chute";
+    if ((phase === "chute" || phase === "reenter") && snap.status === "landed") return "landed";
+    return null;
+  },
 };
 
 function loadSchool() {
@@ -335,18 +419,30 @@ function showClassroom(greet) {
   const rowEl = document.createElement("div");
   rowEl.style.cssText = "display:flex;flex-wrap:wrap;justify-content:center;";
   const star = (on) => (on ? "⭐" : "▫️");
-  const build = bigButton("🧩" + star(data.stickers.build), "BUILD IT", () => showBuild());
+  const build = bigButton("🧩" + star(data.stickers.build), "BUILD IT", () => showBuild("up"));
   rowEl.appendChild(build);
   const fly = bigButton("🚀" + star(data.stickers.space && data.stickers.land), "FLY IT", () => {
-    if (!data.stickers.build && (!buildState || buildState.placed < SCHOOL_STACK.length)) {
+    if (!data.stickers.build) {
       fly.classList.remove("sch-shake"); void fly.offsetWidth; fly.classList.add("sch-shake");
       bubble(el, "Build your rocket first! Tap the puzzle!");
       return;
     }
-    startFlight();
+    startFlight("up");
   });
   if (!data.stickers.build) fly.classList.add("sch-locked");
   rowEl.appendChild(fly);
+  // Lesson 4 unlocks once she's been to space AND come home — the falling-back
+  // flight is what makes "you have to go SIDEWAYS to stay up" land.
+  const around = bigButton("🌍" + star(data.stickers.orbit), "GO AROUND", () => {
+    if (!data.stickers.land) {
+      around.classList.remove("sch-shake"); void around.offsetWidth; around.classList.add("sch-shake");
+      bubble(el, "First fly to space and come home — THEN we go all the way around!");
+      return;
+    }
+    showBuild("orbit");
+  });
+  if (!data.stickers.land) around.classList.add("sch-locked");
+  rowEl.appendChild(around);
   rowEl.appendChild(bigButton("🏆", "MY BADGE", () => showCertificate(false)));
   el.appendChild(rowEl);
 
@@ -357,21 +453,24 @@ function showClassroom(greet) {
   el.appendChild(cornerExit());
 }
 
-// ---- Lesson 1: BUILD IT ----
-function showBuild() {
+// ---- Lessons 1 & 4a: BUILD IT (generic over the mission's stack) ----
+function showBuild(mission = "up") {
   const el = room();
-  buildState = SchoolCore.makeBuildState();
-  bubble(el, "Let's build a rocket! A rocket is like a tower — we start at the BOTTOM. " + SLOT_LINES[SCHOOL_STACK[0]].ask);
+  const stackIds = mission === "orbit" ? ORBIT_STACK : SCHOOL_STACK;
+  buildState = SchoolCore.makeBuildState(stackIds);
+  bubble(el, (mission === "orbit"
+    ? "This time we're going ALL THE WAY AROUND the world! That trip needs two new parts — watch for them. We start at the BOTTOM. "
+    : "Let's build a rocket! A rocket is like a tower — we start at the BOTTOM. ") + SLOT_LINES[stackIds[0]].ask);
 
   // The rocket outline: slots stacked top -> bottom on screen (chute on top),
   // filled bottom-up as she gets them right.
   const stack = document.createElement("div");
   stack.style.cssText = "display:flex;flex-direction:column-reverse;gap:8px;margin:8px 0;";
-  const slotEls = SCHOOL_STACK.map((pid, i) => {
+  const slotEls = stackIds.map((pid, i) => {
     const card = CARDS.find((c) => c.partId === pid);
     const s = document.createElement("div");
     s.className = "sch-slot" + (i === 0 ? " sch-blink" : "");
-    s.style.height = pid === "tank_small" ? "72px" : pid === "decoupler" ? "38px" : "56px";
+    s.style.height = pid.startsWith("tank") ? "72px" : (pid === "decoupler" || pid === "heat_shield") ? "38px" : "56px";
     s.textContent = "?";
     s.dataset.want = pid;
     stack.appendChild(s);
@@ -381,7 +480,7 @@ function showBuild() {
 
   const deck = document.createElement("div");
   deck.style.cssText = "display:flex;flex-wrap:wrap;justify-content:center;";
-  for (const card of CARDS) {
+  for (const card of CARDS.filter((c) => stackIds.includes(c.partId))) {
     const b = bigButton(card.emoji, card.word, () => {
       const r = SchoolCore.tryPlace(buildState, card.partId);
       if (!r.ok) {
@@ -399,7 +498,7 @@ function showBuild() {
         saveSchool(data);
         confetti(el);
         bubble(el, r.say);
-        const go = bigButton("🚀", "TO THE PAD!", () => startFlight());
+        const go = bigButton("🚀", "TO THE PAD!", () => startFlight(mission));
         go.classList.add("sch-pop");
         deck.replaceChildren(go);
       } else {
@@ -413,12 +512,13 @@ function showBuild() {
   el.appendChild(cornerExit());
 }
 
-// ---- Lessons 2+3: FLY IT / COME HOME — the real game, thin big-button overlay ----
-function startFlight() {
+// ---- Lessons 2-4: the real game under a thin big-button overlay ----
+// mission "up" = straight up & home (lessons 2+3); "orbit" = go around the world.
+function startFlight(mission = "up") {
   closeRoom();
   closeFlight();
   injectCSS();
-  handlers.prepRocket && handlers.prepRocket(SCHOOL_STACK);
+  handlers.prepRocket && handlers.prepRocket(mission === "orbit" ? ORBIT_STACK : SCHOOL_STACK);
 
   flightEl = document.createElement("div");
   flightEl.className = "sch-flight";
@@ -460,8 +560,13 @@ function startFlight() {
   const exit = Object.assign(bigButton("🏫", "", () => abortToClassroom()), { className: "sch-big sch-corner" });
   flightEl.appendChild(exit);
 
-  flight = { phase: "countdown", count: 5, lastAlt: 0, descendTimer: 0, assistedStage: false,
-             coastTicks: 0, coastSaid: false, ui: { bubble: b, ship, bottom } };
+  flight = { phase: "countdown", count: 5, mission, lastAlt: 0, descendTimer: 0,
+             assistedStage: false, coastTicks: 0, coastSaid: false,
+             // orbit-mission bookkeeping
+             leanShown: false, assistedLean: false, pushShown: false,
+             halfSaid: false, glowSaid: false,
+             swept: 0, prevPhi: null, tappedChute: false,
+             ui: { bubble: b, ship, bottom } };
   say("Count down with me! Tap the numbers!");
   showCountButton();
 }
@@ -509,6 +614,8 @@ function onTick(sim) {
   const dAlt = (sim.altitude || 0) - flight.lastAlt;
   flight.descendTimer = dAlt < -0.5 ? flight.descendTimer + 1 : 0;
   flight.lastAlt = sim.altitude || 0;
+
+  if (flight.mission === "orbit") { tickOrbit(sim); return; }
 
   // Teacher assist: if the booster is still attached this low on the way down, the
   // teacher stages it herself — out loud, never silently (the flight must be
@@ -602,6 +709,214 @@ function onTick(sim) {
   }
 }
 
+// ---- Lesson 4 flight: GO AROUND THE WORLD ----
+// She flies the engine and taps the mission moments; the teacher holds the steering
+// wheel (announced out loud, never silent) — steering needs grown-up hands, throttle
+// timing is hers. Everything below is the same physics her brother flies.
+function beginTurn(assisted) {
+  flight.phase = "turn";
+  flight.ui.bottom.replaceChildren();
+  say(assisted
+    ? "I'll lean us over now! I'm holding the steering — YOU keep flying. Watch the world curve away!"
+    : "Leaning over! I'm holding the steering — YOU keep flying. Watch the world curve away!");
+}
+
+function tickOrbit(sim) {
+  const earth = bodyStateAt("earth", sim.time || 0);
+  const rx = sim.craft.pos.x - earth.pos.x, ry = sim.craft.pos.y - earth.pos.y;
+  const vx = sim.craft.vel.x - earth.vel.x, vy = sim.craft.vel.y - earth.vel.y;
+
+  // The teacher's hand on the wheel, per phase.
+  if (handlers.setAngle) {
+    const vTarget = Math.sqrt(BODIES.earth.mu / (BODIES.earth.radius + SchoolCore.orbitAltitude()));
+    if (flight.phase === "boost") {
+      handlers.setAngle(SchoolCore.ascentAngle({ rx, ry, speed: 0, vTarget: 1 })); // hold vertical
+    } else if (flight.phase === "turn") {
+      handlers.setAngle(SchoolCore.ascentAngle({ rx, ry, speed: sim.speed || 0, vTarget }));
+    } else if (flight.phase === "coastUp" || flight.phase === "circle") {
+      // Flat along the horizon, prograde — the sideways push that makes an orbit.
+      handlers.setAngle(SchoolCore.ascentAngle({ rx, ry, speed: vTarget, vTarget }));
+    } else if (flight.phase === "homeburn") {
+      handlers.setAngle(SchoolCore.retroAngle({ vx, vy }));
+    }
+  }
+
+  // How far around the world we've come (lap phase only).
+  if (flight.phase === "lap") {
+    const phi = Math.atan2(ry, rx);
+    if (flight.prevPhi != null) {
+      let d = phi - flight.prevPhi;
+      if (d > Math.PI) d -= 2 * Math.PI;
+      if (d < -Math.PI) d += 2 * Math.PI;
+      flight.swept += Math.abs(d);
+    }
+    flight.prevPhi = phi;
+  }
+
+  // Teacher assists + warp housekeeping (assists are always spoken, never silent).
+  if (flight.phase === "boost" && !flight.assistedLean && (sim.altitude || 0) > SchoolCore.ASSIST_LEAN_ALT) {
+    flight.assistedLean = true;
+    beginTurn(true);
+    return;
+  }
+  if (flight.phase === "coastdown") {
+    if ((sim.altitude || 0) < 25000 && sim.timeWarp > 1) handlers.setWarp && handlers.setWarp(1);
+    if (!(sim.craft && sim.craft.currentStage > 0) && (sim.altitude || 0) < 20000) {
+      flight.assistedStage = true;
+      handlers.stageRocket && handlers.stageRocket();
+    }
+  }
+  if (flight.phase === "reenter" && !flight.chuteShown &&
+      (sim.speed || 0) < 250 && (sim.altitude || 0) < 6000) {
+    flight.chuteShown = true;
+    say("Almost home — tap the parachute!");
+    const p = bigButton("☂", "PARACHUTE!", () => {
+      flight.tappedChute = true;
+      handlers.deployChute && handlers.deployChute();
+    });
+    p.classList.add("sch-blink");
+    flight.ui.bottom.replaceChildren(p);
+  }
+  if (flight.phase === "chute" && (sim.altitude || 0) < 150 && sim.timeWarp > 1) {
+    handlers.setWarp && handlers.setWarp(1); // the touchdown is hers to watch
+  }
+
+  const o = Physics.computeOrbit(sim);
+  const ev = SchoolCore.orbitEvent(flight.phase, {
+    alt: sim.altitude || 0,
+    speed: sim.speed || 0,
+    status: sim.status,
+    fuel: sim.craft ? sim.craft.fuelRemaining : 0,
+    isOrbit: !!(o && o.isOrbit && o.bodyKey === "earth"),
+    pe: o ? o.periapsis : Infinity,
+    apo: o && isFinite(o.apoapsis) ? o.apoapsis : Infinity,
+    vr: SchoolCore.radialSpeed({ rx, ry, vx, vy }),
+    swept: flight.swept,
+    staged: (sim.craft && sim.craft.currentStage > 0) || false,
+    chuteDeployed: !!(sim.craft && sim.craft.chuteDeployed),
+    heat: sim.heat || 0,
+    halfSaid: flight.halfSaid,
+    glowSaid: flight.glowSaid,
+    pushShown: flight.pushShown,
+    descending: flight.descendTimer > 20,
+  });
+  if (!ev) return;
+
+  if (ev === "leanReady") {
+    if (flight.leanShown) return;
+    flight.leanShown = true;
+    say("Now the BIG trick! To STAY in space you can't just go up — you have to go SIDEWAYS, super fast! Tap the arrow and I'll lean us over!");
+    const b = bigButton("➡", "LEAN!", () => beginTurn(false));
+    b.classList.add("sch-blink");
+    flight.ui.bottom.replaceChildren(b);
+  } else if (ev === "apoSet") {
+    flight.phase = "coastUp";
+    handlers.setThrottle && handlers.setThrottle(0);
+    handlers.setWarp && handlers.setWarp(5);
+    say("Engine off! We threw the ball high enough — now we coast up the hill to the very top.");
+    flight.ui.bottom.replaceChildren();
+  } else if (ev === "pushReady") {
+    flight.pushShown = true;
+    handlers.setWarp && handlers.setWarp(1);
+    say("Here comes the TOP of the hill! Tap the fire — push SIDEWAYS! That's how you catch an orbit!");
+    const b = bigButton("🔥", "PUSH!", () => {
+      flight.phase = "circle";
+      handlers.setThrottle && handlers.setThrottle(1);
+      say("Pushing sideways! Faster… faster… feel the world start to hold us!");
+      flight.ui.bottom.replaceChildren();
+    });
+    b.classList.add("sch-blink");
+    flight.ui.bottom.replaceChildren(b);
+  } else if (ev === "pushAssist") {
+    flight.phase = "circle";
+    handlers.setThrottle && handlers.setThrottle(1);
+    say("I'll push for us — SIDEWAYS, now! Faster… faster… feel the world start to hold us!");
+    flight.ui.bottom.replaceChildren();
+  } else if (ev === "fuelOut") {
+    // The honest failure: not fast enough sideways before the tank ran dry. Fall
+    // back under the Lesson-3 nets and say exactly what happened — that's science.
+    say("Oh! The tank ran dry before we were going sideways fast enough — so down we come, just like before. That happens to real rocket scientists too! Off goes the empty part…");
+    flight.assistedStage = true;
+    handlers.stageRocket && handlers.stageRocket();
+    handlers.setThrottle && handlers.setThrottle(0);
+    flight.mission = "up";
+    flight.phase = "falling";
+  } else if (ev === "orbitIn") {
+    flight.phase = "lap";
+    flight.prevPhi = null;
+    flight.swept = 0;
+    handlers.setThrottle && handlers.setThrottle(0);
+    handlers.setWarp && handlers.setWarp(100);
+    data.stickers.space = true; // she's certainly in space too
+    saveSchool(data);
+    confetti(flightEl);
+    say("ENGINE OFF! Feel that? You're not falling DOWN anymore — you're falling AROUND! That's an orbit. Now watch — you're flying around the WHOLE WORLD!");
+  } else if (ev === "lapHalf") {
+    flight.halfSaid = true;
+    say("You're over the OTHER SIDE of the world now! Home is all the way around the ball!");
+  } else if (ev === "lapDone") {
+    flight.phase = "homeReady";
+    handlers.setWarp && handlers.setWarp(1);
+    data.stickers.orbit = true;
+    saveSchool(data);
+    confetti(flightEl);
+    say("YOU WENT ALL THE WAY AROUND THE WORLD! Real astronauts do that in about 90 minutes. Ready to come home? Tap the house!");
+    const home = bigButton("🏠", "COME HOME", () => {
+      flight.phase = "homeburn";
+      say("Turning us around — tail first! Now tap the fire: pushing BACKWARDS slows us down, and down we come.");
+      const push = bigButton("🔥", "PUSH!", () => {
+        handlers.setThrottle && handlers.setThrottle(1);
+        flight.ui.bottom.replaceChildren();
+      });
+      push.classList.add("sch-blink");
+      flight.ui.bottom.replaceChildren(push);
+    });
+    home.classList.add("sch-blink");
+    flight.ui.bottom.replaceChildren(home);
+  } else if (ev === "deorbitCut") {
+    flight.phase = "coastdown";
+    handlers.setThrottle && handlers.setThrottle(0);
+    handlers.setWarp && handlers.setWarp(25);
+    say("That's enough pushing — now we fall home! The big part's job is done. Tap the scissors!");
+    const s = bigButton("✂", "DROP IT!", () => { handlers.stageRocket && handlers.stageRocket(); });
+    s.classList.add("sch-blink");
+    flight.ui.bottom.replaceChildren(s);
+  } else if (ev === "staged") {
+    flight.phase = "reenter";
+    flight.ui.bottom.replaceChildren();
+    say((flight.assistedStage ? "I helped — off it went! " : "There it goes! ") +
+        "Blunt end first now — it's the heat shield's turn to work!");
+  } else if (ev === "glow") {
+    flight.glowSaid = true;
+    say("See the orange glow? That's the AIR grabbing us and rubbing us slow — the shield takes all that fire, just like Apollo's did!");
+  } else if (ev === "chute") {
+    flight.phase = "chute";
+    const assisted = !flight.tappedChute;
+    flight.ui.bottom.replaceChildren();
+    handlers.setWarp && handlers.setWarp(25);
+    say((assisted
+      ? "I helped with the parachute that time! "
+      : "Parachute out! ") + "The air catches it and we float down, soft and slow. Floating is slow — let's speed up time!");
+  } else if (ev === "landed") {
+    flight.phase = "landed";
+    handlers.setWarp && handlers.setWarp(1);
+    data.stickers.land = true;
+    saveSchool(data);
+    confetti(flightEl);
+    say((data.name ? "Astronaut " + data.name + ", y" : "Y") +
+        "ou flew AROUND THE WORLD and came home! Build, launch, orbit, reenter, land — that's a whole real space mission.");
+    const done = bigButton("🎉", "MY BADGE!", () => { closeFlight(); handlers.resetGame && handlers.resetGame(); showCertificate(true); });
+    done.classList.add("sch-pop");
+    flight.ui.bottom.replaceChildren(done);
+  } else if (ev === "crashed") {
+    flight.phase = "crashed";
+    handlers.setWarp && handlers.setWarp(1);
+    say("Bump! The rocket bounced — but our snake is safe. Connies always are! Let's try again!");
+    const again = bigButton("🔁", "TRY AGAIN", () => abortToClassroom());
+    flight.ui.bottom.replaceChildren(again);
+  }
+}
+
 // ---- The certificate / sticker book ----
 function showCertificate(celebrate) {
   const el = room();
@@ -611,8 +926,11 @@ function showCertificate(celebrate) {
   el.appendChild(head);
   if (celebrate) confetti(el);
   bubble(el,
-    celebrate ? "Hooray! Look at your stickers! Real rockets say space starts one hundred kilometers up — and YOU flew there!" :
-    "Here are your stickers!", celebrate);
+    celebrate
+      ? (data.stickers.orbit
+        ? "Hooray! Look at your stickers! You didn't just visit space — you went all the way AROUND the world, like a real astronaut!"
+        : "Hooray! Look at your stickers! Real rockets say space starts one hundred kilometers up — and YOU flew there!")
+      : "Here are your stickers!", celebrate);
 
   const rowEl = document.createElement("div");
   rowEl.style.cssText = "display:flex;flex-wrap:wrap;justify-content:center;";
@@ -626,6 +944,7 @@ function showCertificate(celebrate) {
   stick(data.stickers.build, "🧩", "BUILDER");
   stick(data.stickers.space, "🌌", "IN SPACE");
   stick(data.stickers.land, "☂", "CAME HOME");
+  stick(data.stickers.orbit, "🌍", "WENT AROUND");
   el.appendChild(rowEl);
 
   const btns = document.createElement("div");

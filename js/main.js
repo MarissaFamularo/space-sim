@@ -641,6 +641,7 @@ School.init({
   stageRocket: () => doStage(),
   setThrottle: (v) => { sim.craft.throttle = v; },
   setWarp: (v) => { sim.timeWarp = v; }, // the teacher fast-forwards the boring coasts
+  setAngle: (a) => { sim.craft.angle = a; }, // Lesson 4: the teacher holds the wheel (said out loud)
   deployChute: () => deployChute(false),
   resetGame: () => reset(),
   toCenter: () => Menu.showCenter(),
