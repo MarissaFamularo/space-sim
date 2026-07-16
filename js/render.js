@@ -3961,10 +3961,12 @@ function enterStation(info, cb) {
     iScene.add(screen);
     consoles.push({ x, y, kind, screen, done: false });
   };
-  // In a gravity interior (ground base) everything stands at FLOOR height — a
-  // standing, jumping Connie has to be able to reach the screens.
+  // In ANY gravity interior — a ground base OR a spinning centrifuge station (his
+  // rule: gravity means nothing floats) — everything stands at FLOOR height, where
+  // a standing, jumping Connie can actually reach the screens.
+  const grounded = !!info.ground || !!info.spin;
   const floorY = -(rad - 0.95);
-  const conY = info.ground ? floorY + 0.55 : null;
+  const conY = grounded ? floorY + 0.55 : null;
   if (derelict) {
     addConsole(0.5, conY != null ? conY : -0.4,
       info.ground ? "basewreck" : "salvage", new THREE.Color(0.5, 0.12, 0.1)); // dying ember
@@ -3986,13 +3988,13 @@ function enterStation(info, cb) {
     // A plant rack, where plants belong — gardens overflow with them (built below),
     // labs keep a small one, ground bases run a proper greenhouse shelf.
     if (arch === "garden" || arch === "lab" || arch === "base") {
-    const shelfY = info.ground ? floorY + 0.05 : -1.1;
+    const shelfY = grounded ? floorY + 0.05 : -1.1;
     const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.5),
       new THREE.MeshStandardMaterial({ color: 0x8a919c }));
     shelf.material._isClone = true;
     shelf.position.set(len * 0.22, shelfY, -rad + 0.6);
     iScene.add(shelf);
-    const nSprout = info.ground ? 9 : 5;
+    const nSprout = grounded ? 9 : 5;
     for (let i = 0; i < nSprout; i++) {
       const sprout = new THREE.Mesh(new THREE.SphereGeometry(0.09 + rng() * 0.08, 8, 6),
         new THREE.MeshStandardMaterial({ color: 0x4fae54, roughness: 0.8 }));
@@ -4004,8 +4006,9 @@ function enterStation(info, cb) {
     } // end plant-rack gate (garden / lab / base only)
   }
 
-  // Clutter: FLOATING cargo in zero-g — but a GROUND base has real gravity, so
-  // everything sits properly on the floor (his rule: gravity means nothing floats).
+  // Clutter: FLOATING cargo in zero-g — but anywhere with gravity (a ground base,
+  // or a spinning centrifuge station) everything sits properly on the floor
+  // (his rule: gravity means nothing floats — spin gravity counts, that's the point).
   const nJunk = derelict ? 16 : 5 + Math.floor(rng() * 4);
   const drifters = [];
   for (let i = 0; i < nJunk; i++) {
@@ -4017,7 +4020,7 @@ function enterStation(info, cb) {
         roughness: 0.85,
       }));
     box.material._isClone = true;
-    if (info.ground) {
+    if (grounded) {
       box.position.set((rng() - 0.5) * (len - 2), -(rad - 0.95) - 0.35 + bh / 2, (rng() - 0.5) * rad * 0.5);
       box.rotation.set(0, rng() * 3, derelict ? (rng() - 0.5) * 0.5 : 0); // wreck junk lies askew
       iScene.add(box);

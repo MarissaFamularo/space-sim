@@ -37,6 +37,11 @@ Deployed player stations keep the generic EXTERIOR mesh (older flag, still open)
    hint bar names the kind. Derelict + alien + ground bases unchanged.
 3. Navigator taught berthing + station kinds (safety untouched, 18/18); all 13 node
    suites green; boot smoke green.
+4. **Spin gravity grounds the room too** (follow-up, Mom's check): in a CENTRIFUGE
+   station interior the clutter now sits on the floor and consoles/plant shelves
+   stand at floor height, same as ground bases — his rule ("gravity means nothing
+   floats") applies to spin gravity, which is the whole lesson of the ring.
+   Browser-verified: spin interior opens with everything grounded, zero errors.
 
 ## Status (2026-07-16 later): 🌌 INTERSTELLAR PHASE B — HE CAN FLY TO ANOTHER STAR FOR REAL
 
