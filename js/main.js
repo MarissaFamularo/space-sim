@@ -11,7 +11,7 @@ import { Render } from "./render.js";
 import { Builder } from "./builder.js";
 import { UI } from "./ui.js";
 import { Copilot } from "./copilot.js";
-import { pickConnie } from "./connies.js";
+import { pickCrew, loadCrewPicks } from "./connies.js";
 import { Menu } from "./menu.js";
 import { Tracking } from "./tracking.js";
 import { School } from "./school.js";
@@ -124,12 +124,18 @@ function loadStage(stageNum) {
 
 // Crew policy: a Connie flies only when a CREWED pod is aboard. A probe-core-only rocket
 // is an uncrewed robot mission (sim.crew = null) — crashes cost hardware, never a Connie.
+// Seats are real (Acorn Pod 3, Swift Cockpit 2): the 🧑‍🚀 Astronaut Complex picks who
+// flies (pick order = seating order, first pick commands); no picks → one random
+// unlocked Connie, exactly the old behavior.
 function assignCrew() {
-  const hasCrewPod = craft.parts.some((i) => {
+  let seats = 0;
+  for (const i of craft.parts) {
     const d = findPart(PARTS, i.partId);
-    return d && d.type === "command" && !d.uncrewed;
-  });
-  sim.crew = hasCrewPod ? pickConnie() : null;
+    if (d && d.type === "command" && !d.uncrewed) seats += d.seats || 1;
+  }
+  const roster = pickCrew(loadCrewPicks(), SCIENCE, seats);
+  sim.crew = roster[0] || null;              // the commander — every existing callout keys off this
+  sim.crewList = roster;                     // everyone aboard (snapshot + callouts)
   return sim.crew;
 }
 
@@ -185,7 +191,13 @@ function launch() {
   announced = freshAnnounced();
   announced.soi[BODIES.earth.name] = true; // you start there; no callout for home
   loadStage(0);
-  if (sim.crew) copilotSay("🐍 Commander <b>" + sim.crew.name + "</b> is aboard — helmet sealed, coils braced. Liftoff!");
+  if (sim.crew) {
+    const mates = (sim.crewList || []).slice(1).map((c) => c.name);
+    copilotSay(mates.length
+      ? "🐍 Commander <b>" + sim.crew.name + "</b> aboard with <b>" + mates.join("</b> and <b>") + "</b> — " +
+        (mates.length + 1) + " helmets sealed, coils braced. Liftoff!"
+      : "🐍 Commander <b>" + sim.crew.name + "</b> is aboard — helmet sealed, coils braced. Liftoff!");
+  }
   else copilotSay("🛰️ <b>Uncrewed launch</b> — no Connie aboard, the probe core is doing the flying. Real space programs send robots first, so nobody's ever in danger. Liftoff!");
   if (sim.craft.thrust <= 0) copilotSay("This rocket has no working engine on its first stage — it won't lift off. Add an engine at the bottom.");
   else if (sim.cantLiftOff) copilotSay("Hmm — your engines push with " + Math.round(sim.craft.thrust) +
@@ -616,6 +628,7 @@ Menu.init({
   onTracking: () => Tracking.show(),
   onSchool: () => School.show(),
   onSettingsChange: (s) => Render.setQuality(s.graphics),
+  getScience: () => SCIENCE, // the 🧑‍🚀 Astronaut Complex shows the balance + unlocks live
 });
 
 // 🎒 Space School (the little-sibling classroom): school.js owns the lesson overlays
@@ -688,6 +701,8 @@ window.addEventListener("keydown", (e) => {
   }
   if (e.key === " ") { e.preventDefault(); doStage(); }
   if (e.key === "b" || e.key === "B") boardBase();
+  // Any flight input takes the ship back from the 🤖 autopilot (real-autopilot rule).
+  if ("zZxX.,".includes(e.key) && sim.interstellar && sim.interstellar.auto) autopilotOff();
   if (e.key === "z" || e.key === "Z") sim.craft.throttle = 1;
   if (e.key === "x" || e.key === "X") sim.craft.throttle = 0;
   if (e.key === ".") stepWarp(+1);
@@ -709,6 +724,10 @@ function stepWarp(dir) {
 function applyControls(dt) {
   if (sim.mode !== "flight" || sim.status === "crashed") return;
   const STEER = 0.7, THR = 0.8; // rad/s, fraction/s
+  if (sim.interstellar && sim.interstellar.auto &&
+      (keys["ArrowLeft"] || keys["ArrowRight"] || keys["ArrowUp"] || keys["ArrowDown"] || keys["a"] || keys["d"])) {
+    autopilotOff(); // steering or throttling = you have the ship
+  }
   let steering = false;
   if (keys["ArrowLeft"] || keys["a"]) { sim.craft.angle += STEER * dt; steering = true; }
   if (keys["ArrowRight"] || keys["d"]) { sim.craft.angle -= STEER * dt; steering = true; }
@@ -1144,6 +1163,22 @@ function cancelInterstellar() {
   sim.timeWarp = Math.min(sim.timeWarp, MAX_SYSTEM_WARP);
   copilotSay("🧭 Course cleared — coasting free between the stars. Set a new one anytime.");
 }
+// 🤖 Autopilot (his ask: "point at a place and it takes you there"): the Navigator
+// flies the SAME levers the kid has — attitude, throttle, warp — nothing else. Real
+// fuel, real decades; the policy itself is pure (Physics.autopilotStep, half-tank
+// rule). Any flight key hands the ship straight back, like a real autopilot.
+function autopilotOn() {
+  if (!sim.interstellar || sim.interstellar.auto) return;
+  sim.interstellar.auto = { fuel: sim.craft.fuelRemaining || 0, phase: null };
+}
+function autopilotOff() {
+  const it = sim.interstellar;
+  if (!it || !it.auto) return;
+  it.auto = null;
+  sim.craft.throttle = 0;
+  copilotSay("🤖→🐍 <b>You have the ship, Commander.</b> Course is still locked on " +
+    it.name + " — the panel keeps calling the flip point, and 🤖 is one tap away.");
+}
 // Aim helper: attitude control, not cheating — rotation was never simulated, and
 // burning is still all his. Cruise aim steers the VELOCITY onto the target (thrust
 // along wanted-minus-actual — the real navigation rule; pointing the nose straight
@@ -1269,6 +1304,29 @@ function updateInterstellar() {
   // approach — a slow, well-braked cruise still deserves more than one frame of
   // "flip now!" before the system's edge arrives.
   const braking = brakeDist > 0 && remEdge < Math.max(brakeDist * 1.15, rem * 0.15);
+  // 🤖 Autopilot flies first (so the autopace below sees the throttle it just set).
+  if (it.auto) {
+    const vLatA = Math.hypot(sim.craft.vel.x - vTo * ux, sim.craft.vel.y - vTo * uy);
+    const plan = Physics.autopilotStep({
+      rem, remEdge, arriveR: ARRIVE_R, vTo, vLat: vLatA,
+      fuel: sim.craft.fuelRemaining || 0, engageFuel: it.auto.fuel, braking,
+    });
+    aimAtCourse(plan.aim);
+    sim.craft.throttle = plan.throttle;
+    if (plan.phase !== it.auto.phase) {
+      it.auto.phase = plan.phase;
+      const kms = Math.round(vTo / 1000);
+      const lines = {
+        burn: "🤖🔥 <b>Autopilot has the ship.</b> Burning hard for " + it.name + " — I'll spend HALF the tank speeding up and save half for stopping. That's always enough: a lighter ship gets more push from the same fuel. Warp's mine too — touch any control to take her back.",
+        coast: "🤖 Engine off at " + kms + " km/s — half the tank banked for braking. Coasting; the Connies curl up. I'll call the flip.",
+        trim: "🤖 Tiny trim burn — nudging us back onto the line.",
+        brake: "🤖🔄 <b>FLIP!</b> Nose around, burning backwards — killing " + kms + " km/s so we arrive slow enough to STAY.",
+        glide: "🤖✨ Braked to " + kms + " km/s and gliding in. She's yours the moment we cross the edge, Commander.",
+        dry: "🤖⛽ <b>The tank ran dry — I can't slow us down.</b> We'll fly through the new system fast; flip and use whatever you've got, or enjoy the view. Next trip: bigger tanks, or a gentler cruise.",
+      };
+      if (lines[plan.phase]) copilotSay(lines[plan.phase]);
+    }
+  }
   // HONEST AUTOPACE (same spirit as sim.warpLimited): warp steps DOWN — never up.
   // Coasting: no frame covers more than 20% of what's left (you cannot blink past
   // the star). Burning: no frame adds more than ~5% of your speed (at 200,000,000x
@@ -1298,6 +1356,14 @@ function updateInterstellar() {
     }
     // Round to 2 significant digits — the HUD shows this number to a kid.
     if (sim.timeWarp > cap) sim.timeWarp = Math.max(1, Number(cap.toPrecision(2)));
+    // 🤖 Cruise control: the autopilot may also step warp UP (the one thing the
+    // manual autopace never does) — biggest tier comfortably under the honest cap.
+    // Decades melt, the streaks stream, and any keypress hands the ship back.
+    if (it.auto) {
+      let want = sim.timeWarp;
+      for (const w of WARPS) if (w <= cap * 0.7 && w > want) want = w;
+      if (want > sim.timeWarp) sim.timeWarp = want;
+    }
   }
   const eta = vTo > 1 ? (rem / vTo) / (365.25 * 86400) : null;
   interPanel.style.display = "block";
@@ -1305,11 +1371,16 @@ function updateInterstellar() {
     interBody.dataset.mode = "nav";
     interBody.innerHTML =
       "<div data-i='txt' style='margin-bottom:6px'></div>" +
+      "<button data-i='auto' style='margin:2px 4px;padding:4px 10px;border-radius:8px;border:1px solid #4a9d6d;background:#143a26;color:#c6ffd9;cursor:pointer;font:700 12px system-ui;'></button>" +
       "<button data-i='aim' style='margin:2px 4px;padding:4px 10px;border-radius:8px;border:1px solid #4a5f9d;background:#1d2a52;color:#cfe0ff;cursor:pointer;font:600 12px system-ui;'></button>" +
       "<button data-i='off' style='margin:2px 4px;padding:4px 10px;border-radius:8px;border:1px solid #6d4a4a;background:#3a1d1d;color:#ffd0d0;cursor:pointer;font:600 12px system-ui;'>✖ clear course</button>";
     interBody.querySelector("[data-i=off]").onclick = cancelInterstellar;
   }
+  const autoBtn = interBody.querySelector("[data-i=auto]");
+  autoBtn.textContent = it.auto ? "✋ You have the ship" : "🤖 Autopilot — take us there";
+  autoBtn.onclick = () => (it.auto ? autopilotOff() : autopilotOn());
   const aimBtn = interBody.querySelector("[data-i=aim]");
+  aimBtn.style.display = it.auto ? "none" : ""; // the autopilot IS the aim, and then some
   aimBtn.textContent = braking ? "🔄 Aim RETROGRADE (brake!)" : "🎯 Aim at " + it.name;
   aimBtn.onclick = () => aimAtCourse(braking ? -1 : 1);
   // Off-line drift: how far the current track misses the star, projected ahead.

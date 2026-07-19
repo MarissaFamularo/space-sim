@@ -455,3 +455,62 @@ Render.enterStation(info, cb)       // info gains .spin — centrifuge interior:
   tried and REJECTED: this stack carries more than escape Δv and flies straight
   past orbit onto an escape path (chronicled in tests/school_test.mjs). Sticker
   book gains `stickers.orbit` (additive; old books load with it false).
+
+## CONTRACT REVISION 2026-07-18c — 🤖 Interstellar autopilot + warp streaks
+
+- **`Physics.autopilotStep(st)` (new pure API)**: the interstellar autopilot POLICY —
+  half-tank rule (spend ≤ half the tank accelerating; the reserve always suffices to
+  brake because a lighter ship gets more Δv — Tsiolkovsky), coast, trim-if-drifting,
+  flip/brake on the course panel's honest brake-zone test, cut at ≤30 km/s. Returns
+  `{throttle, aim(+1/-1), phase: burn|coast|trim|brake|glide|dry}`. Node-tested by
+  integrating the full Sol→Youngcow trip (tests/autopilot_test.mjs, 11 checks).
+- **`sim.interstellar` gains optional `auto`** (`{fuel: t-at-engage, phase}`): set by
+  the course panel's 🤖 button; main.js applies the policy each frame through the SAME
+  controls the player has (aimAtCourse + throttle) and may step warp UP (cruise
+  control, still under the honest autopace cap). ANY flight key (arrows/Z/X/,/.) calls
+  `autopilotOff()` — the ship is handed back, course stays locked. Snapshot gains
+  `flight.interstellar.autopilot` (the phase).
+- **Warp streaks (render.js, cosmetic)**: additive LineSegments "speed lines" around
+  the craft, follow view only, gated on `sim.interstellar` + effective speed
+  (speed × warp) > 1e9 m/s; length/flow scale with effective speed. Confessed in the
+  Navigator prompt as drawn speed lines (real interstellar space would look still).
+
+## CONTRACT REVISION 2026-07-18b — 🧑‍🚀 The Astronaut Complex (pick your crew; science recruits)
+
+- **PartDef gains optional `seats`** (crewed command parts only): Acorn Pod 3 (the real
+  Apollo number), Swift Cockpit 2; a crewed command part with no `seats` counts as 1.
+  Probe cores stay `uncrewed` and carry nobody. Ids untouched; parts.js stays pristine
+  (two data lines + comments).
+- **`computeStats` returns `seatCount`** (sum of crewed seats aboard; builder HUD shows
+  a "Seats 🐍" row when nonzero).
+- **connies.js grows the roster contract**: each Connie may carry `unlock` (lifetime
+  science needed to recruit; absent = 0 so kid-added customs always fly). New pure
+  helpers `isUnlocked/unlockedConnies/parseCrewSave/loadCrewPicks/saveCrewPicks/
+  pickCrew` — node-tested in tests/crew_test.mjs (22 checks). Science is a THRESHOLD,
+  never spent.
+- **New storage key `spacesim.crew.v1`** — `{v:1, picked:[names…]}` in pick order
+  (first = commander). Garbage-tolerant load; unknown names dropped. Written only by
+  the Complex screen (menu.js). Rule-2 catalogued in the constants skill.
+- **SimState gains `crewList`** (array of Connies aboard; `sim.crew` stays the
+  commander object, so every existing callout/snapshot consumer is unchanged).
+  Snapshot gains `flight.crewMates` (names, only when >1 aboard).
+- **Menu.init gains `getScience`**; the Complex screen is menu-owned (`data-go=
+  "complex"` building on the campus, `showComplex()` like Settings). Campus SVG
+  viewBox widened 1150→1320.
+- **assignCrew** (main.js) now: seats from the craft's crewed command parts →
+  `pickCrew(loadCrewPicks(), SCIENCE, seats)`. No picks → one random unlocked Connie
+  (old behavior); locked picks quietly stay home.
+
+## CONTRACT REVISION 2026-07-18 — Ring bands are shared constants; Teleport parks clear of them
+
+- **state.js exports `RING_BAND` ({inner: 1.25, outer: 2.3}) and `FORMING_DISC_BAND`
+  ({inner: 1.4, outer: 3.6})** — the spans render.js draws rings (`style.rings` worlds
+  + Sol's Saturn) and forming discs (`style.formingDisc`, Centdra) at, in units of body
+  radius. One home for the numbers: render draws with them, physics parks around them.
+- **`Physics.parkingOrbit` parks OUTSIDE the band on ringed/disc-wrapped worlds**
+  (band outer × 1.15; same max() rule as the atmosphere clearance — return shape
+  unchanged). The old 1.35 r default put the ✨ Teleport arrival INSIDE Hundun's ring
+  (and just under Centdra's disc): the ring plane filled the sky and shimmered as the
+  orbit crossed it. Real missions park clear of ring material for the same reason.
+  Node-tested (teleport_test.mjs section 3; Hundun arrives at 2.65 R, 1300 m/s —
+  predicted, then measured).

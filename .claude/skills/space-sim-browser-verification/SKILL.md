@@ -107,6 +107,9 @@ loop start ever moves, the script fails loudly instead of producing a half-hooke
   `chromium.launch({ executablePath: "/opt/pw-browsers/chromium-<newest>/chrome-linux/chrome" })`,
   which works fine across this version skew.
 - WebGL renders headlessly via SwiftShader — no GPU flags needed.
+- **Owner's Mac (2026-07-18):** no `/opt/pw-browsers` and no downloaded Playwright
+  browsers — both scripts now fall back to `chromium.launch({ channel: "chrome" })`
+  (system Google Chrome). Works headless; nothing to install.
 
 ## Hook API (what hooks.js exposes on `window` in the copy)
 

@@ -9,6 +9,158 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-18 latest): 🤖⚡ INTERSTELLAR AUTOPILOT + WARP STREAKS (his ask)
+
+His ask via Mom: "point at a place, do interstellar autopilot, it takes you there —
+and you see the stars moving fast past you like Star Trek warp speed." Built both,
+honest by construction: the autopilot flies the SAME controls he has (real fuel, real
+decades — Rule 3 clean, same doctrine as the school teacher's assists), and the
+streaks are speed lines tied to his true velocity × warp.
+
+**Flagged / rung 4 (play-test now):**
+- Streak DENSITY/length/flow are taste calls tuned headlessly (constants at the top of
+  the warp-streak block in render.js: STREAK_N 220, len/flow formulas). If Paddy wants
+  more Star Trek, crank STREAK_N and the `len` clamp.
+- The autopilot's callout pacing (burn→coast→flip lines) reads well in text; hearing
+  it at real cadence during a 61-year cruise is the play-test.
+- Manual-override via ARROW keys is code-verified only (it rides applyControls, which
+  the headless harness doesn't run); Z/X/,/. override IS browser-verified. One human
+  arrow-tap mid-autopilot confirms the last path.
+
+**Shipped (rung 3 — scripted hands-off voyage ALL GREEN 10/10, zero console errors;
+shot warp-streaks.png):**
+1. **`Physics.autopilotStep` — the pure policy** (gated, ARCHITECTURE "2026-07-18c"):
+   the kid-teachable half-tank rule — spend at most half the tank speeding up; the
+   saved half is ALWAYS enough to stop because a lighter ship gets more Δv from the
+   same fuel (the rocket equation working for you) — coast, trim only if the track
+   would miss the arrival bubble, flip at the panel's honest stop-distance, cut at
+   ≤30 km/s. tests/autopilot_test.mjs (11 checks) integrates the whole Sol→Youngcow
+   trip: arrives in 67.9 game-years at 13.6 km/s, spends exactly 54 of 108 t
+   accelerating, 24.3 t still aboard after braking. The fuel-starved case is honestly
+   bad: engaged at 2,500 km/s with 2 t, it reports "dry" and screams through at
+   2,485 km/s — no magic braking.
+2. **🤖 button on the course panel** (main.js): engages `sim.interstellar.auto`; the
+   autopilot steers via the existing aimAtCourse, sets throttle from the policy, and
+   is the ONE thing allowed to step warp UP (cruise control, still under the honest
+   autopace cap — browser run hit 200,000,000x by itself). Phase-transition callouts
+   teach the plan out loud (burn/coast/FLIP/glide/dry). ANY flight key hands the ship
+   back ("You have the ship, Commander" — course stays locked, 🤖 one tap away).
+3. **⚡ Warp streaks** (render.js, cosmetic): 220 additive speed lines in a tube
+   around the ship, streaming opposite the velocity; fade in past ~3c effective
+   (speed × warp), length and flow scale with effective speed; follow view only,
+   interstellar only, hidden in build mode. CONFESSED in the Navigator prompt: real
+   interstellar space would look almost still — the lines exist so velocity × warp is
+   something you can feel.
+4. **Navigator taught** (safety block untouched, navigator_check ALL GREEN): snapshot
+   `flight.interstellar.autopilot` phase; INTERSTELLAR bullet teaches the half-tank
+   rule, the honest "dry" failure, hand-back-on-touch, and the speed-line confession —
+   plus "encourage flying the flip himself once he's seen the autopilot do it."
+
+Verified: 16 node suites green; browser voyage end-to-end (escape → panel → pick
+Youngcow → one 🤖 tap → burn/coast/brake/glide hands-off → ARRIVED at Youngcow at
+26 km/s with 22.9 t, warp self-managed, streak screenshot mid-cruise, Z-key hand-back);
+boot smoke ALL GREEN. No storage changes; parts.js untouched.
+
+## Status (2026-07-18 later): 🧑‍🚀 THE ASTRONAUT COMPLEX — pick your crew, science recruits more
+
+Mom remembered a crew-chooser that turned out to be design-doc-only
+(space-game-design.md "Later: picking your crew by name") — so it got built for real,
+same live session. A fifth Space Center building where the player picks WHO flies.
+
+**Flagged / rung 4 (play-test now):**
+- The unlock ladder is tuned blind: 3 Connies free, then Yuri 25 / Mae 60 / Chris 110 /
+  Katherine 180 / Boa 260 lifetime science. HIS actual science balance decides how this
+  lands — if everything's already unlocked (or the top feels impossible), the numbers
+  are one column in connies.js CONNIES. Science is a threshold, never spent.
+- Multi-crew is mostly voice: commander + crewmates in the launch callout, the whole
+  crew in the Navigator snapshot. Only the commander EVAs / appears beside a landed
+  ship (the Connie mesh is singular) — if he asks "where's Sally?", that's the honest
+  answer and a natural next rung (crew portraits in the HUD is the design-doc idea).
+- School mode regression is node-green (school suite passes; school flights ride the
+  same launch path, so her flight now flies his picked commander silently — the school
+  overlays hide the callout, no visible change). Worth one school run-through to be sure.
+
+**Shipped (rung 3 — scripted browser run 11/11 green, zero console errors; screenshots
+campus-complex.png / complex-picked.png):**
+1. **connies.js grows the roster contract** (gated, ARCHITECTURE "CONTRACT REVISION
+   2026-07-18b"): per-Connie `unlock` thresholds + pure helpers (`pickCrew`,
+   `parseCrewSave`, …). A Connie without `unlock` counts as 0 — his kid-added customs
+   always fly. New save key **`spacesim.crew.v1`** `{v:1, picked:[names]}`, pick order
+   = seating order, garbage-tolerant, catalogued in the constants skill.
+2. **Pods have real seats** (parts.js, ids untouched): Acorn Pod 3 — the Apollo number
+   — Swift Cockpit 2, probes 0. `computeStats` gains `seatCount`; builder HUD shows
+   "Seats 🐍".
+3. **🧑‍🚀 ASTRONAUT COMPLEX** (menu.js): fifth campus building (glass star-dome, lit
+   windows, a Connie out front); inside, 8 portrait cards (seeded snake colors, bubble
+   helmets) — tap to crew up, first pick wears ⭐ COMMANDER, locked cards go grayscale
+   with "🔒 joins at N 🔬" and the remaining count. Science balance shown live
+   (Menu.init gains `getScience`).
+4. **assignCrew flies the picked crew** (main.js): seats from the craft's crewed pods,
+   `sim.crew` stays the commander (zero ripple to existing callouts), new
+   `sim.crewList`; launch callout greets the whole crew by name. No picks → one random
+   unlocked Connie (exactly the old behavior); locked picks quietly stay home.
+5. **Navigator taught** (safety block untouched — navigator_check ALL GREEN): snapshot
+   gains `flight.crewMates`; THE CREW bullet now covers the Complex, real seat counts,
+   commander/crewmate roles, and coaching toward science when he wants a locked Connie.
+
+Verified: 15 node suites green (new tests/crew_test.mjs, 22 checks: ladder, garbage
+saves, pick order/locks/seat caps/fallback, seat counting); browser end-to-end (120
+seeded science → 6 unlocked/2 locked, picks persist, 3-seat launch flies
+Mae/Sally/Chris in order, callout names all three, probe flies empty); boot smoke ALL
+GREEN. His five old keys untouched; parts.js ids stable.
+
+## Status (2026-07-18): 🪨 RING FIXES — teleport flicker, asteroid rings (his ask), map pan
+
+Live session with Mom + Patrick at the desk. Three gripes, three fixes, each
+browser-verified same-day (scratch harness now runs on the Mac via system Chrome —
+both skill scripts gained a `channel: "chrome"` fallback, noted in the skill).
+
+**Flagged / rung 4 (play-test now, they're right here):**
+- Hard-reload first (Cmd-Shift-R) — Chrome will serve stale modules otherwise.
+- Ring look is HIS acceptance test: teleport to Hundun (parks clear of the ring now,
+  855 km up), drag the camera down, warp ~100x and watch the inner rock shell lap the
+  outer — that differential spin IS Kepler's third law; if he asks, the Navigator's
+  existing Saturn lines ("snowflakes to houses") already tell the truth about sizes.
+  Rock size/count knobs live in the `style.rings` block of render.js makeBodyGroup
+  (900 trials/shell, size `b.radius * (0.006 + s*0.004)`).
+- Map pan clamps nothing: pan far enough and everything is off-screen — M twice
+  re-centers (deliberate; zoom-out also recovers). If the kids get lost anyway, a
+  "re-center" button would live next to the Map view button.
+- Saturn's map-view ring is a touch dimmer than before (band sheet opacity 0.5 under
+  the rocks) — if it reads washed out on the school laptop, the opacity is in the
+  same render.js block.
+
+**Shipped (all rung 3 — scripted browser runs, zero console errors):**
+1. **✨ Teleport parks CLEAR of rings/discs** (physics.js parkingOrbit, gated Rule 3 —
+   ARCHITECTURE "CONTRACT REVISION 2026-07-18"): parked arrivals sat at 1.35 R, dead
+   inside Hundun's ring band (1.25–2.3 R) — the ring plane filled the sky and
+   shimmered (Mom's report, reproduced headlessly). Ringed worlds (`style.rings` +
+   Saturn) now park at ring-outer × 1.15 = 2.645 R; forming-disc worlds (Centdra) at
+   disc-outer × 1.15 = 4.14 R. Numbers predicted then measured: Hundun 855.4 km /
+   1300 m/s exactly. New shared constants `RING_BAND` / `FORMING_DISC_BAND` in
+   state.js — render draws with them, physics parks around them (catalogued in the
+   constants skill). teleport_test.mjs grew to 30 checks (Saturn, Hundun, Centdra
+   clearance + circular speed).
+2. **🪨 RINGS ARE ROCKS** (render.js, cosmetic; his ask "filled with asteroid"): every
+   ringed world gets three seeded rock shells (Points, lumpy-sprite chunks, ~450
+   rocks/shell) whose radial density follows the painted band's alpha — the Cassini
+   Division stays a genuine gap in the rocks. Each shell turns at ITS radius's true
+   Kepler rate (ω = √(μ/r³), from the body's real mu) — inner laps outer under warp.
+   The old banded sheet stays underneath at opacity 0.5 for the map-zoom read.
+   Browser-verified: Saturn map view (band + gap + grain), Hundun close-up (chunks
+   resolve), rocks move across 20 min of sim time, zero errors.
+3. **🗺 MAP VIEW DRAG-TO-PAN** (render.js): the "can zoom but not look around" gripe —
+   follow-view drag-look always existed; the MAP had no pan. Drag now slides the map
+   with the cursor (world-per-pixel from mapFrame; works from the pad-side map too —
+   ordering fixed so the hidden build camera doesn't steal the drag). Re-entering map
+   view re-centers. Follow-view drag-look regression-checked green. Hint text updated
+   ("drag — look around your ship, or pan the map").
+
+Verified: all 14 node suites green; boot smoke ALL GREEN (9), flight check ALL GREEN
+(14), plus the two new scripted runs (map-pan 4/4, rings 4/4). No localStorage or
+parts.js changes — saves untouched. NOT committed/pushed yet (working tree also holds
+prior uncommitted work; Mom decides when to deploy).
+
 ## Status (2026-07-16 latest+3): 🎒 SPACE SCHOOL — his little sister can play now (Mom's ask)
 
 Mom's ask: the 5-year-old sister (great at typing, can't read yet) wants to play.

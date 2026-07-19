@@ -1,12 +1,15 @@
 // menu.js — Konnie Space Program's front door: the title screen, the settings panel,
 // and the KONNIE SPACE CENTER (his ask): a place on Earth with real buildings — the
-// Tracking Center, the VAB, and the Space Plane Hangar — each one a door into a game
-// mode. Pure DOM/SVG overlays on top of the running 3D scene; owns no game state.
+// Tracking Center, the VAB, the Space Plane Hangar, Space School, and the 🧑‍🚀
+// Astronaut Complex — each one a door into a game mode. Pure DOM/SVG overlays on top
+// of the running 3D scene; owns no game state (crew picks live in connies.js's key).
 //
 // API (used by main.js):
-//   Menu.init({ onVAB, onHangar, onTracking, onSchool, onSettingsChange })
+//   Menu.init({ onVAB, onHangar, onTracking, onSchool, onSettingsChange, getScience })
 //   Menu.showTitle() / Menu.showCenter() / Menu.hideAll()
 //   Menu.getSettings() -> { graphics: "fancy"|"fast" }
+
+import { CONNIES, isUnlocked, loadCrewPicks, saveCrewPicks } from "./connies.js";
 
 const SETTINGS_KEY = "spacesim.settings.v1";
 // Same localStorage slot copilot.js uses for the Navigator's Anthropic key.
@@ -22,7 +25,7 @@ function saveSettings(s) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringi
 
 let settings = loadSettings();
 let handlers = {};
-let titleEl = null, centerEl = null, settingsEl = null;
+let titleEl = null, centerEl = null, settingsEl = null, complexEl = null;
 
 // ---- shared bits ----
 const CSS = `
@@ -48,6 +51,21 @@ const CSS = `
   .ksp-bld:hover .ksp-glow { filter:brightness(1.35) drop-shadow(0 0 14px rgba(140,190,255,.8)); }
   .ksp-bld .ksp-glow { transition: filter .12s; }
   .ksp-bld text { pointer-events:none; }
+  .ksp-crew-grid { display:grid; grid-template-columns:repeat(4, minmax(170px, 205px));
+    gap:12px; justify-content:center; max-height:56vh; overflow-y:auto; padding:4px; }
+  @media (max-width: 900px) { .ksp-crew-grid { grid-template-columns:repeat(2, minmax(170px, 205px)); } }
+  .ksp-card { position:relative; background:rgba(27,42,74,.92); border:2px solid #3a5590;
+    border-radius:14px; padding:12px 10px 10px; text-align:center; cursor:pointer;
+    transition: transform .08s, border-color .15s, background .15s; }
+  .ksp-card:hover { transform:scale(1.03); background:#243a68; }
+  .ksp-card.ksp-picked { border-color:#ffd24a; background:#2c4478;
+    box-shadow:0 0 18px rgba(255,210,74,.25); }
+  .ksp-card.ksp-locked { cursor:default; }
+  .ksp-card.ksp-locked:hover { transform:none; background:rgba(27,42,74,.92); }
+  .ksp-card.ksp-locked .ksp-face { filter:grayscale(1) brightness(.45); }
+  .ksp-seat-badge { position:absolute; top:-10px; right:-8px; background:#ffd24a; color:#3a2c00;
+    font-size:11px; font-weight:900; border-radius:999px; padding:3px 8px;
+    box-shadow:0 2px 8px rgba(0,0,0,.5); }
 `;
 let cssInjected = false;
 function injectCSS() {
@@ -204,12 +222,12 @@ function showCenter() {
   // The campus, as one big SVG: Tracking Center (dish), VAB (tall), Hangar (curved roof),
   // plus a launchpad with a rocket, the flag, and the water tower for flavor.
   const svgWrap = document.createElement("div");
-  svgWrap.style.cssText = "width:min(96vw,1150px);margin-top:60px;";
+  svgWrap.style.cssText = "width:min(96vw,1280px);margin-top:60px;";
   svgWrap.innerHTML = `
-  <svg viewBox="0 0 1150 470" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">
+  <svg viewBox="0 0 1320 470" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">
     <!-- ground -->
-    <rect x="0" y="345" width="1150" height="125" fill="#101c14"/>
-    <rect x="0" y="345" width="1150" height="5" fill="#1d3322"/>
+    <rect x="0" y="345" width="1320" height="125" fill="#101c14"/>
+    <rect x="0" y="345" width="1320" height="5" fill="#1d3322"/>
     <!-- crawler-way -->
     <path d="M330 470 L370 345 L410 345 L450 470 Z" fill="#22303f"/>
     <path d="M388 345 L392 345 L400 470 L380 470 Z" fill="#3a4c5e"/>
@@ -291,18 +309,42 @@ function showCenter() {
       <text x="810" y="416" text-anchor="middle" font-size="12" fill="#9fb3da">planes · probes · space stations</text>
     </g>
 
+    <!-- 🧑‍🚀 ASTRONAUT COMPLEX (pick the crew; science recruits more) -->
+    <g class="ksp-bld" data-go="complex">
+      <g class="ksp-glow">
+        <rect x="960" y="272" width="150" height="73" rx="6" fill="#26344e" stroke="#3d5177" stroke-width="2"/>
+        <!-- glass star-view dome on the roof -->
+        <path d="M1005 272 a30 26 0 0 1 60 0 Z" fill="#9fd2ff" opacity="0.5" stroke="#8ea4c9" stroke-width="2"/>
+        <circle cx="1035" cy="258" r="3" fill="#fff" opacity="0.9"/>
+        <!-- door + lit windows (somebody's always home) -->
+        <rect x="1021" y="318" width="28" height="27" fill="#101a2c"/>
+        <rect x="972" y="290" width="18" height="13" rx="2" fill="#ffd24a" opacity="0.85"/>
+        <rect x="996" y="290" width="18" height="13" rx="2" fill="#ffd24a" opacity="0.55"/>
+        <rect x="1056" y="290" width="18" height="13" rx="2" fill="#ffd24a" opacity="0.85"/>
+        <rect x="1080" y="290" width="18" height="13" rx="2" fill="#48e08a" opacity="0.7"/>
+        <!-- a little Connie in a bubble helmet, out front -->
+        <circle cx="1090" cy="330" r="8" fill="none" stroke="#c9d6ec" stroke-width="2"/>
+        <circle cx="1090" cy="331.5" r="4.6" fill="#48c07a"/>
+        <circle cx="1088.4" cy="330.5" r="1.2" fill="#0c1626"/>
+        <circle cx="1091.6" cy="330.5" r="1.2" fill="#0c1626"/>
+        <rect x="1086" y="338" width="9" height="7" rx="3" fill="#c9d6ec"/>
+      </g>
+      <text x="1055" y="395" text-anchor="middle" font-size="16" font-weight="800" fill="#cfe0ff">🧑‍🚀 ASTRONAUT COMPLEX</text>
+      <text x="1055" y="416" text-anchor="middle" font-size="12" fill="#9fb3da">pick your crew — science recruits more</text>
+    </g>
+
     <!-- launchpad + rocket, flag, water tower (decoration) -->
     <g>
-      <rect x="985" y="330" width="120" height="15" fill="#33404f"/>
-      <rect x="1000" y="205" width="10" height="125" fill="#5b6a7d"/>
-      <line x1="1010" y1="215" x2="1042" y2="230" stroke="#5b6a7d" stroke-width="4"/>
-      <rect x="1036" y="230" width="16" height="88" rx="7" fill="#e8eefc"/>
-      <path d="M1036 236 L1044 214 L1052 236 Z" fill="#e0443f"/>
-      <path d="M1036 318 L1028 334 L1036 330 Z" fill="#c3ccdb"/>
-      <path d="M1052 318 L1060 334 L1052 330 Z" fill="#c3ccdb"/>
-      <rect x="948" y="252" width="4" height="93" fill="#5b6a7d"/>
-      <rect x="952" y="252" width="26" height="16" fill="#e0443f"/>
-      <circle cx="965" cy="260" r="5" fill="#fff"/>
+      <rect x="1165" y="330" width="120" height="15" fill="#33404f"/>
+      <rect x="1180" y="205" width="10" height="125" fill="#5b6a7d"/>
+      <line x1="1190" y1="215" x2="1222" y2="230" stroke="#5b6a7d" stroke-width="4"/>
+      <rect x="1216" y="230" width="16" height="88" rx="7" fill="#e8eefc"/>
+      <path d="M1216 236 L1224 214 L1232 236 Z" fill="#e0443f"/>
+      <path d="M1216 318 L1208 334 L1216 330 Z" fill="#c3ccdb"/>
+      <path d="M1232 318 L1240 334 L1232 330 Z" fill="#c3ccdb"/>
+      <rect x="1128" y="252" width="4" height="93" fill="#5b6a7d"/>
+      <rect x="1132" y="252" width="26" height="16" fill="#e0443f"/>
+      <circle cx="1145" cy="260" r="5" fill="#fff"/>
       <ellipse cx="668" cy="255" rx="24" ry="18" fill="#6e7c8f"/>
       <rect x="664" y="270" width="8" height="75" fill="#5b6a7d"/>
     </g>
@@ -317,6 +359,7 @@ function showCenter() {
       if (go === "hangar" && handlers.onHangar) handlers.onHangar();
       if (go === "tracking" && handlers.onTracking) handlers.onTracking();
       if (go === "school" && handlers.onSchool) handlers.onSchool();
+      if (go === "complex") showComplex(); // menu-owned screen, like Settings
     });
   });
 
@@ -335,10 +378,95 @@ function showCenter() {
   centerEl.appendChild(foot);
 }
 
+// ---- 🧑‍🚀 the Astronaut Complex: pick who flies ----
+// Portrait: a Connie in her bubble helmet, one seeded color per roster slot.
+const CONNIE_COLORS = ["#48c07a", "#e0a13f", "#4f9fe8", "#c86ad0", "#e8655a", "#4fd0c0", "#a4c04f", "#8f7ae8"];
+function conniePortrait(i) {
+  // Locked cards go grayscale via CSS (.ksp-locked .ksp-face) — same art, dimmed.
+  return `
+  <svg class="ksp-face" viewBox="0 0 80 80" style="width:64px;height:64px;display:block;margin:0 auto 6px;">
+    <circle cx="40" cy="40" r="26" fill="rgba(160,200,255,.12)" stroke="#c9d6ec" stroke-width="3"/>
+    <path d="M28 26 a16 12 0 0 1 24 6" fill="none" stroke="#ffffff" stroke-width="3" opacity="0.5" stroke-linecap="round"/>
+    <path d="M26 52 q-8 2 -6 8" fill="none" stroke="${CONNIE_COLORS[i % CONNIE_COLORS.length]}" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="40" cy="44" r="13" fill="${CONNIE_COLORS[i % CONNIE_COLORS.length]}"/>
+    <circle cx="35.5" cy="41" r="3.1" fill="#0c1626"/>
+    <circle cx="44.5" cy="41" r="3.1" fill="#0c1626"/>
+    <circle cx="36.6" cy="40" r="1" fill="#fff"/>
+    <circle cx="45.6" cy="40" r="1" fill="#fff"/>
+    <path d="M35 49 q5 4 10 0" fill="none" stroke="#0c1626" stroke-width="1.8" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function showComplex() {
+  hideAll();
+  complexEl = overlay("radial-gradient(120% 90% at 50% 110%, #14264f 0%, #0a1226 45%, #04060f 100%)");
+  complexEl.appendChild(starfield(50));
+  const science = handlers.getScience ? handlers.getScience() : 0;
+  const picked = loadCrewPicks();
+
+  const head = document.createElement("div");
+  head.style.cssText = "position:relative;text-align:center;margin-bottom:14px;";
+  head.innerHTML = `
+    <div class="ksp-title-word" style="font-size:clamp(24px,3.6vw,40px);">🧑‍🚀 ASTRONAUT COMPLEX</div>
+    <div style="font-size:13px;color:#9fb3da;margin-top:8px;max-width:640px;">
+      Tap Connies to pick your crew — <b style="color:#ffd24a">first pick is the COMMANDER</b>.
+      The Acorn Pod seats <b>3</b> (same as Apollo!), the Swift Cockpit <b>2</b>, probes fly empty.<br>
+      <span style="display:inline-block;margin-top:6px;background:rgba(27,42,74,.92);border:1px solid #3a5590;border-radius:999px;padding:5px 14px;font-size:14px;">
+        🔬 <b>${science}</b> science — experiments aboard stations recruit new astronauts
+      </span>
+    </div>`;
+  complexEl.appendChild(head);
+
+  const grid = document.createElement("div");
+  grid.className = "ksp-crew-grid";
+  CONNIES.forEach((con, i) => {
+    const unlocked = isUnlocked(con, science);
+    const seat = picked.indexOf(con.name); // -1 = not picked
+    const card = document.createElement("div");
+    card.className = "ksp-card" + (seat >= 0 ? " ksp-picked" : "") + (unlocked ? "" : " ksp-locked");
+    card.innerHTML = conniePortrait(i) +
+      `<div style="font-weight:800;font-size:14px;">${con.name}</div>` +
+      (unlocked
+        ? `<div style="font-size:10.5px;color:#9fb3da;line-height:1.35;margin-top:4px;">${con.hero}</div>` +
+          `<div style="font-size:11px;margin-top:6px;color:${seat >= 0 ? "#ffd24a" : "#5f6f97"};font-weight:700;">
+             ${seat === 0 ? "⭐ COMMANDER" : seat > 0 ? "seat " + (seat + 1) : "tap to add to crew"}</div>`
+        : `<div style="font-size:11px;color:#8ea4c9;margin-top:6px;">🔒 joins at <b>${con.unlock} 🔬</b></div>` +
+          `<div style="font-size:10.5px;color:#5f6f97;margin-top:3px;">${con.unlock - science} more science to go</div>`);
+    if (seat >= 0) {
+      const b = document.createElement("div");
+      b.className = "ksp-seat-badge";
+      b.textContent = seat === 0 ? "⭐ 1" : String(seat + 1);
+      card.appendChild(b);
+    }
+    if (unlocked) {
+      card.onclick = () => {
+        const now = loadCrewPicks();
+        const at = now.indexOf(con.name);
+        if (at >= 0) now.splice(at, 1); else now.push(con.name);
+        saveCrewPicks(now);
+        showComplex(); // re-render with new picks (same pattern as Settings)
+      };
+    }
+    grid.appendChild(card);
+  });
+  complexEl.appendChild(grid);
+
+  const foot = document.createElement("div");
+  foot.style.cssText = "margin-top:16px;display:flex;gap:10px;";
+  const back = document.createElement("button");
+  back.className = "ksp-btn";
+  back.style.cssText = "width:auto;margin:0;padding:10px 20px;";
+  back.textContent = "⬅ Space Center";
+  back.onclick = () => showCenter();
+  foot.appendChild(back);
+  complexEl.appendChild(foot);
+}
+
 function hideAll() {
   if (settingsEl) { settingsEl.remove(); settingsEl = null; }
   if (titleEl) { titleEl.remove(); titleEl = null; }
   if (centerEl) { centerEl.remove(); centerEl = null; }
+  if (complexEl) { complexEl.remove(); complexEl = null; }
 }
 
 export const Menu = {
@@ -346,6 +474,6 @@ export const Menu = {
   showTitle,
   showCenter,
   hideAll,
-  isOpen() { return !!(titleEl || centerEl || settingsEl); },
+  isOpen() { return !!(titleEl || centerEl || settingsEl || complexEl); },
   getSettings() { return { ...settings }; },
 };

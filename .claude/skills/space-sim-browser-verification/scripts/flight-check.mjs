@@ -40,7 +40,12 @@ async function main() {
   fs.mkdirSync(shots, { recursive: true });
   let browser;
   try { browser = await chromium.launch(); }
-  catch { browser = await chromium.launch({ executablePath: bundledChrome() }); }
+  catch {
+    const exe = bundledChrome();
+    // Owner's Mac: no downloaded Playwright browsers — drive system Google Chrome.
+    browser = exe ? await chromium.launch({ executablePath: exe })
+                  : await chromium.launch({ channel: "chrome" });
+  }
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const pageErrors = [];
   page.on("pageerror", (e) => pageErrors.push(String(e)));

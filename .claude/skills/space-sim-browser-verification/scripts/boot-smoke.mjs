@@ -30,8 +30,9 @@ export async function launchBrowser() {
   try { return await chromium.launch(); }
   catch {
     const exe = bundledChrome();
-    if (!exe) throw new Error("no chromium found under PLAYWRIGHT_BROWSERS_PATH");
-    return await chromium.launch({ executablePath: exe });
+    if (exe) return await chromium.launch({ executablePath: exe });
+    // Owner's Mac: no downloaded Playwright browsers — drive system Google Chrome.
+    return await chromium.launch({ channel: "chrome" });
   }
 }
 

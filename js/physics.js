@@ -17,7 +17,7 @@
 //   If either is missing/zero, step() runs gravity-only (coast).
 //   Fuel is tracked as sim.craft.fuelRemaining (t); at 0, thrust is forced to 0.
 
-import { BODIES, PLANET_KEYS, SYSTEM, bodyStateAt, dominantBody } from "./state.js";
+import { BODIES, PLANET_KEYS, SYSTEM, bodyStateAt, dominantBody, RING_BAND, FORMING_DISC_BAND } from "./state.js";
 
 // --- small vector helpers (plain {x,y}) ---
 function mag(v) { return Math.hypot(v.x, v.y); }
@@ -741,7 +741,16 @@ export const Physics = {
       };
     }
     // Clear of the ground AND well above any atmosphere (3x its height — no stray drag).
-    const r = Math.max(b.radius * 1.35, b.radius + 3 * ((b.atmosphere && b.atmosphere.height) || 0));
+    // Ringed and disc-wrapped worlds: park OUTSIDE the drawn band too — 1.35 r sits
+    // right inside Hundun's ring (or Centdra's forming disc) and the ring plane fills
+    // the whole sky. Real missions park clear of ring material for the same reason.
+    // (Sol's Saturn keeps its ring flag in render's style table, hence the key check.)
+    const st = b.style || {};
+    const ringClear = Math.max(
+      (st.rings || key === "saturn") ? b.radius * RING_BAND.outer * 1.15 : 0,
+      st.formingDisc ? b.radius * FORMING_DISC_BAND.outer * 1.15 : 0);
+    const r = Math.max(b.radius * 1.35, ringClear,
+                       b.radius + 3 * ((b.atmosphere && b.atmosphere.height) || 0));
     const v = Math.sqrt(b.mu / r);
     return {
       pos: { x: bs.pos.x + r * Math.cos(th), y: bs.pos.y + r * Math.sin(th) },
@@ -749,6 +758,33 @@ export const Physics = {
       angle: th, // heading convention (-sin a, cos a): nose starts prograde
       radius: r, altitude: r - b.radius, speed: v,
     };
+  },
+
+  // 🤖 Interstellar autopilot policy (pure — node-tested in tests/autopilot_test.mjs).
+  // The copilot flies the SAME controls the kid has (throttle + attitude), nothing
+  // else: real fuel, real decades. The strategy is kid-teachable — spend at most HALF
+  // the tank speeding up, because the saved half is always enough to stop: a lighter
+  // ship gets MORE Δv from the same fuel (Tsiolkovsky working for you). Coast the
+  // middle, flip and brake when the honest stop-distance says so, cut the burn once
+  // slow enough to glide into the new system's edge.
+  // st: { rem, remEdge, arriveR (m), vTo, vLat (m/s), fuel, engageFuel (t),
+  //       braking (the course panel's brake-zone test) }
+  // -> { throttle 0..1, aim +1 cruise / -1 retrograde, phase }
+  autopilotStep(st) {
+    const ARRIVE_OK = 30000; // ≤30 km/s into the bubble = a beautiful arrival
+    if (st.braking) {
+      if (st.vTo <= ARRIVE_OK) return { throttle: 0, aim: 1, phase: "glide" };
+      if (st.fuel <= 0) return { throttle: 0, aim: -1, phase: "dry" };
+      return { throttle: 1, aim: -1, phase: "brake" };
+    }
+    if (st.fuel > st.engageFuel / 2) return { throttle: 1, aim: 1, phase: "burn" };
+    // Coasting: a small trim burn only if the current track would miss the bubble
+    // (projected cross-track miss), and only from the sliver above the brake reserve.
+    const missProj = st.vTo > 1 ? (st.vLat / st.vTo) * st.rem : 0;
+    if (missProj > st.arriveR * 0.4 && st.fuel > st.engageFuel * 0.4) {
+      return { throttle: 0.3, aim: 1, phase: "trim" };
+    }
+    return { throttle: 0, aim: 1, phase: "coast" };
   },
 
   // --- Satellites (Phase 5): a jettisoned probe-core stage left in a stable orbit ---

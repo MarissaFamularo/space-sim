@@ -241,6 +241,13 @@ export function dominantBody(pos, t = 0) {
 
 export const CONFIG = { SCALE };
 
+// Ring & disc bands, in units of body radius. render.js draws them at these spans;
+// physics.js parkingOrbit reads them so ✨ Teleport parks CLEAR of ring material
+// (parking inside the band buries the camera in the ring plane — it fills the sky
+// and shimmers). One home for the numbers so the two can never drift apart.
+export const RING_BAND = { inner: 1.25, outer: 2.3 };         // style.rings worlds + Saturn
+export const FORMING_DISC_BAND = { inner: 1.4, outer: 3.6 };  // style.formingDisc worlds (Centdra)
+
 // ---- Shared factory helpers ----
 let _instanceCounter = 0;
 export function makeInstance(partId, stage = 0) {
@@ -259,7 +266,7 @@ export function findPart(catalog, partId) {
 // ---- Derived stats. UI + copilot read this. ----
 // catalog: array of PartDef. craft: Craft.
 export function computeStats(craft, catalog, body = BODIES.earth) {
-  let dryMass = 0, fuelMass = 0, thrust = 0;
+  let dryMass = 0, fuelMass = 0, thrust = 0, seatCount = 0;
   const stages = new Set();
   for (const inst of craft.parts) {
     const def = findPart(catalog, inst.partId);
@@ -267,6 +274,8 @@ export function computeStats(craft, catalog, body = BODIES.earth) {
     dryMass += def.dryMass || 0;
     fuelMass += def.fuelMass || 0;
     if (def.type === "engine") thrust += def.thrust || 0;
+    // Crewed command parts carry astronauts (probe cores fly empty — that's the point).
+    if (def.type === "command" && !def.uncrewed) seatCount += def.seats || 1;
     stages.add(inst.stage);
   }
   const totalMass = dryMass + fuelMass;
@@ -280,7 +289,7 @@ export function computeStats(craft, catalog, body = BODIES.earth) {
   }
   ve = engineCount ? ve / engineCount : 0;
   const deltaV = ve && totalMass > 0 && dryMass > 0 ? ve * Math.log(totalMass / dryMass) : 0;
-  return { totalMass, dryMass, fuelMass, thrust, twr, deltaV, stageCount: stages.size || 1 };
+  return { totalMass, dryMass, fuelMass, thrust, twr, deltaV, stageCount: stages.size || 1, seatCount };
 }
 
 // ---- Fresh SimState for a launch (on Earth's launchpad, wherever Earth is right now) ----

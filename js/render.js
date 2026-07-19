@@ -15,7 +15,7 @@ import { EffectComposer } from "../vendor/postprocessing/EffectComposer.js";
 import { RenderPass } from "../vendor/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "../vendor/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "../vendor/postprocessing/OutputPass.js";
-import { BODIES, PLANET_KEYS, SYSTEM, bodyStateAt, dominantBody } from "./state.js";
+import { BODIES, PLANET_KEYS, SYSTEM, bodyStateAt, dominantBody, RING_BAND, FORMING_DISC_BAND } from "./state.js";
 import { PARTS } from "./mods.js"; // merged catalog: stock + the kid's mods
 import { Physics } from "./physics.js"; // pure math only (satellite propagation)
 
@@ -43,6 +43,8 @@ let flightView = "follow"; // "follow" | "map"
 let mapFrame = 0;          // map-view scale actually used this frame (base * user zoom)
 let mapBase = 0;           // auto-fit scale (grow-only)
 let mapZoom = 1;           // user zoom: >1 = zoomed OUT (toward the planets), <1 = in
+const mapPan = { x: 0, y: 0 }; // drag-to-pan offset from the dominant body (world m); reset on map entry
+const mapDrag = { dragging: false, lastX: 0, lastY: 0 };
 let followZoom = 1;        // follow-view zoom (scroll / +/-): pull back to see the planet
 let followDist = 60;       // current follow camera distance (arrows scale with it)
 // Drag-to-look in follow view (play-test bug #3: on Mars approach the planet sat exactly
@@ -64,6 +66,9 @@ let bhDisk = null;         // black hole accretion disk (spun in updateFlight)
 let protoDisc = null;      // protoplanetary dust disc around a young star (slow spin)
 let youngSwarm = null;     // leftover asteroid/comet rubble band (very slow spin)
 let formingDiscs = [];     // [{mesh}] fast circumplanetary discs on still-forming worlds
+let ringShells = [];       // [{obj, rate}] ring rock shells, each spun at its own Kepler rate
+let warpStreaks = null;    // ⚡ interstellar speed lines (Star-Trek streaks; built lazily)
+let streakClock = 0;       // real-ish seconds, for the streak flow (visual only)
 let cometTails = [];       // [{key, group, len}] tails aimed away from the star per frame
 let lockedShells = [];     // [{key, mesh}] molten hemispheres aimed AT the star (tidal lock)
 
@@ -731,6 +736,7 @@ function buildWorldObjects() {
   ALL_KEYS = ["sun", ...PLANET_KEYS];
   bhDisk = null; // re-created by makeBodyGroup if this system has one
   protoDisc = null; youngSwarm = null; formingDiscs = []; cometTails = []; lockedShells = [];
+  ringShells = [];
   // Black hole systems are lit by the accretion disk: dimmer, colder key light.
   if (sunLight) {
     const bh = !!(BODIES.sun && BODIES.sun.blackHole);
@@ -897,10 +903,17 @@ function makeBodyGroup(key) {
   }
 
   if (style.rings) {
-    // Saturn's rings: banded annulus with the Cassini Division, tilted so it reads in
-    // both follow and map views. RingGeometry UVs are planar, so rewrite u = radial
-    // fraction to stripe the texture into concentric rings.
-    const inner = b.radius * 1.25, outer = b.radius * 2.3;
+    // Rings are ROCKS, not a solid sheet (his note: "filled with asteroid"). Real
+    // rings are countless orbiting chunks — Saturn's are water ice from dust-size
+    // to house-size. A dimmed dust sheet keeps the classic banded look (and the
+    // map-zoom read); three rock shells carry the close-up, each turning at ITS
+    // radius's true Kepler rate (ω = √(μ/r³)) — the inner shell visibly laps the
+    // outer under time-warp, which is Kepler's third law happening on screen.
+    // RingGeometry UVs are planar, so rewrite u = radial fraction to stripe the
+    // texture into concentric rings.
+    const inner = b.radius * RING_BAND.inner, outer = b.radius * RING_BAND.outer;
+    const tiltG = new THREE.Group();
+    tiltG.rotation.x = 0.45; // tilt out of the orbital plane so it reads in both views
     const geo = new THREE.RingGeometry(inner, outer, 128, 4);
     const pos = geo.getAttribute("position"), uv = geo.getAttribute("uv");
     for (let i = 0; i < uv.count; i++) {
@@ -908,10 +921,40 @@ function makeBodyGroup(key) {
       uv.setXY(i, (rr - inner) / (outer - inner), 0.5);
     }
     const ring = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-      map: ringTexture(), transparent: true, side: THREE.DoubleSide, depthWrite: false,
+      map: ringTexture(), transparent: true, opacity: 0.5, side: THREE.DoubleSide,
+      depthWrite: false,
     }));
-    ring.rotation.x = 0.45; // tilt out of the orbital plane
-    g.add(ring);
+    tiltG.add(ring);
+    // Rock shells: seeded, density ∝ the painted band's alpha — so the Cassini
+    // Division stays a genuine GAP in the rocks, and bright bands run thick.
+    const rng = mulberry32(hashStr(key + "-ringrocks"));
+    for (let s = 0; s < 3; s++) {
+      const r0 = inner + (s / 3) * (outer - inner);
+      const r1 = inner + ((s + 1) / 3) * (outer - inner);
+      const pts = [], cols = [];
+      for (let i = 0; i < 900; i++) {
+        const rr = r0 + rng() * (r1 - r0);
+        const th = rng() * Math.PI * 2;
+        const keepP = ringAlphaAt((rr - inner) / (outer - inner));
+        if (rng() > keepP) continue;
+        pts.push(rr * Math.cos(th), rr * Math.sin(th), (rng() - 0.5) * b.radius * 0.02);
+        const c = 0.55 + rng() * 0.45; // icy grays warmed a touch, like the sheet
+        cols.push(c, c * 0.94, c * 0.82);
+      }
+      const pgeo = new THREE.BufferGeometry();
+      pgeo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+      pgeo.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+      const shell = new THREE.Points(pgeo, new THREE.PointsMaterial({
+        size: b.radius * (0.006 + s * 0.004), vertexColors: true, sizeAttenuation: true,
+        map: rockSprite(), alphaTest: 0.5, transparent: true, opacity: 0.95,
+        depthWrite: false,
+      }));
+      shell.frustumCulled = false;
+      const rMid = (r0 + r1) / 2;
+      ringShells.push({ obj: shell, rate: Math.sqrt(b.mu / (rMid * rMid * rMid)) });
+      tiltG.add(shell);
+    }
+    g.add(tiltG);
   }
 
   // ---- Young-system dressing (the Youngcow build) ----
@@ -997,7 +1040,7 @@ function makeBodyGroup(key) {
   // A still-forming world's own fast disc of infalling material (a real
   // circumplanetary disk — the Moon likely condensed from one after the big impact).
   if (style.formingDisc) {
-    const inner = b.radius * 1.4, outer = b.radius * 3.6;
+    const inner = b.radius * FORMING_DISC_BAND.inner, outer = b.radius * FORMING_DISC_BAND.outer;
     const dgeo = new THREE.RingGeometry(inner, outer, 96, 3);
     const pos = dgeo.getAttribute("position"), uv = dgeo.getAttribute("uv");
     for (let i = 0; i < uv.count; i++) {
@@ -1212,6 +1255,45 @@ function ringTexture() {
   _ringTex = new THREE.CanvasTexture(cv);
   _ringTex.colorSpace = THREE.SRGBColorSpace;
   return _ringTex;
+}
+
+// One shared lumpy-silhouette sprite so ring rocks read as chunks, not squares
+// (Points draw square pixels by default — the graphics snob would notice).
+let _rockSprite = null;
+function rockSprite() {
+  if (_rockSprite) return _rockSprite;
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 32;
+  const ctx = cv.getContext("2d");
+  const rng = mulberry32(hashStr("ring-rock-sprite"));
+  ctx.translate(16, 16);
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  for (let i = 0; i <= 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    const r = 11 * (0.68 + rng() * 0.32); // lumpy, asteroid-ish outline
+    if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+    else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  ctx.closePath();
+  ctx.fill();
+  _rockSprite = new THREE.CanvasTexture(cv);
+  return _rockSprite;
+}
+
+// Read the ring band's painted alpha back as a radial density profile (0=inner edge,
+// 1=outer) so the rock shells thin out exactly where the sheet does — one source of
+// truth for where ring material lives, gap included.
+let _ringAlpha = null;
+function ringAlphaAt(f) {
+  if (!_ringAlpha) {
+    const img = ringTexture().image;
+    const data = img.getContext("2d").getImageData(0, 0, img.width, 1).data;
+    _ringAlpha = new Float32Array(img.width);
+    for (let x = 0; x < img.width; x++) _ringAlpha[x] = data[x * 4 + 3] / 255;
+  }
+  const i = Math.max(0, Math.min(_ringAlpha.length - 1, Math.floor(f * _ringAlpha.length)));
+  return _ringAlpha[i];
 }
 
 // The named neighborhood: dots + labels for systems he's visited (and Sol), shown
@@ -1810,7 +1892,14 @@ function attachBuildControls() {
   if (!canvas) return;
   canvas.addEventListener("pointerdown", (e) => {
     _ptrDown = { x: e.clientX, y: e.clientY };
-    if (mode === "build") {
+    if (flightView === "map") {
+      // Map pan — checked FIRST so the pad-side map (mode "build" + map up) pans
+      // instead of silently orbiting the hidden build camera. (enterBuild resets
+      // flightView to "follow", so "map" here always means the map is really up.)
+      mapDrag.dragging = true;
+      mapDrag.lastX = e.clientX;
+      mapDrag.lastY = e.clientY;
+    } else if (mode === "build") {
       buildCam.dragging = true;
       buildCam.lastX = e.clientX;
       buildCam.lastY = e.clientY;
@@ -1826,7 +1915,7 @@ function attachBuildControls() {
       pickGalaxyStar(e.clientX, e.clientY);
     }
     _ptrDown = null;
-    buildCam.dragging = false; followCam.dragging = false;
+    buildCam.dragging = false; followCam.dragging = false; mapDrag.dragging = false;
   });
   window.addEventListener("pointermove", (e) => {
     const lim = Math.PI / 2 - 0.05;
@@ -1846,6 +1935,14 @@ function attachBuildControls() {
       followCam.azimuth -= dx * 0.01;
       followCam.elevation += dy * 0.01;
       followCam.elevation = Math.max(-lim, Math.min(lim, followCam.elevation));
+    } else if (mapDrag.dragging && flightView === "map" && canvas) {
+      // The map slides WITH the cursor: mapFrame is the visible half-height at z=0,
+      // so world-per-pixel = 2*mapFrame / canvas height (screen y is down, world y up).
+      const wpp = (2 * mapFrame) / Math.max(1, canvas.clientHeight);
+      mapPan.x -= (e.clientX - mapDrag.lastX) * wpp;
+      mapPan.y += (e.clientY - mapDrag.lastY) * wpp;
+      mapDrag.lastX = e.clientX;
+      mapDrag.lastY = e.clientY;
     }
   });
   canvas.addEventListener("wheel", (e) => {
@@ -2596,6 +2693,7 @@ function setMode(m) {
     if (targetArrow) targetArrow.visible = false;
     if (rockField) rockField.visible = false;
     if (reticle) reticle.visible = false;
+    if (warpStreaks) { warpStreaks.obj.visible = false; warpStreaks.obj.material.opacity = 0; }
     if (groundPatch) groundPatch.visible = false;
     if (surfaceRover) surfaceRover.visible = false;
     if (roverTrackL) roverTrackL.visible = false;
@@ -2669,6 +2767,69 @@ function updateBuildCamera() {
   );
   camera.up.set(0, 1, 0);
   camera.lookAt(buildCam.target);
+}
+
+// ⚡ WARP STREAKS — his ask: "see the stars moving fast past you, like Star Trek."
+// Honest framing (the Navigator confesses it if asked): these are SPEED LINES the
+// game draws so velocity × time-warp is something you can FEEL — real interstellar
+// space would look almost still even at 1,000 km/s, because the stars are light-years
+// away. Length and flow scale with the craft's true effective speed (speed × warp);
+// they only exist on an interstellar leg, in follow view, and fade in past ~3c
+// effective. Pure dressing: no physics, no state, rebuilt cheap every frame.
+const STREAK_N = 220, STREAK_SPAN = 6000; // tube of lines around the ship, meters
+function ensureWarpStreaks() {
+  if (warpStreaks) return;
+  const rng = mulberry32(hashStr("warp-streaks"));
+  const seeds = [];
+  for (let i = 0; i < STREAK_N; i++) {
+    seeds.push({
+      phase: rng(),                       // where along the tube it starts
+      radius: 40 + rng() * 1100,          // distance from the flight line
+      theta: rng() * Math.PI * 2,         // angle around the flight line
+      jitter: 0.6 + rng() * 0.7,          // per-streak length variation
+    });
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(STREAK_N * 6), 3));
+  const mat = new THREE.LineBasicMaterial({
+    color: 0xcfe4ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  warpStreaks = { obj: new THREE.LineSegments(geo, mat), seeds };
+  warpStreaks.obj.frustumCulled = false;
+  warpStreaks.obj.visible = false;
+  scene.add(warpStreaks.obj);
+}
+function updateWarpStreaks(sim) {
+  ensureWarpStreaks();
+  const v = Math.hypot(sim.craft.vel.x, sim.craft.vel.y);
+  const eff = v * (sim.timeWarp || 1); // true effective speed, m/s of sim per real second
+  const on = !!sim.interstellar && flightView === "follow" && eff > 1e9; // ~3x light speed effective
+  const mat = warpStreaks.obj.material;
+  const fade = on ? Math.min(1, Math.log10(eff / 1e9) / 2.5 + 0.15) : 0;
+  mat.opacity += (fade * 0.85 - mat.opacity) * 0.12; // ease in/out, no popping
+  warpStreaks.obj.visible = mat.opacity > 0.02;
+  if (!warpStreaks.obj.visible) return;
+  streakClock += 1 / 60;
+  // Streaks stream PAST the ship, opposite the velocity — build the tube's frame.
+  const vm = v || 1;
+  const ax = sim.craft.vel.x / vm, ay = sim.craft.vel.y / vm; // flight line (scene xy)
+  const len = Math.min(900, 60 + eff / 2e9 * 120);            // faster = longer lines
+  const flow = Math.min(9000, 400 + eff / 1e9 * 250);         // faster = faster flow
+  const pos = warpStreaks.obj.geometry.getAttribute("position");
+  for (let i = 0; i < STREAK_N; i++) {
+    const s = warpStreaks.seeds[i];
+    // Slide each line down the tube and wrap — head leads, tail trails behind.
+    const along = STREAK_SPAN / 2 - ((s.phase * STREAK_SPAN + streakClock * flow) % STREAK_SPAN);
+    // Radial offset: perpendicular in-plane (-ay, ax) plus out-of-plane z.
+    const px = -ay * Math.cos(s.theta) * s.radius + ax * along;
+    const py = ax * Math.cos(s.theta) * s.radius + ay * along;
+    const pz = Math.sin(s.theta) * s.radius;
+    const L = len * s.jitter;
+    pos.setXYZ(i * 2, px + ax * L / 2, py + ay * L / 2, pz);
+    pos.setXYZ(i * 2 + 1, px - ax * L / 2, py - ay * L / 2, pz);
+  }
+  pos.needsUpdate = true;
 }
 
 function updateFlight(sim) {
@@ -2749,6 +2910,12 @@ function updateFlight(sim) {
 
   // The accretion disk spins (fast near a black hole — truthfully, much faster).
   if (bhDisk) bhDisk.rotation.set(0.45, 0, (t * 0.05) % (Math.PI * 2));
+
+  // Ring rocks orbit at their own radius's Kepler rate (inner laps outer — Kepler III).
+  for (const rs of ringShells) rs.obj.rotation.z = (t * rs.rate) % (Math.PI * 2);
+
+  // ⚡ Interstellar speed lines (fade in past ~3c effective; follow view only).
+  updateWarpStreaks(sim);
 
   // Young-system dressing animation (all cheap: rotations + one quaternion each).
   if (protoDisc) protoDisc.rotation.z = (t * 0.002) % (Math.PI * 2);   // dust creeps
@@ -3460,9 +3627,9 @@ function updateMapCamera(sim, dom, states) {
   mapFrame = base * mapZoom;
   const vHalf = ((camera.fov * Math.PI) / 180) / 2;
   const dist = mapFrame / Math.tan(vHalf);
-  // Center on the dominant body (scene coords = world - ORIGIN).
-  const cx = dom.center.x - ORIGIN.x;
-  const cy = dom.center.y - ORIGIN.y;
+  // Center on the dominant body (scene coords = world - ORIGIN), plus the drag pan.
+  const cx = dom.center.x - ORIGIN.x + mapPan.x;
+  const cy = dom.center.y - ORIGIN.y + mapPan.y;
   camera.position.set(cx, cy, dist);
   camera.up.set(0, 1, 0);
   camera.lookAt(cx, cy, 0);
@@ -3789,6 +3956,7 @@ function setFlightView(v) {
   flightView = v === "map" ? "map" : "follow";
   if (flightView === "map") {
     mapFrame = 0; mapBase = 0; // recompute auto-fit; keep user zoom
+    mapPan.x = 0; mapPan.y = 0; // fresh map opens centered — toggling M twice re-centers
     if (mode === "build") {
       // Pad-side map: reveal the solar system, tuck the pad scenery away.
       for (const key of ALL_KEYS) if (bodyGroups[key]) bodyGroups[key].visible = true;

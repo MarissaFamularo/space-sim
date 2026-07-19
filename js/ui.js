@@ -167,7 +167,7 @@ export const UI = {
 
     const help = document.createElement("div");
     help.style.cssText = "font-size:11px;color:#9fb3da;margin-top:8px;line-height:1.5;";
-    help.innerHTML = "<b>Flight keys</b><br>← → tilt rocket<br>↑ ↓ throttle &nbsp;·&nbsp; Z full / X cut<br>Space stage &nbsp;·&nbsp; , . time-warp<br><b>M</b> map view &nbsp;·&nbsp; <b>P</b> parachute<br>scroll or <b>+ −</b> zoom (both views)<br><b>drag</b> — look around your ship";
+    help.innerHTML = "<b>Flight keys</b><br>← → tilt rocket<br>↑ ↓ throttle &nbsp;·&nbsp; Z full / X cut<br>Space stage &nbsp;·&nbsp; , . time-warp<br><b>M</b> map view &nbsp;·&nbsp; <b>P</b> parachute<br>scroll or <b>+ −</b> zoom (both views)<br><b>drag</b> — look around your ship, or pan the map";
     fc.appendChild(help);
 
     // Guide-arrow toggles.
@@ -311,6 +311,7 @@ export const UI = {
       html += row("TWR", stats.twr.toFixed(2) + (stats.twr < 1 ? " ⚠️" : ""));
       html += row("Δv", stats.deltaV.toFixed(0) + " m/s");
       html += row("Stages", stats.stageCount);
+      if (stats.seatCount) html += row("Seats", stats.seatCount + " 🐍");
     }
     if (sim && sim.mode === "flight") {
       html += `<hr style="border-color:#24304d">`;

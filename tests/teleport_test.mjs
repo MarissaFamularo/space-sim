@@ -1,7 +1,9 @@
 // ✨ Teleport tests: Physics.parkingOrbit must hand back a stable low orbit around
 // EVERY pickable world, at any sim time. Run: node tests/teleport_test.mjs
 import { Physics } from "../js/physics.js";
-import { BODIES, PLANET_KEYS, bodyStateAt, dominantBody } from "../js/state.js";
+import { BODIES, PLANET_KEYS, bodyStateAt, dominantBody, setSystem, returnToSol,
+         RING_BAND, FORMING_DISC_BAND } from "../js/state.js";
+import { famousSystem } from "../js/famous.js";
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => {
@@ -84,6 +86,34 @@ for (const key of PLANET_KEYS) {
   check(`teleport orbit around ${b.name} survives a full lap`,
     ok && orbit && orbit.isOrbit && drift < 0.35,
     whyNot || `drift=${(drift * 100).toFixed(1)}% ecc=${orbit ? orbit.eccentricity.toFixed(3) : "?"} period=${(period / 60).toFixed(0)} min`);
+}
+
+// --- 3. Ringed / disc-wrapped worlds: park CLEAR of the drawn band (parking inside
+// it buries the camera in ring material — the Hundun-teleport flicker bug). ---
+{
+  const p = Physics.parkingOrbit("saturn", 0);
+  check("Saturn teleport parks outside the ring band",
+    p.radius > BODIES.saturn.radius * RING_BAND.outer,
+    `r=${(p.radius / BODIES.saturn.radius).toFixed(2)} R vs ring outer ${RING_BAND.outer} R`);
+
+  const sys = famousSystem("Youngcow");
+  setSystem(sys.bodies, sys.planetKeys, { key: sys.seed, name: sys.name, seed: sys.seed });
+  const hundun = Physics.parkingOrbit("earth", 0); // Hundun is Youngcow's home ("earth" role key)
+  const HR = BODIES.earth.radius;
+  check("Hundun teleport parks outside its ring band",
+    hundun.radius > HR * RING_BAND.outer,
+    `r=${(hundun.radius / HR).toFixed(2)} R vs ring outer ${RING_BAND.outer} R`);
+  check("…at circular speed for the new radius",
+    (() => {
+      const ms = bodyStateAt("earth", 0);
+      const vrel = Math.hypot(hundun.vel.x - ms.vel.x, hundun.vel.y - ms.vel.y);
+      return Math.abs(vrel - Math.sqrt(BODIES.earth.mu / hundun.radius)) < 1;
+    })(), `predicted v=${Math.sqrt(BODIES.earth.mu / (HR * RING_BAND.outer * 1.15)).toFixed(0)} m/s`);
+  const centdra = Physics.parkingOrbit("centdra", 0);
+  check("Centdra teleport parks outside its forming disc",
+    centdra.radius > BODIES.centdra.radius * FORMING_DISC_BAND.outer,
+    `r=${(centdra.radius / BODIES.centdra.radius).toFixed(2)} R vs disc outer ${FORMING_DISC_BAND.outer} R`);
+  returnToSol();
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

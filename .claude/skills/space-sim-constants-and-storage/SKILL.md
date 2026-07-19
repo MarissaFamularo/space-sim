@@ -61,6 +61,8 @@ in kN, exhaust velocity in m/s, distance in m, time in s.
 |---|---|---|---|
 | `SCALE` | state.js:13 | `0.1` | THE master training wheel: all body radii and orbit distances x0.1, surface gravity kept real (`mu = g0*r^2`). Side effect: system runs ~sqrt(10) ≈ 3.2x faster. `1.0` = real-scale mode — **disabled**, awaiting a part-tuning pass (~9,400 m/s to LEO; HANDOFF.md:428). Changing SCALE mid-save doesn't corrupt storage (sat orbits are in absolute meters and would become wrong-sized, but load still succeeds). This is the ONLY sanctioned physics lie (frozen rule #3). |
 | `G` | state.js:15 | `6.674e-11` | Real gravitational constant, SI. Not a tunable in practice — never touch. |
+| `RING_BAND` | state.js (near CONFIG) | `{inner: 1.25, outer: 2.3}` | Ring span in body radii, shared by render.js (band sheet + rock shells) and physics.js `parkingOrbit` (✨ Teleport parks at outer×1.15 so arrivals never sit inside ring material — the 2026-07-18 flicker fix). Change here changes BOTH the look and the parking radius; teleport_test.mjs section 3 pins the relationship. |
+| `FORMING_DISC_BAND` | state.js (near CONFIG) | `{inner: 1.4, outer: 3.6}` | Same deal for still-forming worlds' circumplanetary discs (Centdra). |
 
 Body data (radius, g0, orbit a, atmosphere height/density per world) lives ONLY in
 the `REAL` table at state.js:21-51. HANDOFF's module table says it outright: "All
@@ -200,6 +202,7 @@ to a sane default — a mangled localStorage must never kill the boot.
 | `spacesim_anthropic_key` | raw API key string (no JSON) | copilot.js `setKey()` (copilot.js:55) via the in-app 🔑 button | copilot.js `getKey()` (copilot.js:54); `hasKey()` = length > 10 | try/catch → `""` (Navigator falls back to offline stub). NEVER log, echo, or commit this value. |
 | `spacesim.wishlist.v1` | `[{ when: "YYYY-MM-DD", idea }]`, max 40, ideas capped 160 chars, case-insensitive deduped (2026-07-12) | copilot.js `saveWish()` — from `[[WISH: …]]` markers the model appends (online) or idea-shaped messages in the offline stub | copilot.js `loadWishes()`: the snapshot's `wishlist` field (last 15) + the offline "what's in the wish book?" reply | `JSON.parse \|\| []` in try/catch; his IDEAS — treat like saves (Rule 2) |
 | `spacesim.school.v1` | `{ v: 1, name (≤12 chars), stickers: {build, space, land} }` (2026-07-16) | school.js `saveSchool()` | school.js `loadSchool()` via pure `SchoolCore.validateSaved` (node-tested) | Any junk → a fresh empty sticker book. HIS LITTLE SISTER'S save — Rule 2 applies to her too. School mode writes no other key. |
+| `spacesim.crew.v1` | `{ v: 1, picked: [Connie names…] }` in pick order, first = commander (2026-07-18) | menu.js Complex screen via connies.js `saveCrewPicks()` | main.js `assignCrew()` via `loadCrewPicks()`; parsed by pure `parseCrewSave` (node-tested, tests/crew_test.mjs) | Junk/unknown names/dupes dropped → empty picks (a random unlocked Connie then flies, the pre-Complex behavior). Unlocks derive from `spacesim.science.v1` — never stored, can't go stale. |
 
 Schema details worth knowing before you touch anything:
 
