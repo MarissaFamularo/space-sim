@@ -294,7 +294,11 @@ function makePlanetCanvas(key) {
     }
   };
 
-  switch (key) {
+  // Generated/famous bodies reuse Sol's ROLE KEYS ("earth" might be Twilight or
+  // Hundun) — if such a body brings its own face descriptor, it must NOT fall into
+  // Sol's key-matched painters below (found 2026-07-19: every generated home world
+  // wore Sol Earth's blue marble). Route it straight to the descriptor painter.
+  switch (BODIES[key] && BODIES[key].gen && BODIES[key].face ? "@descriptor" : key) {
     case "earth": { // blue marble: oceans, continents, deserts, ice caps, wispy clouds
       fill("#1b5ec2");
       for (let i = 0; i < 6; i++) blob(rng() * W, H * (0.18 + rng() * 0.6), 24 + rng() * 14, "#3e8a3a", 30);
@@ -738,10 +742,13 @@ function buildWorldObjects() {
   protoDisc = null; youngSwarm = null; formingDiscs = []; cometTails = []; lockedShells = [];
   ringShells = [];
   // Black hole systems are lit by the accretion disk: dimmer, colder key light.
+  // Brown-dwarf systems (style.ember on the primary) live in permanent warm dusk:
+  // dimmer light, sunset color — a brown dwarf really is thousands of times fainter.
   if (sunLight) {
     const bh = !!(BODIES.sun && BODIES.sun.blackHole);
-    sunLight.intensity = bh ? 1.15 : 2.0;
-    sunLight.color.set(bh ? 0xd8e2ff : 0xffffff);
+    const ember = !!(BODIES.sun && BODIES.sun.style && BODIES.sun.style.ember);
+    sunLight.intensity = bh ? 1.15 : ember ? 1.3 : 2.0;
+    sunLight.color.set(bh ? 0xd8e2ff : ember ? 0xffb08a : 0xffffff);
   }
   for (const key of ALL_KEYS) bodyGroups[key] = makeBodyGroup(key);
   for (const key of PLANET_KEYS) orbitRings[key] = makeOrbitRing(key);
@@ -820,8 +827,12 @@ function makeBodyGroup(key) {
   } else if (style.star) {
     // The Sun glows by itself — it IS the light source. Color pushed past white (HDR)
     // so the bloom pass flares it into something you squint at, like the real thing.
+    // Brown dwarfs (style.ember) skip the glare: they shine by leftover birth-heat,
+    // not fusion — a coal you can look straight at, barely past the bloom threshold.
     mat = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(style.color).lerp(new THREE.Color(0xffffff), 0.45).multiplyScalar(2.5),
+      color: style.ember
+        ? new THREE.Color(style.color).multiplyScalar(1.25)
+        : new THREE.Color(style.color).lerp(new THREE.Color(0xffffff), 0.45).multiplyScalar(2.5),
     });
   } else if (tex) {
     // Painted face; emissiveMap = same texture so the night side shows it dimly
@@ -878,7 +889,8 @@ function makeBodyGroup(key) {
     const ctx = cv.getContext("2d");
     const grad = ctx.createRadialGradient(64, 64, 8, 64, 64, 64);
     const glowRgb = style.glow || "255,215,94"; // star-class tint (red dwarfs glow red)
-    grad.addColorStop(0, "rgba(255,240,208,0.9)");
+    // Embers get a tinted, tighter corona — warm heat-shimmer, no white-hot core.
+    grad.addColorStop(0, style.ember ? `rgba(${glowRgb},0.55)` : "rgba(255,240,208,0.9)");
     grad.addColorStop(0.4, `rgba(${glowRgb},0.35)`);
     grad.addColorStop(1, `rgba(${glowRgb},0)`);
     ctx.fillStyle = grad; ctx.fillRect(0, 0, 128, 128);
@@ -886,7 +898,7 @@ function makeBodyGroup(key) {
       map: new THREE.CanvasTexture(cv), blending: THREE.AdditiveBlending,
       depthWrite: false, transparent: true,
     }));
-    glow.scale.setScalar(b.radius * 7);
+    glow.scale.setScalar(b.radius * (style.ember ? 4 : 7));
     g.add(glow);
   }
 

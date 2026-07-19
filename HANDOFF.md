@@ -9,6 +9,62 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-19): 🌗🔥 LUHMAN 16 — real brown dwarfs (his ask: "hybrid planet-stars")
+
+His ask via Mom: something too big to be a planet but not hot enough to be a star.
+Built the real thing: **The Luhman 16 System** — the actual closest brown dwarf pair
+(6.5 ly, third-closest system of any kind, found 2013 by Kevin Luhman — named for the
+discoverer, like Comet Konnie). New famous system in famous.js; aliases luhman /
+luhman 16 / brown dwarf(s) / twilight / firefly all land on it.
+
+**Flagged / rung 4 (play-test with him):**
+- **The ember LOOK is his acceptance test**: teleport to Luhman 16 B — the sky fills
+  with a dull rose coal you can look straight at (browser-shot luhman-ember-orbit.png).
+  If he wants it redder/darker, the knobs are the two `style.ember` branches in
+  render.js makeBodyGroup (color ×1.25; glow stop 0.55) and the star colors in
+  famous.js.
+- **Twilight's pad is genuinely dusky** (the ember primary lights the system at
+  intensity 1.3, sunset-colored, and the pad sits near the terminator) — thematically
+  perfect, but if it reads too DARK on his screen, the one knob is the ember branch of
+  the sunLight block in render.js buildWorldObjects (1.3 → ~1.6).
+- **Kerbin/Pandora/Hundun change faces** (see fix below — they now wear their OWN
+  painted descriptors instead of Sol Earth's blue marble; Kerbin's is near-identical
+  by design of its def). Worth one Starmap glance with him that nothing looks worse.
+- Firefly's teleport callout says "about 0 days of coasting" (it's genuinely that
+  close) — honest but clunky; a "hours" formatter in fmtRealTrip would polish it.
+
+**Shipped (rung 3 — luhman-check scripted run 17/17 green, boot smoke + flight check
+ALL GREEN, zero console errors; famous_test grew to 107; navigator_check green):**
+1. **famous.js `luhmanSystem()`**: A + B at real masses (35.4 / 29.4 M♃, 1 R♃ →
+   g0 915/760 = G·M/R², node-checked against the formula), true ~3.5 AU mean
+   separation (real orbit ~27 yr, taught in the blurb), companion SOI at the
+   gravity-balance point (Alpha Cen B pattern). Home **Twilight** + moonlet
+   **Firefly** are IMAGINED AND CONFESSED in blurb + facts + Navigator (no planets
+   found at Luhman 16 yet — "looking is real science"); their physics is honest: at
+   0.008 AU (a brown dwarf's real warm zone) Twilight's year is 38,851 s ≈ 10.8 h —
+   predicted first, node-tested, and browser-measured at 0.00% error. Lantern
+   Station overhead. Game map draws it 4.8 ly (deterministic galaxy geometry);
+   blurb + Navigator teach the real 6.5.
+2. **`style.ember` render support** (ARCHITECTURE "CONTRACT REVISION 2026-07-19"):
+   coal-glow star material, tinted tight corona, dusk sunlight when the primary is
+   an ember. Sol/black-hole lighting untouched (boot smoke + flight check green).
+3. **Navigator taught brown dwarfs** (safety block untouched, navigator_check ALL
+   GREEN): the 13/80 Jupiter-mass ladder, deuterium, the all-Jupiter-sized quirk,
+   B's 2014 weather map + molten-iron rain, WISE 0855 at −20°C, the imagined-worlds
+   confession, tidal-lock coaching. WORLD_FACTS for all four bodies.
+4. **Latent bug fixed — generated home worlds wore Sol Earth's face**: render.js
+   makePlanetCanvas matched painters by ROLE key, so "earth" everywhere got the blue
+   marble (hidden since 2026-07-12 by Kerbin's similar palette; Pandora/Hundun were
+   affected too). Generated bodies with a `face` descriptor now route to the
+   descriptor painter; browser-verified (Twilight renders its dusky purple/ember
+   face; Sol boot + Moon flight regression green).
+5. **Teleport callouts use real names in generated systems** (main.js): "into
+   Twilight orbit!", "around Firefly!" — no more "Earth orbit" off-Sol (same
+   role-key bug class as the 2026-07-12 orbit-advice fix; browser-asserted).
+
+No storage changes; parts.js untouched; physics untouched (ember worlds reuse the
+star-impact melt path — honest at 1,300°C).
+
 ## Status (2026-07-18 latest): 🤖⚡ INTERSTELLAR AUTOPILOT + WARP STREAKS (his ask)
 
 His ask via Mom: "point at a place, do interstellar autopilot, it takes you there —

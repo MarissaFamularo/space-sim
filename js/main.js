@@ -58,6 +58,10 @@ const WORLD_FACTS = {
   Earth: "The only world where your parachute, your lungs, and your snack supply all work.",
   "Alpha Centauri B": "Alpha Centauri B is real — an orange star a bit smaller than our Sun. It and A swing around each other about every 80 years. (B's REAL path is a stretched ellipse, 11 to 35 AU from A — we drew the average.)",
   "Proxima Centauri": "Proxima Centauri is the true nearest star to our Sun — 4.24 light-years away. It's a tiny red dwarf with a real planet, Proxima b, discovered in 2016!",
+  "Luhman 16 A": "A brown dwarf is the in-between thing: heavier than ~13 Jupiters it briefly burns deuterium, but only past ~80 does the real hydrogen fire light. This one never made it — it glows with leftover birth-heat, like a coal from the campfire.",
+  "Luhman 16 B": "Astronomers made the FIRST weather map of any world outside our solar system right here (2014): patchy clouds of hot sand — and rain made of molten IRON.",
+  Twilight: "Twilight is imagined (no planets found at Luhman 16 for real — yet!), but its physics is honest: a warm world by a dim brown dwarf must huddle SO close that its whole year lasts about half a day.",
+  Firefly: "Even a failed star can hold planets and moons just fine — gravity doesn't care whether the fusion fire ever lit.",
   // The Youngcow System (HIS design) — every fact ties to real astronomy.
   Sia: "Sia is tidally locked: one face always toward the star (molten), one always dark (frozen). Our Moon is locked to Earth the exact same way — that's why we only ever see one side.",
   Hundun: "Hundun's ring still sheds stones — watch the sky! Counting fresh craters is genuinely how scientists age a planet's surface. And keep an eye out for the locals: big, armored, and strictly vegetarian.",
@@ -472,12 +476,15 @@ function teleport(key) {
     copilotSay("✨ <b>WHOOSH — you're flying formation with " + b.name + "!</b>" + fact0 +
       " Here's the wild part: " + b.name + " is too small to ORBIT — its gravity is weaker than Mars's pull at this distance, so real probes do exactly what you're doing: match its orbit around Mars and fly alongside. Nudge over with tiny puffs of throttle and touch down super gently.");
   } else if (key === "earth") {
-    copilotSay("✨ <b>WHOOSH — teleported straight into Earth orbit!</b> " + crew +
+    // "earth" is a ROLE key — out there the home world has its own name (Twilight,
+    // Kerbin, Hundun…); saying "Earth orbit" teaches the wrong name.
+    copilotSay("✨ <b>WHOOSH — teleported straight into " +
+      (b.gen ? b.name : "Earth") + " orbit!</b> " + crew +
       (sim.crew ? "'s coils are still tingling." : " rebooted twice on the way.") + " You skipped the whole climb to orbit — great for practicing reentries and Moon shots. When you want to earn it, that ride up is one good gravity turn away.");
   } else {
     const days = tripDaysFromEarth(key);
     const fact = WORLD_FACTS[b.name] ? " " + WORLD_FACTS[b.name] : "";
-    const sayName = key === "moon" ? "the Moon" : b.name;
+    const sayName = key === "moon" && !b.gen ? "the Moon" : b.name; // role key ≠ our Moon out there
     copilotSay("✨ <b>WHOOSH — you're in orbit around " + sayName + "!</b>" + fact +
       " The honest-rocket trip is about <b>" + Math.round(days) + " days</b> of coasting here (a real probe: ~" +
       fmtRealTrip(days) + ") — worth knowing when you fly it for real. From here on it's all real physics: land it, explore, or fly home!");

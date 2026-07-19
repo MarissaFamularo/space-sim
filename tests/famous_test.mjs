@@ -19,6 +19,8 @@ const approx = (a, b, tol) => Math.abs(a - b) <= tol * Math.abs(b);
     ["Pandora", "Pandora"], ["AVATAR", "Pandora"], ["alpha centauri", "Pandora"],
     ["Polyphemus", "Pandora"], ["Proxima", "Pandora"], ["proxima centauri", "Pandora"],
     ["Alpha Centauri B", "Pandora"],
+    ["Luhman 16", "Luhman 16"], ["luhman", "Luhman 16"], ["Brown Dwarf", "Luhman 16"],
+    ["the brown dwarfs", "Luhman 16"], ["Twilight", "Luhman 16"],
   ]) {
     const sys = generateSystem(alias);
     check(`"${alias}" → ${want}`, sys.seed === want && sys.famous, `got seed=${sys.seed}`);
@@ -36,7 +38,7 @@ const approx = (a, b, tol) => Math.abs(a - b) <= tol * Math.abs(b);
 }
 
 // --- 3. Role keys + flyability rules hold in every famous system ---
-for (const seed of ["Kerbol", "Pandora", "Youngcow"]) {
+for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16"]) {
   const sys = generateSystem(seed);
   const B = sys.bodies;
   check(`${seed}: roles sun/earth/moon exist`, !!(B.sun && B.earth && B.moon), "");
@@ -176,6 +178,43 @@ for (const seed of ["Kerbol", "Pandora", "Youngcow"]) {
     B.centdra.orbitRadius > B.sun.style.protoDisc.inner &&
     B.centdra.orbitRadius < B.sun.style.protoDisc.outer, "");
   check("Centdra wears its own forming disc", B.centdra.style.formingDisc === true, "");
+}
+
+// --- 5d. Luhman 16 (his ask: "hybrid planet-stars") — real brown dwarf numbers ---
+{
+  const sys = generateSystem("brown dwarf");
+  const B = sys.bodies;
+  const G = 6.674e-11, MJ = 1.898e27, RJ_GAME = 7.0e7; // entered radius, real meters
+  check("both brown dwarfs present, star-styled, ember-flagged, no surface",
+    ["sun", "luhb"].every((k) => B[k] && B[k].style.star && B[k].style.ember && !B[k].solid), "");
+  check("A's gravity matches G·M/R² for 35.4 Jupiter masses at 1 R♃",
+    approx(B.sun.g0, G * 35.4 * MJ / RJ_GAME ** 2, 0.005), `g0=${B.sun.g0}`);
+  check("B's gravity matches G·M/R² for 29.4 Jupiter masses at 1 R♃",
+    approx(B.luhb.g0, G * 29.4 * MJ / RJ_GAME ** 2, 0.005), `g0=${B.luhb.g0}`);
+  check("the Jupiter-size quirk: both dwarfs the same radius, ~1 R♃",
+    B.sun.radius === B.luhb.radius && approx(B.sun.radius, RJ_GAME * 0.1, 0.01),
+    `r=${B.sun.radius.toExponential(2)}`);
+  check("B is targetable (in planetKeys)", sys.planetKeys.includes("luhb"), "");
+  // Companion SOI at the gravity-balance point (same property as Alpha Centauri B).
+  {
+    const soi = B.luhb.soiRadius, a = B.luhb.orbitRadius;
+    const gStar = B.luhb.mu / soi ** 2, gSun = B.sun.mu / (a - soi) ** 2;
+    check("B's SOI sits at the gravity-balance point", approx(gStar, gSun, 1e-9),
+      `soi=${(soi / 1.496e10).toFixed(2)} AU`);
+    check("Twilight's orbit never enters B's SOI", B.earth.orbitRadius < a - soi, "");
+  }
+  // The headline fact, predicted before running: a warm world by a dim brown dwarf
+  // huddles at 0.008 AU, so its year is T = 2π·√(a³/mu) ≈ 38,900 s ≈ 10.8 h —
+  // "about half a day" in the blurb must be honest.
+  {
+    const T = 2 * Math.PI * Math.sqrt(B.earth.orbitRadius ** 3 / B.sun.mu);
+    check("Twilight's year ≈ 10.8 hours (predicted 38,900 s)", approx(T, 38900, 0.02),
+      `T=${Math.round(T)} s = ${(T / 3600).toFixed(1)} h`);
+    check("…which is honestly 'about half a day'", T < 12.5 * 3600, "");
+  }
+  check("Firefly is orbitable (not a tinyMoon)", !B.moon.tinyMoon,
+    `soi=${Math.round(B.moon.soiRadius / 1000)} km vs 2r=${Math.round(B.moon.radius * 2 / 1000)} km`);
+  check("the blurb confesses Twilight is imagined", /imagined/i.test(sys.blurb), "");
 }
 
 // --- 6. FAMOUS_LIST entries resolve and match their builders ---

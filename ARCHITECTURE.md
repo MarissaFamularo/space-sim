@@ -514,3 +514,25 @@ Render.enterStation(info, cb)       // info gains .spin — centrifuge interior:
   orbit crossed it. Real missions park clear of ring material for the same reason.
   Node-tested (teleport_test.mjs section 3; Hundun arrives at 2.65 R, 1300 m/s —
   predicted, then measured).
+
+## CONTRACT REVISION 2026-07-19 — Brown dwarfs (Luhman 16) + the descriptor-face fix
+
+- **New body-style flag `ember`** (on a `style.star` body): a brown dwarf. render.js
+  draws it as a dull coal — star material NOT lerped past white (color ×1.25, barely
+  over the bloom threshold, so you can look straight at it), tinted tighter glow
+  sprite (radius ×4 vs ×7), and when the system PRIMARY is an ember the sunlight
+  dims to intensity 1.3 with a sunset color (0xffb08a) — permanent warm dusk.
+  First users: Luhman 16 A + B (famous.js, real masses 35.4/29.4 M♃ at 1 R♃ →
+  g0 915/760 by G·M/R²; companion SOI via the same gravity-balance override as
+  Alpha Centauri B). Physics unchanged: an ember is star-styled, so flying in still
+  reads burnedUp — honest, these two run ~1,300°C.
+- **makePlanetCanvas routes generated bodies with a `face` descriptor PAST Sol's
+  key-matched painters.** The painter switch matched on the ROLE key, so every
+  generated/famous home world ("earth") wore Sol Earth's blue marble instead of its
+  own descriptor — Kerbin's near-identical palette hid it since 2026-07-12; Pandora,
+  Hundun and Twilight were all affected. Sol bodies (`gen` unset) keep their
+  hand-tuned painters; NASA Blue Marble textures still overlay Sol Earth only.
+- **Teleport callouts use display names in generated systems** (main.js): "teleported
+  straight into Twilight orbit!" / "in orbit around Firefly!" — the hardcoded
+  "Earth"/"the Moon" wording now applies only when the body isn't `gen` (same class
+  of role-key bug as the 2026-07-12 orbit-advice fix).

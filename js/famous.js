@@ -291,10 +291,86 @@ function youngcowSystem() {
   };
 }
 
+// ---------- THE LUHMAN 16 SYSTEM (his ask: "hybrid planet-stars") — two real BROWN DWARFS ----------
+// Brown dwarfs are the in-between things: heavier than ~13 Jupiters (they briefly burn
+// deuterium), lighter than ~80 (ordinary hydrogen fusion never lights). Luhman 16 is
+// the real closest pair — 6.5 light-years, the THIRD-closest system to Sol, found in
+// 2013 by Kevin Luhman (named for its discoverer, like Comet Konnie). Real masses and
+// Jupiter-ish radii → the huge surface gravities below are honest: g0 = 274·(M/M☉)/(R/R☉)²
+// worked in Jupiter units, G·M/R². Both drawn as EMBERS (style.ember): dull coal-glow,
+// not fusion glare — you can look right at one. Twilight + Firefly are IMAGINED and the
+// blurb confesses it (no planets found there for real YET — looking is real science);
+// their physics is honest: a warm world by a dim brown dwarf huddles SO close its year
+// lasts about half a day (T_eq ≈ 1500K·√(R★/2a) ≈ −17°C at 0.008 AU; period ≈ 11 h).
+function luhmanSystem() {
+  const defs = {
+    // A: L7.5 dwarf, 35.4 Jupiter masses, ~1 Jupiter radius (7.0e7 m) → g0 = GM/R² ≈ 915.
+    sun: { name: "Luhman 16 A", radius: 7.0e7, g0: 915, parent: null, a: 0,
+           solid: false, atmo: null, phase0: 0, gen: true,
+           style: { color: 0xd85a3a, star: true, ember: true, glow: "255,110,60" } },
+    // TWILIGHT — the imagined home: forever-sunset skies under a coal-red not-quite-star.
+    // 0.008 AU out (11 star-radii!) because a brown dwarf's warm zone really is that
+    // close — its whole year lasts ~11 hours. Real worlds this close get tidally locked.
+    earth: { name: "Twilight", radius: 3.4e6, g0: 8.2, parent: "sun", a: 0.008 * AU,
+             solid: true, atmo: { height: 6.0e4, seaLevelDensity: 1.0 }, phase0: 0, gen: true, home: true,
+             style: { color: 0x8a5a72, halo: 0xd87a5a },
+             face: { kind: "terra", base: "#3a2e44", accent: "#7a4a56", accent2: "#d87a4a" } },
+    moon: { name: "Firefly", radius: 4.5e5, g0: 0.55, parent: "earth", a: 1.5e7,
+            solid: true, atmo: null, phase0: 2.1, gen: true,
+            style: { color: 0x6a6272 }, face: { kind: "rocky", base: "#6a6272", accent: "#464050", accent2: "#948ca4" } },
+    // B: T0.5 dwarf, 29.4 Jupiter masses → g0 ≈ 760. Drawn at the true ~3.5 AU average
+    // separation (the real orbit is an ellipse, ~27 years around each other — rails are
+    // circles, so we draw the average; the blurb teaches the real number).
+    luhb: { name: "Luhman 16 B", radius: 7.0e7, g0: 760, parent: "sun", a: 3.5 * AU,
+            solid: false, atmo: null, phase0: 3.9, gen: true,
+            style: { color: 0xb84a66, star: true, ember: true, glow: "220,90,110" } },
+  };
+  const order = ["sun", "earth", "moon", "luhb"];
+  const bodies = buildCatalog(defs, order);
+  // Companion SOI at the gravity-balance point, same fix as Alpha Centauri B (Laplace
+  // assumes a tiny mass ratio; B is 0.83x A and would swallow half the map).
+  {
+    const q = Math.sqrt(bodies.luhb.mu / bodies.sun.mu);
+    bodies.luhb.soiRadius = bodies.luhb.orbitRadius * (q / (1 + q));
+  }
+  return {
+    key: "gen:luhman",
+    name: "The Luhman 16 System",
+    seed: "Luhman 16",
+    blackHole: false,
+    starClass: "L",
+    starLabel: "brown dwarf pair (Luhman 16 A + B)",
+    homeName: "Twilight",
+    moonName: "Firefly",
+    planetCount: 1,
+    frostAU: 0.02, // a brown dwarf's warmth barely reaches past its own doorstep
+    bodies,
+    planetKeys: order.slice(1),
+    stations: [
+      { id: "st_home", name: "Lantern Station", body: "earth", altR: 2.4, phase0: 0.6 },
+    ],
+    famous: "luhman",
+    blurb: "🌗🔥 <b>Welcome to LUHMAN 16 — a pair of BROWN DWARFS!</b> The in-between " +
+      "things: too heavy to be planets, never heavy enough to light the fusion fire that " +
+      "makes a real star. Both are about the size of JUPITER but ~30x its mass, glowing " +
+      "dull red from leftover birth-heat — coals from a campfire that never caught. And " +
+      "they're REAL: the closest brown dwarfs to Earth (6.5 light-years — the third-closest " +
+      "system of any kind; your map draws it a little nearer), found in 2013 by Kevin " +
+      "Luhman — named for the discoverer, just like Comet Konnie! <b>A</b> and <b>B</b> " +
+      "circle each other about every 27 years. B has real WEATHER: in 2014 astronomers made " +
+      "the first weather map of any world beyond our solar system here — patchy clouds of " +
+      "hot sand, with rain of molten IRON. No planets have been found here for real YET " +
+      "(looking is real science!), so we imagined <b>Twilight</b> for you: a world huddled " +
+      "so close to its dim coal-sun that its whole YEAR lasts about half a day, under a sky " +
+      "of forever-sunset. Little <b>Firefly</b> keeps it company, and Lantern Station glows " +
+      "overhead. 🏮",
+  };
+}
+
 // ---------- Registry ----------
 // Aliases are normalized (lowercase, letters+digits only) so "The Kerbal System",
 // "kerbin", "KSP", "avatar", "Alpha Centauri"… all land on the same canonical system.
-const BUILDERS = { kerbol: kerbolSystem, pandora: pandoraSystem, youngcow: youngcowSystem };
+const BUILDERS = { kerbol: kerbolSystem, pandora: pandoraSystem, youngcow: youngcowSystem, luhman: luhmanSystem };
 const ALIASES = {
   kerbol: "kerbol", kerbin: "kerbol", kerbal: "kerbol", ksp: "kerbol",
   kerbalsystem: "kerbol", kerbolsystem: "kerbol", thekerbolsystem: "kerbol",
@@ -306,6 +382,10 @@ const ALIASES = {
   youngcow: "youngcow", youngcowsystem: "youngcow", theyoungcowsystem: "youngcow",
   hundun: "youngcow", hundunsystem: "youngcow", sia: "youngcow",
   centdra: "youngcow", cometkonnie: "youngcow", ember: "youngcow",
+  luhman: "luhman", luhman16: "luhman", luhmansystem: "luhman",
+  luhman16system: "luhman", theluhmansystem: "luhman", theluhman16system: "luhman",
+  browndwarf: "luhman", browndwarfs: "luhman", thebrowndwarfs: "luhman",
+  twilight: "luhman", firefly: "luhman",
 };
 
 // Shown in the Starmap panel and pre-lit on the galaxy map.
@@ -313,6 +393,7 @@ export const FAMOUS_LIST = [
   { seed: "Kerbol", name: "The Kerbol System", hint: "the Kerbal Space Program worlds — Kerbin, the Mun, Jool…", color: 0xffd75e },
   { seed: "Pandora", name: "The Pandora System", hint: "from Avatar — your home is a moon of a gas giant, under three real suns", color: 0x4a7ac8 },
   { seed: "Youngcow", name: "The Youngcow System", hint: "HIS design — a baby solar system: protoplanetary disc, ringed Hundun, dino-birds, a comet you can land on", color: 0xffdf6e },
+  { seed: "Luhman 16", name: "The Luhman 16 System", hint: "the real closest BROWN DWARFS — two failed stars the size of Jupiter, glowing like coals", color: 0xd85a3a },
 ];
 
 // null if the name isn't famous — the seeded generator takes over as usual.
