@@ -21,6 +21,8 @@ const approx = (a, b, tol) => Math.abs(a - b) <= tol * Math.abs(b);
     ["Alpha Centauri B", "Pandora"],
     ["Luhman 16", "Luhman 16"], ["luhman", "Luhman 16"], ["Brown Dwarf", "Luhman 16"],
     ["the brown dwarfs", "Luhman 16"], ["Twilight", "Luhman 16"],
+    ["Owius", "Owius"], ["pulsar", "Owius"], ["The Pulsar System", "Owius"],
+    ["Sera", "Owius"], ["donk", "Owius"], ["the silent spire", "Owius"],
   ]) {
     const sys = generateSystem(alias);
     check(`"${alias}" → ${want}`, sys.seed === want && sys.famous, `got seed=${sys.seed}`);
@@ -38,7 +40,7 @@ const approx = (a, b, tol) => Math.abs(a - b) <= tol * Math.abs(b);
 }
 
 // --- 3. Role keys + flyability rules hold in every famous system ---
-for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16"]) {
+for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16", "Owius"]) {
   const sys = generateSystem(seed);
   const B = sys.bodies;
   check(`${seed}: roles sun/earth/moon exist`, !!(B.sun && B.earth && B.moon), "");
@@ -215,6 +217,43 @@ for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16"]) {
   check("Firefly is orbitable (not a tinyMoon)", !B.moon.tinyMoon,
     `soi=${Math.round(B.moon.soiRadius / 1000)} km vs 2r=${Math.round(B.moon.radius * 2 / 1000)} km`);
   check("the blurb confesses Twilight is imagined", /imagined/i.test(sys.blurb), "");
+}
+
+// --- 5e. Owius (HIS design: a pulsar system) — neutron-star numbers are real ---
+{
+  const sys = generateSystem("pulsar");
+  const B = sys.bodies;
+  const G = 6.674e-11, MSUN = 1.989e30, R_NS = 1.2e4; // entered radius, real meters
+  check("Owius is a pulsar (star-styled, flagged, wrapped in a remnant)",
+    B.sun.style.star && B.sun.style.pulsar && !!B.sun.style.remnant && !B.sun.solid, "");
+  check("the pulsar is CITY-sized: 12 km real → 1.2 km in the scaled universe",
+    B.sun.radius === R_NS * 0.1, `r=${B.sun.radius} m`);
+  check("pulsar gravity matches G·M/R² for 1.4 solar masses at 12 km",
+    approx(B.sun.g0, G * 1.4 * MSUN / R_NS ** 2, 0.005), `g0=${B.sun.g0.toExponential(3)}`);
+  check("his five planets are all present, in his order",
+    ["Donk", "Monk", "Sera", "Menia", "Ka"].every((n, i) =>
+      B[["donk", "monk", "earth", "menia", "ka"][i]] &&
+      B[["donk", "monk", "earth", "menia", "ka"][i]].name === n), "");
+  // Sera's year, predicted before running: T = 2π·√(a³/mu) at 0.55 AU around
+  // mu = g0·r² = 1.29e12·(1.2e3)² → 3.44e6 s ≈ 39.8 game-days.
+  {
+    const T = 2 * Math.PI * Math.sqrt(B.earth.orbitRadius ** 3 / B.sun.mu);
+    check("Sera's year ≈ 39.8 days (predicted 3.44e6 s)", approx(T, 3.441e6, 0.01),
+      `T=${(T / 86400).toFixed(1)} days`);
+  }
+  check("Sera wears its small ring and hosts the Silent Spire (alien base)",
+    B.earth.style.rings === true &&
+    Array.isArray(B.earth.style.bases) && B.earth.style.bases.some((b) => b.alien), "");
+  check("Splinter is orbitable (not a tinyMoon)", !B.moon.tinyMoon,
+    `soi=${Math.round(B.moon.soiRadius / 1000)} km vs 2r=${Math.round(B.moon.radius * 2 / 1000)} km`);
+  check("Monk carries its bones (flag + fossil face)",
+    B.monk.style.bones === true && B.monk.face.kind === "fossil", "");
+  check("Donk's face is the cracked one (the lake lives in the paint)",
+    B.donk.face.kind === "cracked", "");
+  check("Menia is honestly a gas world: no surface to land on",
+    B.menia.gas === undefined ? !B.menia.solid : !B.menia.solid, "");
+  check("the blurb confesses the warm-Sera compromise",
+    /confession/i.test(sys.blurb) && /gave Sera air/i.test(sys.blurb), "");
 }
 
 // --- 6. FAMOUS_LIST entries resolve and match their builders ---

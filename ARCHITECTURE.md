@@ -536,3 +536,25 @@ Render.enterStation(info, cb)       // info gains .spin — centrifuge interior:
   straight into Twilight orbit!" / "in orbit around Firefly!" — the hardcoded
   "Earth"/"the Moon" wording now applies only when the body isn't `gen` (same class
   of role-key bug as the 2026-07-12 orbit-advice fix).
+
+## CONTRACT REVISION 2026-07-19b — The Owius pulsar system (his design)
+
+- **New body-style flags render.js understands**: `pulsar` (on a `style.star` sun) —
+  HDR pinpoint with an absolute-floor glow sprite (the sphere is 1.2 km scaled — real
+  neutron-star size, g0 entered as G·1.4 M☉/R² ≈ 1.29e12), two additive lighthouse
+  beam cones swept by WALL-CLOCK time (sim-time sweep would alias under warp; real
+  pulsars spin ms–s, confessed in the Navigator), and blue-white dusk sunlight
+  (0xcfe2ff @ 1.7) when the primary is a pulsar; `remnant {radius}` (on the sun) — a
+  faint additive BackSide supernova-remnant shell wrapping the system; `bones` (on a
+  planet) — instanced rib-arch ground scatter near the pad (same slot machinery as
+  Hundun's plants, static). New face kinds `cracked` (canyon web + ONE lake glint)
+  and `fossil` (seabeds + bone flecks).
+- **Ground bases grew an `alien` variant** (`style.bases[].alien`): a giant monument
+  exterior (spire + glyph rings + beacon) and a new single-room interior kind
+  `"spire"` (info.monument routes there): glyph plaques, beacon pillar, a `monument`
+  story console (SCIENCE_VALUE 25, its fact carries the evacuation story) plus an
+  `alien` glyph console; no resident, no clutter. boardBase passes
+  `monument: !!base.alien` and says a bespoke entry line.
+- **First user**: famous.js `owiusSystem()` — Donk/Monk/Sera(home, ringed, spire)/
+  Menia(gas)/Ka + moonlet Splinter + Lighthouse Station. Sera's ring parking rides
+  the existing RING_BAND rule unchanged.

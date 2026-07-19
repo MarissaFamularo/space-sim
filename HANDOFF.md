@@ -9,6 +9,67 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-19 later): 💠⚡ THE OWIUS SYSTEM — his pulsar, five blue worlds, the Silent Spire
+
+His full spec (via Mom): a pulsar system named Owius; planets Donk (one tiny lake in
+a crack), Monk (bones — was habitable, wiped out), Sera (formed from the supernova,
+still resting there; small ring; a giant explorable alien structure), Menia, Ka; all
+blue-ish. Built end-to-end — and his design IS real science: the first exoplanets
+ever discovered (1992, PSR B1257+12) orbit a pulsar and formed from supernova
+fallback, exactly Sera's origin story. Aliases owius/pulsar/donk/monk/sera/menia/ka.
+
+**Flagged / rung 4 (play-test with him):**
+- **The lighthouse beams are the one thing no scripted camera caught**: they're built,
+  swept (wall-clock, ~2.6 s/rev), and error-free, but every screenshot faced away
+  from the star. Play-test: teleport to Donk, drag the camera toward Owius — two
+  blue beam cones should sweep past. If they're too faint/short, the knobs are the
+  `[r0, r1, op]` rows and `L` in the `style.pulsar` block of render.js makeBodyGroup.
+- **Remnant wisps are a taste call**: softened once already (shadowBlur pass), but up
+  close they still read a little angular — the whole look lives in one canvas block
+  (`key + "-remnant"` in makeBodyGroup); more blur/lower opacity are one-line dials.
+- **Bones on Monk are code-verified only** (same status dino-birds shipped at): the
+  scatter rides the proven plant-tuft slot machinery, but nobody has LANDED there.
+  Play-test: teleport Monk, burn down near the pad, look for white rib arches.
+- Donk's lake is painted-face only (one blue glint at the bottom of the great crack)
+  — if he wants to LAND at the lake, that's a natural next rung (a `bases`-style
+  fixed surface point would do it).
+- The spire's story console pays 25 science once per boarding (standard console
+  rule) — if he farms it by re-entering, that's the existing per-boarding behavior
+  everywhere, not a spire bug.
+
+**Shipped (rung 3 — owius-check scripted run 20/20 green, boot smoke + flight check
+ALL GREEN, zero console errors; famous_test grew to 132; navigator_check green):**
+1. **famous.js `owiusSystem()`**: Owius = a real neutron star — 12 km radius (1.2 km
+   scaled, CITY-sized, node-checked), g0 = G·1.4 M☉/R² ≈ 1.29e12 m/s² (real!), his
+   five planets in order + moonlet Splinter (game needs a home moon — HIS CALL to
+   rename/veto, flagged) + Lighthouse Station. Sera's year predicted 3.44e6 s ≈ 39.8
+   days, node-checked at 1%. Teleport numbers browser-measured at 0.00% error on all
+   five worlds incl. Sera's ring-clear parking (592.2 km, RING_BAND rule unchanged).
+2. **Pulsar render** (ARCHITECTURE "2026-07-19b"): blue-white pinpoint + glow floor,
+   sweeping beam cones (wall-clock — sim-time would alias under warp), supernova
+   remnant shell wrapping the system (gorgeous in map view — screenshot
+   owius-map-system.png), blue-white cold sunlight. Sol/black-hole/ember lighting
+   untouched (boot smoke + flight check green).
+3. **🗼 THE SILENT SPIRE** (Sera, ~3 km from the pad, press B): giant monument
+   exterior (dark spire, glowing glyph rings, beacon) + a new single-room "spire"
+   interior — glyph plaques, beacon pillar, swept-clean hall, and TWO consoles: the
+   builders' STORY screen (new science kind `monument`, +25 — they saw their
+   supernova coming and evacuated; nobody died; Betelgeuse-watch science is real)
+   and their glyph console. No resident — they LEFT; that's the story. Interior
+   browser-verified (opened directly, rendered, hint bar correct, clean exit).
+4. **Monk's bones + Donk's crack-lake + new faces**: `style.bones` instanced rib
+   arches near the pad (static, deterministic), face kinds `fossil` and `cracked`
+   (the lake is ONE tiny glint at the bottom of the great crack — his spec).
+5. **Navigator taught pulsars** (safety block untouched, navigator_check ALL GREEN):
+   Bell Burnell 1967 + the LGM-1 story, the 1992 first-exoplanets headline, teaspoon
+   = mountain, supernova sterilization told gently (fossils = time travel), the
+   evacuation story always told as "nobody died, they sailed away," and the honest
+   confessions (real pulsar planets are frozen/dark; beam sweep slowed; warm Sera is
+   the game's gift, said in the blurb too). WORLD_FACTS for all seven bodies.
+
+No storage changes; parts.js untouched; physics untouched (the pulsar melts you via
+the existing star-impact path — honest: neutron stars run ~600,000°C).
+
 ## Status (2026-07-19): 🌗🔥 LUHMAN 16 — real brown dwarfs (his ask: "hybrid planet-stars")
 
 His ask via Mom: something too big to be a planet but not hot enough to be a star.

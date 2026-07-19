@@ -367,10 +367,105 @@ function luhmanSystem() {
   };
 }
 
+// ---------- THE OWIUS SYSTEM (his design, 2026-07-19) — five blue worlds around a PULSAR ----------
+// A pulsar is a spinning neutron star: the collapsed core a supernova leaves behind —
+// CITY-sized (12 km!) but heavier than the Sun, sweeping lighthouse beams as it spins.
+// And pulsar planets are gloriously real: the FIRST exoplanets ever confirmed (1992,
+// PSR B1257+12) orbit a pulsar, and they're thought to have formed from the supernova's
+// own fallback debris — which is exactly his origin story for Sera. His spec: Donk (one
+// tiny lake in a crack), Monk (bones — was alive until the blast), Sera (supernova-born,
+// small ring, a giant alien structure to explore), Menia, Ka; everything blue-ish —
+// honest, because neutron stars run blue-white hot. g0 below is real: G·1.4 M☉/R².
+function owiusSystem() {
+  const defs = {
+    sun: { name: "Owius", radius: 1.2e4, g0: 1.29e12, parent: null, a: 0,
+           solid: false, atmo: null, phase0: 0, gen: true,
+           style: { color: 0x9ad4ff, star: true, pulsar: true, glow: "154,212,255" } },
+    // DONK — closest in. One tiny lake at the bottom of a great crack: down in the
+    // canyon the air piles up thicker and the last water hides from the sky.
+    donk: { name: "Donk", radius: 2.2e6, g0: 3.2, parent: "sun", a: 0.16 * AU,
+            solid: true, atmo: { height: 3.5e4, seaLevelDensity: 0.15 }, phase0: 0.8, gen: true,
+            style: { color: 0x5a6a7a },
+            face: { kind: "cracked", base: "#5a6a7a", accent: "#2a3644", accent2: "#4ab8e8" } },
+    // MONK — the fossil world. It was ALIVE once; the supernova that made Owius
+    // sterilized it long, long ago. The bones weathering out of the old seabeds are
+    // how you read that story — paleontology is real time travel.
+    monk: { name: "Monk", radius: 3.0e6, g0: 5.5, parent: "sun", a: 0.32 * AU,
+            solid: true, atmo: { height: 4.5e4, seaLevelDensity: 0.22 }, phase0: 2.9, gen: true,
+            style: { color: 0x7a8ea0, bones: true },
+            face: { kind: "fossil", base: "#7a8ea0", accent: "#5a6a7c", accent2: "#e8ecf0" } },
+    // SERA — home. Born from the supernova's fallback disc and still resting where it
+    // formed, wearing a small ring. The Silent Spire waits ~3 km from the pad.
+    earth: { name: "Sera", radius: 3.6e6, g0: 8.4, parent: "sun", a: 0.55 * AU,
+             solid: true, atmo: { height: 6.5e4, seaLevelDensity: 1.05 }, phase0: 0, gen: true, home: true,
+             style: { color: 0x4a7a9a, halo: 0x7ab0e0, rings: true,
+                      bases: [
+                        { id: "base_spire", name: "the Silent Spire", alien: true, phi: Math.PI / 2 - 0.006 },
+                      ] },
+             face: { kind: "terra", base: "#2a4a6a", accent: "#4a7a9a", accent2: "#9ac8e8" } },
+    // SPLINTER — a captured shard of supernova debris keeping Sera company.
+    // (His spec was five planets; the game wants home to have a moon — flag to him.)
+    moon: { name: "Splinter", radius: 3.5e5, g0: 0.45, parent: "earth", a: 1.8e7,
+            solid: true, atmo: null, phase0: 4.2, gen: true,
+            style: { color: 0x7a828e }, face: { kind: "rocky", base: "#7a828e", accent: "#525a66", accent2: "#a8b2c0" } },
+    // MENIA — a blue mini-Neptune: all air, no ground (sink and be crushed, honestly).
+    menia: { name: "Menia", radius: 1.4e7, g0: 9.0, parent: "sun", a: 0.95 * AU,
+             solid: false, atmo: { height: 4.0e5, seaLevelDensity: 0.3 }, phase0: 5.1, gen: true, gas: true,
+             style: { color: 0x4a6ac8, halo: 0x6a8ae0 },
+             face: { kind: "gas", bands: ["#4a6ac8", "#3a54a8", "#6a8ae0", "#2a3e88"], spot: false } },
+    // KA — smallest name, smallest world, farthest out in the cold and the dark.
+    ka: { name: "Ka", radius: 1.1e6, g0: 1.2, parent: "sun", a: 1.9 * AU,
+          solid: true, atmo: null, phase0: 1.7, gen: true,
+          style: { color: 0xcfe0f2 }, face: { kind: "ice", base: "#cfe0f2", accent: "#9ab8d4", accent2: "#f0f8ff" } },
+  };
+  const order = ["sun", "donk", "monk", "earth", "moon", "menia", "ka"];
+  const bodies = buildCatalog(defs, order);
+  // The supernova remnant: a huge faint blue shell wrapping the whole system (the
+  // Crab Nebula is exactly this — a pulsar sitting inside its own blast cloud).
+  bodies.sun.style.remnant = { radius: bodies.ka.orbitRadius * 1.5 };
+  return {
+    key: "gen:owius",
+    name: "The Owius System",
+    seed: "Owius",
+    blackHole: false,
+    starClass: "PSR",
+    starLabel: "pulsar — a spinning neutron-star lighthouse",
+    homeName: "Sera",
+    moonName: "Splinter",
+    planetCount: 5,
+    frostAU: 0.3, // a pulsar gives almost no warmth — the cold starts at its doorstep
+    bodies,
+    planetKeys: order.slice(1),
+    stations: [
+      { id: "st_home", name: "Lighthouse Station", body: "earth", altR: 2.6, phase0: 1.4 },
+    ],
+    famous: "owius",
+    blurb: "💠⚡ <b>Welcome to the OWIUS SYSTEM — five blue worlds around a PULSAR, " +
+      "designed by you-know-who!</b> Owius is a <b>neutron star</b>: when a giant star " +
+      "went supernova here, its core collapsed into a ball only 12 km across — the size " +
+      "of a city — that still weighs MORE THAN OUR SUN (a teaspoon of it outweighs a " +
+      "mountain). It spins, sweeping two lighthouse beams — that flashing is how real " +
+      "astronomers FOUND pulsars in 1967. And here's the wild true part: the first " +
+      "planets ever discovered outside our solar system (1992!) orbit a pulsar, and " +
+      "they're built from the supernova's own leftover rubble — exactly like <b>Sera</b>, " +
+      "your ringed home, still resting where the blast-cloud made it. <b>Monk</b> was " +
+      "alive once: the supernova wiped its world clean long, long ago, and the BONES " +
+      "weathering out of its dry seabeds still tell the story — land and see them. " +
+      "<b>Donk</b> hides its last little lake at the bottom of one great crack. Blue " +
+      "<b>Menia</b> is all air with no ground, and tiny <b>Ka</b> keeps watch far out in " +
+      "the dark. On Sera, ~3 km from your pad, stands <b>the Silent Spire</b> — the " +
+      "builders saw their star getting ready to blow, launched their whole fleet to " +
+      "safety, and left it shining as a beacon. Walk in (press B) and read their story. " +
+      "One honest confession: REAL pulsar planets would be frozen, dark, and bathed in " +
+      "particle wind — we gave Sera air and warmth so you'd have somewhere to land. " +
+      "Everything blue here is true, though: neutron stars really do shine blue-white. 🗼",
+  };
+}
+
 // ---------- Registry ----------
 // Aliases are normalized (lowercase, letters+digits only) so "The Kerbal System",
 // "kerbin", "KSP", "avatar", "Alpha Centauri"… all land on the same canonical system.
-const BUILDERS = { kerbol: kerbolSystem, pandora: pandoraSystem, youngcow: youngcowSystem, luhman: luhmanSystem };
+const BUILDERS = { kerbol: kerbolSystem, pandora: pandoraSystem, youngcow: youngcowSystem, luhman: luhmanSystem, owius: owiusSystem };
 const ALIASES = {
   kerbol: "kerbol", kerbin: "kerbol", kerbal: "kerbol", ksp: "kerbol",
   kerbalsystem: "kerbol", kerbolsystem: "kerbol", thekerbolsystem: "kerbol",
@@ -386,6 +481,10 @@ const ALIASES = {
   luhman16system: "luhman", theluhmansystem: "luhman", theluhman16system: "luhman",
   browndwarf: "luhman", browndwarfs: "luhman", thebrowndwarfs: "luhman",
   twilight: "luhman", firefly: "luhman",
+  owius: "owius", owiussystem: "owius", theowiussystem: "owius",
+  pulsar: "owius", thepulsar: "owius", pulsarsystem: "owius", thepulsarsystem: "owius",
+  donk: "owius", monk: "owius", sera: "owius", menia: "owius", ka: "owius",
+  silentspire: "owius", thesilentspire: "owius",
 };
 
 // Shown in the Starmap panel and pre-lit on the galaxy map.
@@ -394,6 +493,7 @@ export const FAMOUS_LIST = [
   { seed: "Pandora", name: "The Pandora System", hint: "from Avatar — your home is a moon of a gas giant, under three real suns", color: 0x4a7ac8 },
   { seed: "Youngcow", name: "The Youngcow System", hint: "HIS design — a baby solar system: protoplanetary disc, ringed Hundun, dino-birds, a comet you can land on", color: 0xffdf6e },
   { seed: "Luhman 16", name: "The Luhman 16 System", hint: "the real closest BROWN DWARFS — two failed stars the size of Jupiter, glowing like coals", color: 0xd85a3a },
+  { seed: "Owius", name: "The Owius System", hint: "HIS design — five blue worlds around a spinning pulsar lighthouse: bones on Monk, a crack-lake on Donk, the Silent Spire on ringed Sera", color: 0x9ad4ff },
 ];
 
 // null if the name isn't famous — the seeded generator takes over as usual.

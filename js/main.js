@@ -62,6 +62,13 @@ const WORLD_FACTS = {
   "Luhman 16 B": "Astronomers made the FIRST weather map of any world outside our solar system right here (2014): patchy clouds of hot sand — and rain made of molten IRON.",
   Twilight: "Twilight is imagined (no planets found at Luhman 16 for real — yet!), but its physics is honest: a warm world by a dim brown dwarf must huddle SO close that its whole year lasts about half a day.",
   Firefly: "Even a failed star can hold planets and moons just fine — gravity doesn't care whether the fusion fire ever lit.",
+  Owius: "A pulsar is a spinning neutron star: a supernova squeezed a star's whole core into a ball the size of a CITY that still outweighs our Sun. A teaspoon of it would outweigh a mountain — and its sweeping lighthouse beams are how astronomers found the first one in 1967.",
+  Donk: "All of Donk's water hides in one lake at the bottom of one great crack — down deep, the air piles up thicker and the sky can't steal it. Water is the treasure of any solar system.",
+  Monk: "Monk was alive once. The supernova that made Owius wiped it clean long, long ago — and the bones weathering out of its dry seabeds still tell the story. Reading old bones is real science: paleontology is time travel.",
+  Sera: "Sera was born from the supernova itself — built out of the blast's leftover rubble, still resting where it formed. That's real: the first planets ever discovered (1992!) orbit a pulsar and formed exactly this way.",
+  Splinter: "A captured shard of supernova debris. Little moons like this are the blast's loose change, still being counted.",
+  Menia: "Menia is all air and no ground — dive in and you sink until the pressure wins. Its deep blue is honest: that's what mini-Neptunes look like.",
+  Ka: "Ka keeps watch at the cold edge. Around a pulsar there's no warm zone at all — every world out here freezes under a star that gives light but almost no heat.",
   // The Youngcow System (HIS design) — every fact ties to real astronomy.
   Sia: "Sia is tidally locked: one face always toward the star (molten), one always dark (frozen). Our Moon is locked to Earth the exact same way — that's why we only ever see one side.",
   Hundun: "Hundun's ring still sheds stones — watch the sky! Counting fresh craters is genuinely how scientists age a planet's surface. And keep an eye out for the locals: big, armored, and strictly vegetarian.",
@@ -1037,8 +1044,9 @@ const SCIENCE_FACTS = {
   basewreck: ["📼 The base log, final entry: 'They came at night — a whole herd of the big armored ones, straight through the walls. Turns out we built our greenhouse on their favorite feeding ground. Nobody was hurt; we grabbed the seed vault and moved to the new base. New rule: check where the LOCALS eat before you build.' Wild animals aren't villains — they were here first, and they only wanted the plants.",],
   alien: ["👽🎵 The resident hums at you — in PRIME NUMBERS. 2, 3, 5, 7, 11… Math is the one language every scientist expects the universe to share. It taps its console and gifts you its notes: ALIEN SCIENCE!",
         "👽📐 It draws you a right triangle and hums three notes: 3, 4, 5. Pythagoras works in every star system — that's WHY scientists think math is how we'd talk to aliens first."],
+  monument: ["🗼📖 The story screen wakes for you. In pictures: a golden star… the star swelling, angry… a thousand ships rising together, all lights on… and one tower left glowing behind, pointed at the sky. They SAW their supernova coming and sailed away in time — and here's the real science hiding in it: stars announce a supernova ages ahead (astronomers watch Betelgeuse for exactly this), and the blast leaves a spinning lighthouse behind. Their beacon still shines. So does the star's.",],
 };
-const SCIENCE_VALUE = { bio: 10, materials: 10, astro: 10, salvage: 15, basewreck: 15, alien: 25, vault: 50 };
+const SCIENCE_VALUE = { bio: 10, materials: 10, astro: 10, salvage: 15, basewreck: 15, alien: 25, vault: 50, monument: 25 };
 let factRotor = 0;
 function awardScience(kind) {
   const pts = SCIENCE_VALUE[kind] || 10;
@@ -1444,10 +1452,12 @@ function boardBase() {
   const base = nb.base;
   Render.enterStation(
     { name: base.name, abandoned: !!base.wrecked, alien: false, ground: true,
-      seedKey: SYSTEM.key + "/" + base.id },
+      monument: !!base.alien, seedKey: SYSTEM.key + "/" + base.id },
     { onScience: awardScience,
       onExit: () => copilotSay("🚀 Back out on the surface, ship waiting where you parked it.") });
-  copilotSay(base.wrecked
+  copilotSay(base.alien
+    ? "🚪🗼 <b>You step inside " + base.name + ".</b> It's vast, and quiet, and CLEAN — whoever built this swept the floor before they left. Glyphs glow on the walls, and the beacon core still hums after all this time. Walk to the glowing screens: one still remembers their story."
+    : base.wrecked
     ? "🚪🔦 <b>You step into " + base.name + ".</b> Real gravity — nothing floats here, and everything that fell is still where it landed. Look at those long scrapes down the walls… something big shouldered through. Find the log screen and learn what happened."
     : "🚪🏠 <b>Welcome to " + base.name + "!</b> Real planet gravity underfoot — walk with ← →, jump with ↑. The greenhouse is thriving and the science screens are glowing. This is what a working off-world outpost looks like.");
 }

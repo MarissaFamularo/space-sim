@@ -70,6 +70,7 @@ let ringShells = [];       // [{obj, rate}] ring rock shells, each spun at its o
 let warpStreaks = null;    // ⚡ interstellar speed lines (Star-Trek streaks; built lazily)
 let streakClock = 0;       // real-ish seconds, for the streak flow (visual only)
 let cometTails = [];       // [{key, group, len}] tails aimed away from the star per frame
+let pulsarBeams = [];      // [{group, rate}] lighthouse beams on neutron stars (wall-clock sweep)
 let lockedShells = [];     // [{key, mesh}] molten hemispheres aimed AT the star (tidal lock)
 
 // Galaxy layer: OTHER star systems drawn on the map when zoomed way out. Positions
@@ -142,6 +143,7 @@ const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
 const _s3 = new THREE.Vector3();
 const _q1 = new THREE.Quaternion();
+const _q2 = new THREE.Quaternion();
 const _e1 = new THREE.Euler();
 const _m4 = new THREE.Matrix4();
 
@@ -150,6 +152,8 @@ let rockField = null;
 let plantField = null;     // instanced plant tufts on living worlds (Hundun)
 let dinoFlock = null;      // [{group, neck}] armored dino-bird grazers
 const PLANT_COUNT = 64;
+let boneField = null;      // instanced rib arches on fossil worlds (Monk)
+const BONE_COUNT = 48;
 let meteors = [];          // ☄️ falling ring rocks: {p0, p1, t0, life, line, flash}
 let interMarker = null;    // 🌌 interstellar destination beacon {sprite, label}
 const ROCK_COUNT = 240;
@@ -426,6 +430,51 @@ function makePlanetCanvas(key) {
           for (let i = 0; i < 4; i++) blob(rng() * W, H * (0.3 + rng() * 0.4), 12, face.accent2, 14, 0.8);
           caps("#eef4ff", 0.06 + rng() * 0.08);
           streaks(["#ffffff"], 26 + Math.floor(rng() * 14), 160, 8);
+          break;
+        }
+        case "cracked": { // Donk: dry rock split by canyons — ONE holds the last lake
+          fill(face.base);
+          craters(26, face.accent, "#c8d2dc", 5);
+          for (let i = 0; i < 7; i++) { // a web of dry cracks
+            ctx.strokeStyle = face.accent; ctx.lineWidth = 1.5 + rng() * 2; ctx.globalAlpha = 0.8;
+            ctx.beginPath();
+            let x = rng() * W, y = H * (0.2 + rng() * 0.6);
+            ctx.moveTo(x, y);
+            for (let s = 0; s < 6; s++) { x += 20 + rng() * 30; y += (rng() - 0.5) * 26; ctx.lineTo(x, y); }
+            ctx.stroke(); ctx.globalAlpha = 1;
+          }
+          // THE crack: one great canyon across the face…
+          ctx.strokeStyle = face.accent; ctx.lineWidth = 7; ctx.lineCap = "round";
+          ctx.beginPath();
+          let gx = W * 0.15, gy = H * 0.52;
+          ctx.moveTo(gx, gy);
+          const lakeStop = 3 + Math.floor(rng() * 2);
+          let lx = gx, ly = gy;
+          for (let s = 0; s < 7; s++) {
+            gx += W * 0.1; gy += (rng() - 0.5) * 34;
+            ctx.lineTo(gx, gy);
+            if (s === lakeStop) { lx = gx; ly = gy; }
+          }
+          ctx.stroke();
+          // …and down at its bottom, the one tiny lake (his spec: "not much water").
+          ctx.fillStyle = face.accent2; ctx.globalAlpha = 0.95;
+          ctx.beginPath(); ctx.ellipse(lx, ly, 7, 2.6, 0.2, 0, Math.PI * 2); ctx.fill();
+          ctx.globalAlpha = 1;
+          break;
+        }
+        case "fossil": { // Monk: dry seabeds full of old bones — a world you READ
+          fill(face.base);
+          for (let i = 0; i < 5; i++) blob(rng() * W, H * (0.2 + rng() * 0.55), 26 + rng() * 18, face.accent, 30, 0.9);
+          craters(18, face.accent, "#d8e0e8", 4);
+          for (let i = 0; i < 60; i++) { // bone flecks, thickest in the old seabeds
+            const bx = rng() * W, by = H * (0.15 + rng() * 0.7);
+            ctx.strokeStyle = face.accent2; ctx.globalAlpha = 0.35 + rng() * 0.5;
+            ctx.lineWidth = 0.8 + rng();
+            ctx.beginPath();
+            ctx.arc(bx, by, 1.5 + rng() * 3, rng() * Math.PI, rng() * Math.PI + Math.PI * (0.6 + rng() * 0.4));
+            ctx.stroke(); ctx.globalAlpha = 1;
+          }
+          caps("#e8eef4", 0.05 + rng() * 0.05);
           break;
         }
         case "lava": {
@@ -740,15 +789,18 @@ function buildWorldObjects() {
   ALL_KEYS = ["sun", ...PLANET_KEYS];
   bhDisk = null; // re-created by makeBodyGroup if this system has one
   protoDisc = null; youngSwarm = null; formingDiscs = []; cometTails = []; lockedShells = [];
-  ringShells = [];
+  ringShells = []; pulsarBeams = [];
   // Black hole systems are lit by the accretion disk: dimmer, colder key light.
   // Brown-dwarf systems (style.ember on the primary) live in permanent warm dusk:
   // dimmer light, sunset color — a brown dwarf really is thousands of times fainter.
   if (sunLight) {
     const bh = !!(BODIES.sun && BODIES.sun.blackHole);
     const ember = !!(BODIES.sun && BODIES.sun.style && BODIES.sun.style.ember);
-    sunLight.intensity = bh ? 1.15 : ember ? 1.3 : 2.0;
-    sunLight.color.set(bh ? 0xd8e2ff : ember ? 0xffb08a : 0xffffff);
+    // Pulsar systems get blue-white light with no warmth in it — honest: neutron
+    // stars shine blue-hot, and every world under one stays blue-ish and cold.
+    const puls = !!(BODIES.sun && BODIES.sun.style && BODIES.sun.style.pulsar);
+    sunLight.intensity = bh ? 1.15 : ember ? 1.3 : puls ? 1.7 : 2.0;
+    sunLight.color.set(bh ? 0xd8e2ff : ember ? 0xffb08a : puls ? 0xcfe2ff : 0xffffff);
   }
   for (const key of ALL_KEYS) bodyGroups[key] = makeBodyGroup(key);
   for (const key of PLANET_KEYS) orbitRings[key] = makeOrbitRing(key);
@@ -898,8 +950,62 @@ function makeBodyGroup(key) {
       map: new THREE.CanvasTexture(cv), blending: THREE.AdditiveBlending,
       depthWrite: false, transparent: true,
     }));
-    glow.scale.setScalar(b.radius * (style.ember ? 4 : 7));
+    // A pulsar's sphere is CITY-sized (12 km) — invisible from planetary distance, so
+    // its glow sprite gets an absolute floor: a hard blue-white star-point in the sky.
+    glow.scale.setScalar(style.pulsar ? Math.max(b.radius * 7, 4e7)
+                                      : b.radius * (style.ember ? 4 : 7));
     g.add(glow);
+  }
+
+  // ⚡ PULSAR (Owius): a spinning neutron star sweeps two LIGHTHOUSE beams — that
+  // flashing is literally how pulsars were discovered (1967). Beams are additive light
+  // cones swept by WALL-CLOCK time (a real pulsar spins ms–seconds; sim-time sweep
+  // would alias into jitter under warp — the steady sweep is the honest *look*).
+  if (style.pulsar) {
+    const beamGroup = new THREE.Group();
+    const L = 1.5e9; // beam length: dramatic but system-scale (Sera orbits at 8.2e9)
+    for (const dir of [1, -1]) {
+      for (const [r0, r1, op] of [[2e6, 9e7, 0.14], [8e5, 3.5e7, 0.3]]) { // sheath + core
+        const cone = new THREE.Mesh(
+          new THREE.CylinderGeometry(dir > 0 ? r1 : r0, dir > 0 ? r0 : r1, L, 16, 1, true),
+          new THREE.MeshBasicMaterial({
+            color: 0xbfe0ff, transparent: true, opacity: op,
+            blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+          }));
+        cone.position.y = dir * L / 2;
+        beamGroup.add(cone);
+      }
+    }
+    beamGroup.rotation.x = 0.22; // slight tilt so the sweep reads in 3D
+    g.add(beamGroup);
+    pulsarBeams.push({ group: beamGroup, rate: 2.4 }); // rad/s of wall clock (~2.6 s/rev)
+    // The supernova REMNANT: a faint blue blast-cloud wrapping the whole system —
+    // the Crab Nebula is exactly this, a pulsar sitting inside its own explosion.
+    if (style.remnant) {
+      const cv2 = document.createElement("canvas");
+      cv2.width = 1024; cv2.height = 512;
+      const c2 = cv2.getContext("2d");
+      const rr = mulberry32(hashStr(key + "-remnant"));
+      for (let i = 0; i < 140; i++) { // wispy filaments, soft-edged (it's a cloud, not wires)
+        const blue = rr() > 0.6;
+        c2.strokeStyle = blue ? "rgba(140,190,255,0.10)" : "rgba(90,130,220,0.07)";
+        c2.shadowColor = blue ? "rgba(140,190,255,0.5)" : "rgba(90,130,220,0.4)";
+        c2.shadowBlur = 10 + rr() * 14;
+        c2.lineWidth = 2 + rr() * 5;
+        c2.beginPath();
+        let x = rr() * 1024, y = rr() * 512;
+        c2.moveTo(x, y);
+        for (let s2 = 0; s2 < 6; s2++) { x += (rr() - 0.5) * 150; y += (rr() - 0.5) * 80; c2.lineTo(x, y); }
+        c2.stroke();
+      }
+      const shell = new THREE.Mesh(
+        new THREE.SphereGeometry(style.remnant.radius, 32, 20),
+        new THREE.MeshBasicMaterial({
+          map: new THREE.CanvasTexture(cv2), transparent: true, opacity: 0.34,
+          blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide,
+        }));
+      g.add(shell);
+    }
   }
 
   if (style.halo && b.atmosphere) {
@@ -1119,7 +1225,41 @@ function makeBodyGroup(key) {
         color: base.wrecked ? 0x5a524a : 0xd8dde6, roughness: 0.6, metalness: 0.2,
         emissive: base.wrecked ? 0x000000 : 0x2a3a4a, emissiveIntensity: 0.4,
       });
-      if (base.wrecked) {
+      if (base.alien) {
+        // 👽🗼 THE SILENT SPIRE (Sera): a GIANT alien monument — the builders left it
+        // shining when they sailed away ahead of the supernova. Dark stone, glowing
+        // glyph rings, a beacon that blooms. Big enough to see from the pad.
+        const A = S * 6;
+        const stoneMat = new THREE.MeshStandardMaterial({
+          color: 0x2e3644, roughness: 0.55, metalness: 0.35,
+          emissive: 0x101a28, emissiveIntensity: 0.5,
+        });
+        let y = 0;
+        for (const [r0, r1, h] of [[A * 0.5, A * 0.34, A * 1.4], [A * 0.34, A * 0.2, A * 1.3], [A * 0.2, A * 0.06, A * 1.5]]) {
+          const seg = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, h, 10), stoneMat);
+          seg.position.y = y + h / 2;
+          bg.add(seg);
+          y += h;
+        }
+        for (const ry of [0.35, 0.62, 0.86]) { // glyph rings — they glow past white
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(A * (0.52 - ry * 0.42), A * 0.035, 8, 28),
+            new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 2.0, 2.4) }));
+          ring.rotation.x = Math.PI / 2;
+          ring.position.y = y * ry;
+          bg.add(ring);
+        }
+        const beacon = new THREE.Mesh(new THREE.SphereGeometry(A * 0.09, 10, 8),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(0.8, 2.6, 3.0) }));
+        beacon.position.y = y + A * 0.12;
+        bg.add(beacon);
+        for (let i = 0; i < 5; i++) { // a ring of tilted monolith slabs at the foot
+          const slab = new THREE.Mesh(new THREE.BoxGeometry(A * 0.12, A * 0.5, A * 0.04), stoneMat);
+          const ang = (i / 5) * Math.PI * 2;
+          slab.position.set(Math.cos(ang) * A * 0.95, A * 0.22, Math.sin(ang) * A * 0.95);
+          slab.rotation.set(0.12, -ang, 0.08);
+          bg.add(slab);
+        }
+      } else if (base.wrecked) {
         // The wreck: a dome with a bite out of it, a toppled habitat, scattered
         // debris, a bent mast. Ruined, not scary — the story lives inside.
         const dome = new THREE.Mesh(new THREE.SphereGeometry(S, 20, 12, 0.7, Math.PI * 1.5, 0, Math.PI / 2), domeMat);
@@ -2935,6 +3075,11 @@ function updateFlight(sim) {
   for (const fd of formingDiscs) {
     fd.mesh.rotation.set(0.35, 0, (t * 0.4) % (Math.PI * 2));          // infall is FAST
   }
+  // Pulsar lighthouse beams sweep by wall clock (see makeBodyGroup for why not sim t).
+  if (pulsarBeams.length) {
+    const wall = performance.now() * 0.001;
+    for (const pb of pulsarBeams) pb.group.rotation.z = (wall * pb.rate) % (Math.PI * 2);
+  }
   for (const ct of cometTails) {
     const st = states[ct.key];
     if (!st) continue;
@@ -3350,6 +3495,49 @@ function updateSurfaceExtras(sim, dom) {
   } else {
     if (plantField) plantField.visible = false;
     if (dinoFlock) for (const d of dinoFlock) d.group.visible = false;
+  }
+
+  // 🦴 BONES (Monk, style.bones): the old world's ribs weathering out of the dry
+  // seabeds — still, silent, and READABLE: fossils are how you time-travel for real.
+  // Same deterministic ground-slot trick as the plants; nothing animates (they're bones).
+  const bony = near && dom.body.style && dom.body.style.bones;
+  if (bony) {
+    if (!boneField) {
+      boneField = new THREE.InstancedMesh(
+        new THREE.TorusGeometry(1.5, 0.13, 6, 10, Math.PI), // a half-buried rib arch
+        new THREE.MeshStandardMaterial({
+          color: 0xe8e4d8, roughness: 0.85, metalness: 0,
+          emissive: 0x8a867c, emissiveIntensity: 0.12,
+        }),
+        BONE_COUNT);
+      boneField.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      boneField.frustumCulled = false;
+      boneField.visible = false;
+      scene.add(boneField);
+    }
+    const Rb = dom.body.radius;
+    const cx = dom.center.x - ORIGIN.x, cy = dom.center.y - ORIGIN.y;
+    const phi = Math.atan2(dom.rel.y, dom.rel.x);
+    const B_ARC = 38;
+    for (let i = 0; i < BONE_COUNT; i++) {
+      const slot = Math.round((phi * Rb) / B_ARC) - BONE_COUNT / 2 + i;
+      const rr = mulberry32(((slot * 2654435761) ^ hashStr(dom.body.key) ^ 0xb0e5) >>> 0);
+      const phiK = (slot * B_ARC) / Rb + ((rr() - 0.5) * B_ARC * 0.8) / Rb;
+      const psi = ((rr() - 0.5) * 240) / Rb;
+      const size = 0.7 + rr() * 1.9; // from little ribs to something WHALE-sized
+      const cpk = Math.cos(phiK), spk = Math.sin(phiK);
+      const cps = Math.cos(psi), sps = Math.sin(psi);
+      _v3.set(cx + Rb * cpk * cps, cy + Rb * spk * cps, Rb * sps);
+      _q2.setFromAxisAngle(_v1.set(0, 1, 0), rr() * Math.PI); // each skeleton its own way
+      _q1.setFromUnitVectors(_v1.set(0, 1, 0), _v2.set(cpk, spk, 0)).multiply(_q2);
+      _s3.set(size, size * (0.7 + rr() * 0.5), size);
+      _m4.compose(_v3, _q1, _s3);
+      boneField.setMatrixAt(i, _m4);
+    }
+    boneField.instanceMatrix.needsUpdate = true;
+    boneField.visible = true;
+  } else if (boneField) {
+    boneField.visible = false;
   }
 
   // Reticle: where you'll touch down, colored by whether this fall speed survives.
@@ -4162,7 +4350,8 @@ function enterStation(info, cb) {
   if (!rooms) {
     if (info.ground) {
       // Ground bases: main room + a back room (the greenhouse keeps the crew fed).
-      rooms = ["base", derelict ? "base" : "garden"];
+      // Alien monuments (the Silent Spire) are ONE great hall — nobody lives there.
+      rooms = info.monument ? ["spire"] : ["base", derelict ? "base" : "garden"];
     } else if (derelict) {
       rooms = ["lab", "lab"]; // two dark holds; the old log waits in the deepest one
     } else {
@@ -4208,7 +4397,7 @@ function enterStation(info, cb) {
 
   // Hull: a cylinder seen from INSIDE, with end caps. Wall tint says what kind of
   // place this is (seeded pastel only for labs/bases, like before).
-  const ARCH_WALL = { hub: 0x7e8894, depot: 0x9a8e78, garden: 0xaac8a2, observatory: 0x39415a, vault: 0x4a3a5e };
+  const ARCH_WALL = { hub: 0x7e8894, depot: 0x9a8e78, garden: 0xaac8a2, observatory: 0x39415a, vault: 0x4a3a5e, spire: 0x263042 };
   const wallColor = derelict ? 0x3a3236
     : ARCH_WALL[arch] || new THREE.Color().setHSL(rng(), 0.12, 0.72).getHex();
   // Painted panel quilt (seams, rivets, vents, placards, the archetype's stripe) —
@@ -4372,7 +4561,7 @@ function enterStation(info, cb) {
   // Windows: starfield outside (tiny baked canvas) — or, in a GROUND base, the
   // planet itself. Hubs and gardens look DOWN at their world (stations orbit
   // something); the observatory skips portholes for one giant cupola (built below).
-  const nWin = derelict || arch === "vault" ? (derelict ? 1 : 0) : arch === "observatory" ? 0 : 2 + Math.floor(rng() * 3);
+  const nWin = derelict || arch === "vault" || arch === "spire" ? (derelict ? 1 : 0) : arch === "observatory" ? 0 : 2 + Math.floor(rng() * 3);
   const planetView = !info.ground && (arch === "hub" || arch === "garden"); // grounded rooms see the plains, not a limb
   const planetHue = rng(); // this station's world, same color in every window
   for (let i = 0; i < nWin; i++) {
@@ -4464,7 +4653,7 @@ function enterStation(info, cb) {
     // depots test materials, hubs and labs dabble.
     const ARCH_CONSOLES = {
       hub: ["materials", "astro"], depot: ["materials", "materials"],
-      garden: ["bio", "bio"], observatory: ["astro", "astro"], vault: [],
+      garden: ["bio", "bio"], observatory: ["astro", "astro"], vault: [], spire: [],
       lab: ["bio", "materials", "astro"], base: ["bio", "materials", "astro"],
     };
     const kindList = ARCH_CONSOLES[arch] || ARCH_CONSOLES.lab;
@@ -4473,6 +4662,45 @@ function enterStation(info, cb) {
       addConsole(-len / 2 + 1.6 + i * (len - 3) / Math.max(1, n - 0.5) + rng(),
         conY != null ? conY : -0.6 + rng() * 1.2, kindList[i % kindList.length],
         new THREE.Color(0.15, 1.6, 0.8)); // HDR: it blooms
+    }
+    // 🗼 THE SILENT SPIRE'S GREAT HALL: the builders' story console and their glyph
+    // console, tilted monolith plaques, and the beacon core still humming after all
+    // this time. No resident — they LEFT, and that's the whole story.
+    if (arch === "spire") {
+      addConsole(-len * 0.28, conY != null ? conY : -0.4, "monument",
+        new THREE.Color(0.5, 2.0, 2.2));  // the story — cyan, blooms like the beacon
+      addConsole(len * 0.3, conY != null ? conY : -0.4, "alien",
+        new THREE.Color(1.5, 0.3, 1.6));  // their glyph screen — alien magenta
+      const glyphMat = () => {
+        const gcv = document.createElement("canvas");
+        gcv.width = 96; gcv.height = 64;
+        const gc = gcv.getContext("2d");
+        gc.fillStyle = "#101a2a"; gc.fillRect(0, 0, 96, 64);
+        gc.strokeStyle = "#5ae0e8"; gc.lineWidth = 2;
+        for (let k = 0; k < 9; k++) { // their writing: circles, bars, dots
+          const gx = 8 + (k % 3) * 30, gy = 8 + Math.floor(k / 3) * 19;
+          gc.beginPath();
+          if (rng() > 0.6) gc.arc(gx + 8, gy + 6, 5, 0, Math.PI * (1 + rng()));
+          else { gc.moveTo(gx, gy + 10); gc.lineTo(gx + 16, gy + rng() * 12); }
+          gc.stroke();
+          if (rng() > 0.5) gc.fillRect(gx + rng() * 14, gy + rng() * 10, 2, 2);
+        }
+        return new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(gcv) });
+      };
+      for (let i = 0; i < 3; i++) { // wall plaques, tilted like museum stones
+        const plaque = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.75), glyphMat());
+        plaque.position.set(-len / 2 + 2 + i * (len - 4) / 2, (conY != null ? conY : 0) + 1.1, -rad + 0.1);
+        plaque.rotation.z = (rng() - 0.5) * 0.1;
+        iScene.add(plaque);
+      }
+      const pillar = new THREE.Mesh( // the beacon core, floor to ceiling
+        new THREE.CylinderGeometry(0.16, 0.22, rad * 1.9, 8),
+        new THREE.MeshStandardMaterial({
+          color: 0x1c2634, roughness: 0.4, metalness: 0.5,
+          emissive: 0x2ae0e8, emissiveIntensity: 0.55,
+        }));
+      pillar.position.set(len * 0.02, 0, 0);
+      iScene.add(pillar);
     }
     // A plant rack, where plants belong — gardens overflow with them (built below),
     // labs keep a small one, ground bases run a proper greenhouse shelf.
@@ -4498,7 +4726,7 @@ function enterStation(info, cb) {
   // Clutter: FLOATING cargo in zero-g — but anywhere with gravity (a ground base,
   // or a spinning centrifuge station) everything sits properly on the floor
   // (his rule: gravity means nothing floats — spin gravity counts, that's the point).
-  const nJunk = derelict ? 16 : 5 + Math.floor(rng() * 4);
+  const nJunk = arch === "spire" ? 0 : derelict ? 16 : 5 + Math.floor(rng() * 4); // the hall is SWEPT — they left tidy
   const drifters = [];
   for (let i = 0; i < nJunk; i++) {
     const bh = 0.15 + rng() * 0.25;
@@ -4886,6 +5114,7 @@ function enterStation(info, cb) {
       garden: { amb: 0xe8f6e2, ambI: 1.5, pt: 0xf2ffe8, ptI: 46 },
       observatory: { amb: 0x2a2430, ambI: 1.0, pt: 0xff4838, ptI: 14 },
       vault: { amb: 0x2e2618, ambI: 1.05, pt: 0xffd870, ptI: 24 },
+      spire: { amb: 0x1a2836, ambI: 1.1, pt: 0x5ae0e8, ptI: 26 }, // beacon-cyan dusk
     };
     const m = MOOD[arch] || { amb: 0xf4efe6, ambI: 1.4, pt: 0xfff0d8, ptI: 40 };
     iScene.add(new THREE.AmbientLight(m.amb, m.ambI));
@@ -4910,7 +5139,8 @@ function enterStation(info, cb) {
     "background:rgba(12,18,34,0.86);border:1px solid #24304d;border-radius:8px;color:#9fb3da;" +
     "padding:6px 14px;font:600 13px system-ui,sans-serif;z-index:15;";
   const ARCH_LABEL = { hub: "📦 cargo hub", depot: "⛽ fuel depot", garden: "🌿 greenhouse",
-    observatory: "🔭 observatory", lab: "🔬 science lab", vault: "🏛 the Founders' Vault" };
+    observatory: "🔭 observatory", lab: "🔬 science lab", vault: "🏛 the Founders' Vault",
+    spire: "🗼 an alien monument" };
   hintEl.textContent = "🐍 " + info.name + (ARCH_LABEL[arch] ? " · " + ARCH_LABEL[arch] : "") +
     " — arrows float · drift to a glowing screen for science · E to return to your ship";
   document.getElementById("app").appendChild(hintEl);
@@ -4926,7 +5156,9 @@ function enterStation(info, cb) {
     connie.position.set(-len * 0.3, -(rad - 0.95), 0); // start standing, not floating
   } else if (info.ground) {
     // Ground base: PLANET gravity — the honest kind. Walk, jump, nothing floats.
-    hintEl.textContent = "🐍🏠 " + info.name + " — real ground, real gravity! ← → walk · ↑ jump · walk to a glowing screen · E to go back out";
+    hintEl.textContent = info.monument
+      ? "🐍🗼 " + info.name + " · an alien monument — real gravity, ancient floor! ← → walk · ↑ jump · walk to a glowing screen · E to go back out"
+      : "🐍🏠 " + info.name + " — real ground, real gravity! ← → walk · ↑ jump · walk to a glowing screen · E to go back out";
     connie.position.set(-len * 0.3, -(rad - 0.95), 0); // standing on the floor
   }
   if (rooms.length > 1) {
