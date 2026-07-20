@@ -9,6 +9,45 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-20): 🌌🔭 FIXED — autopilot arrival parked you in the void ("the star system is just not there")
+
+His bug report (via Mom): autopilot flies you to another star, but on arrival the new
+system isn't visible — black sky, nothing on the map. Reproduced headlessly (full
+scripted trip: escape Sol → course → 🤖 → Kerbol) and fixed with one focused change.
+
+**Root cause (main.js `arriveFromInterstellar`)**: arrival parked at
+`max(ARRIVE_R*0.5, outermost*1.25)` — but the 2e12 m floor ("about a Pluto orbit" —
+the REAL universe's number; scaled Pluto is 5.9e11) dominates for every system, so
+you parked ~20x beyond the destination's outermost planet. From there: star sub-pixel
+in follow view (measured litFraction 0.007 vs 0.75 on the pad), map an unlabeled
+speck cluster, and — being far above escape speed way out there — the "You've
+escaped! Set a course" panel instantly re-appeared. Arrive after decades, get told
+you're still in interstellar space.
+
+**Fix**: park at the system's REAL edge — outermost planet's orbit × 1.25 (the old
+ARRIVE_R*0.5 only remains as a fallback for a planetless system, which stargen never
+makes). ARRIVE_R itself (the 4e12 crossing bubble + brake target) is untouched, so
+`Physics.autopilotStep` policy, its node test, and the brake math are unchanged.
+Physics untouched; no storage changes; parts.js untouched; Navigator untouched.
+
+**Evidence (rung 3)**: scripted autopilot trip Sol→Kerbol on fixed code: ALL GREEN,
+zero console errors — arrives 112.6 Gm from Kerbol (= Eeloo 90.1 Gm × 1.25, asserted
+at 1%), map view shows Kerbol/Kerbin/Eve/Duna/Dres/Eeloo labeled, HUD reads "Around
+Kerbol / → Kerbin 102 M km". All 16 node suites green; boot smoke ALL GREEN; flight
+check ALL GREEN (14/14).
+
+**Flagged / rung 4 (play-test with him):**
+- Fly the trip again with him: on arrival the MAP is now the payoff (whole system,
+  named). Follow view is honestly black unless he faces the star — the gold aim
+  arrow points at it; the star reads as a small glow (~1° at the new edge).
+- **Taste call for Mom**: arriving above local escape speed still (truthfully) pops
+  the "You've escaped [star]! Set a course" pick panel until he brakes below escape.
+  It's honest physics but reads odd mid-celebration; if it bothers him, a possible
+  polish is suppressing the pick panel for a few minutes of sim time after arrival.
+- Arrival speed ≤30 km/s (autopilot's glide threshold) is ~5x escape at the new,
+  closer edge — braking to STAY is still his job, as designed; the Navigator already
+  coaches it. Watch whether that feels fair in play.
+
 ## Status (2026-07-19 later): 💠⚡ THE OWIUS SYSTEM — his pulsar, five blue worlds, the Silent Spire
 
 His full spec (via Mom): a pulsar system named Owius; planets Donk (one tiny lake in

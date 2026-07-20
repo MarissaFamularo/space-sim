@@ -1247,12 +1247,17 @@ function arriveFromInterstellar() {
   sim.body = BODIES.earth;
   sim.target = "earth";
   announced = freshAnnounced();
-  // Park the arrival at the new system's edge, still moving inbound at whatever
-  // speed he really arrived with. Braking (or screaming through) is real physics.
-  let edge = ARRIVE_R * 0.5;
+  // Park the arrival at the new system's REAL edge — just outside its outermost
+  // planet — still moving inbound at whatever speed he really arrived with.
+  // Braking (or screaming through) is real physics. NOT the arrival bubble:
+  // ARRIVE_R is sized for catching a warp frame, and parking half a bubble out
+  // put the whole system ~20x farther away than its outermost world — black sky,
+  // unlabeled specks on the map, "I flew all this way and it's just not there."
+  let edge = 0;
   for (const k of Object.keys(BODIES)) {
-    if (BODIES[k].parent === "sun") edge = Math.max(edge, BODIES[k].orbitRadius * 1.25);
+    if (BODIES[k].parent === "sun") edge = Math.max(edge, BODIES[k].orbitRadius);
   }
+  edge = edge > 0 ? edge * 1.25 : ARRIVE_R * 0.5;
   sim.craft.pos = { x: -inX * edge, y: -inY * edge };
   sim.craft.vel = { x: inX * speed, y: inY * speed };
   sim.landed = null;

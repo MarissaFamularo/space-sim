@@ -558,3 +558,13 @@ Render.enterStation(info, cb)       // info gains .spin — centrifuge interior:
 - **First user**: famous.js `owiusSystem()` — Donk/Monk/Sera(home, ringed, spire)/
   Menia(gas)/Ka + moonlet Splinter + Lighthouse Station. Sera's ring parking rides
   the existing RING_BAND rule unchanged.
+
+## CONTRACT REVISION 2026-07-20 — Interstellar arrival parks at the system's REAL edge
+
+- Amends 2026-07-16b's "placing the craft at the new system's edge": the code parked
+  at `max(ARRIVE_R*0.5, outermost*1.25)`, and the 2e12 m floor dominated every
+  system (scaled Pluto is 5.9e11) — you arrived ~20x beyond the destination's
+  planets, in a black sky. `arriveFromInterstellar()` now parks at the outermost
+  sun-child's orbitRadius × 1.25 (ARRIVE_R*0.5 only as a fallback if a system had no
+  planets). ARRIVE_R (4e12) is unchanged as the arrival-crossing bubble and the
+  autopilot/brake target; `Physics.autopilotStep` and its tests are untouched.
