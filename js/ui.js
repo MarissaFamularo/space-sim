@@ -1,6 +1,6 @@
 // ui.js — PM-owned. Live readouts + mode/flight controls. Reads SimState + Stats.
 
-import { BODIES, PLANET_KEYS, STATIONS, SYSTEM } from "./state.js";
+import { BODIES, PLANET_KEYS, STATIONS, WORMHOLES, SYSTEM } from "./state.js";
 import { FAMOUS_LIST } from "./famous.js";
 
 // Destinations for the target picker, derived from the ACTIVE system (the Starmap can
@@ -216,6 +216,12 @@ export const UI = {
       const opt = document.createElement("option");
       opt.value = "station:" + st.id;
       opt.textContent = (st.abandoned ? "⚠ " : "🛰 ") + st.name + (st.yours ? " (yours!)" : "");
+      sel.appendChild(opt);
+    }
+    for (const wh of WORMHOLES) { // 🌀 gates: teleport alongside, then fly IN
+      const opt = document.createElement("option");
+      opt.value = "wormhole:" + wh.id;
+      opt.textContent = "🌀 " + wh.name;
       sel.appendChild(opt);
     }
     sel.value = targets.includes("moon") ? "moon" : targets[0];

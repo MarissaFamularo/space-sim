@@ -3,7 +3,7 @@
 // and wires the copilot. Integrates physics.js + render.js + builder.js per the contract.
 
 import { PARTS } from "./mods.js";
-import { BODIES, SYSTEM, STATIONS, isSol, setSystem, returnToSol, newCraft, newSimState, computeStats, findPart, makeInstance, bodyStateAt, dominantBody } from "./state.js";
+import { BODIES, SYSTEM, STATIONS, WORMHOLES, isSol, setSystem, returnToSol, newCraft, newSimState, computeStats, findPart, makeInstance, bodyStateAt, dominantBody } from "./state.js";
 import { generateSystem, galaxyPos, interstellarVector, GAME_LY } from "./stargen.js";
 import { FAMOUS_LIST } from "./famous.js";
 import { Physics } from "./physics.js";
@@ -372,6 +372,20 @@ function setTarget(key) {
     }
     return;
   }
+  if (key && key.startsWith("wormhole:")) {
+    // A wormhole target: guidance aims at its parent planet; the map dot and
+    // ✨ Teleport handle the last mile. Flying IN is the whole trip.
+    const wh = WORMHOLES.find((x) => "wormhole:" + x.id === key);
+    if (wh && BODIES[wh.body]) {
+      sim.target = wh.body;
+      const destName = wh.dest.seed === "@sol" ? "the Solar System" : "the " + wh.dest.seed + " system";
+      copilotSay("🌀 Target: <b>" + wh.name + "</b>, orbiting " + BODIES[wh.body].name +
+        " — a wormhole mouth that leads to <b>" + destName + "</b>. Fly to " +
+        BODIES[wh.body].name + ", find the glowing swirl on the map, and fly straight " +
+        "into it — or use ✨ Teleport to arrive right beside it.");
+    }
+    return;
+  }
   if (!BODIES[key]) return;
   sim.target = key;
   announced.transferBurn = false; // a new destination gets its own TLI call
@@ -413,8 +427,10 @@ function fmtRealTrip(gameDays) {
 function teleport(key) {
   const station = key && key.startsWith("station:")
     ? STATIONS.find((x) => "station:" + x.id === key) : null;
-  const b = station ? BODIES[station.body] : BODIES[key];
-  if (!b || (!station && !b.parent)) return; // no teleporting into the Sun
+  const wormhole = key && key.startsWith("wormhole:")
+    ? WORMHOLES.find((x) => "wormhole:" + x.id === key) : null;
+  const b = station ? BODIES[station.body] : wormhole ? BODIES[wormhole.body] : BODIES[key];
+  if (!b || (!station && !wormhole && !b.parent)) return; // no teleporting into the Sun
   if (craft.parts.length === 0) {
     copilotSay("Even a teleporter needs a ship! Build a rocket first — pod, tank, engine.");
     return;
@@ -450,6 +466,33 @@ function teleport(key) {
         "Add one to your rocket and teleport back to hook on.");
     }
     // (With a port aboard, the dock latches on the next frame and announces itself.)
+    return;
+  }
+  if (wormhole) {
+    // Arrive a safe stand-off away, co-moving, nose at the swirl — OUTSIDE the
+    // capture radius so falling in stays HIS choice, not the teleporter's. Pull the
+    // follow camera back so the mouth is IN FRAME on arrival (at rocket zoom the
+    // overhead camera would show only stars — the swirl sat 900 m off-screen).
+    const ws = stationStateAt(wormhole, sim.time || 0);
+    if (!ws) return;
+    sim.craft.pos = { x: ws.pos.x + 900, y: ws.pos.y };
+    sim.craft.vel = { x: ws.vel.x, y: ws.vel.y };
+    sim.craft.angle = Math.PI / 2; // craft sits +X of the mouth; nose points -X, at it
+    sim.craft.throttle = 0;
+    sim.craft.chuteDeployed = false;
+    sim.chuteOpen = false;
+    sim.timeWarp = 1;
+    sim.status = "flying";
+    sim.landed = null;
+    sim.teleported = wormhole.name;
+    mapView = false;
+    Render.setFlightView("follow");
+    Render.zoomMap(40); // ~2 km back: ship AND swirl share the frame, disc face-on
+    const destName = wormhole.dest.seed === "@sol" ? "the Solar System" : "the " + wormhole.dest.seed + " system";
+    copilotSay("✨🌀 <b>Holding about 1 km from " + wormhole.name + "!</b> That glowing " +
+      "swirl is a wormhole mouth, and it leads to <b>" + destName + "</b>. Ease forward " +
+      "and fly into the middle when you're ready — the gate does the rest. (Not ready? " +
+      "Just steer around it — it only takes ships that fly IN.)");
     return;
   }
   const park = Physics.parkingOrbit(key, sim.time || 0);
@@ -552,7 +595,7 @@ function refreshGalaxy() {
 function travelToSystem(seed) {
   const sys = generateSystem(seed);
   setSystem(sys.bodies, sys.planetKeys,
-    { key: sys.key, name: sys.name, seed: sys.seed, stations: sys.stations });
+    { key: sys.key, name: sys.name, seed: sys.seed, stations: sys.stations, wormholes: sys.wormholes });
   rememberVisit(sys);
   arriveInSystem();
   const home = BODIES.earth;
@@ -1235,7 +1278,7 @@ function arriveFromInterstellar() {
   else {
     const sys = generateSystem(it.seed);
     setSystem(sys.bodies, sys.planetKeys,
-      { key: sys.key, name: sys.name, seed: sys.seed, stations: sys.stations });
+      { key: sys.key, name: sys.name, seed: sys.seed, stations: sys.stations, wormholes: sys.wormholes });
     rememberVisit(sys);
   }
   Render.rebuildWorld();
@@ -1613,6 +1656,219 @@ function updateStationsSim() {
   }
 }
 
+// ---- 🌀 WORMHOLES: orbiting gates between named systems (his ask, 2026-07-22) ----
+// Propagated exactly like stations (body + altR + phase0 → stationStateAt). Fly
+// INSIDE WH_CAPTURE of a mouth and the throat takes the ship: a ~6 s wall-clock
+// cinematic (controls locked, sim time held — same rule as being aboard a station)
+// while the universe is swapped underneath (the interstellar-arrival machinery),
+// then you're spat out of the TWIN mouth moving radially outward at the speed you
+// carried in. Two-way by construction: every mouth's dest names its twin.
+// Honestly-labeled magic — the Navigator teaches the real wormhole science.
+const WH_CAPTURE = 320;    // m — fly this close to the swirl and you're going in
+const WH_REARM = 2500;     // m — the exit mouth won't re-grab you until you've cleared this
+let whRide = null;         // { wh, start, swapped, relSpeed, cv, streaks } during the cinematic
+let whArmed = null;        // mouth id you must drift clear of before gates re-arm
+
+function wormholeDestName(wh) {
+  return wh.dest.seed === "@sol" ? "the Solar System" : "the " + wh.dest.seed + " system";
+}
+
+function updateWormholesSim() {
+  const t = sim.time || 0;
+  const view = [];
+  let nearest = null;
+  for (const wh of WORMHOLES) {
+    const ws = stationStateAt(wh, t);
+    if (!ws) continue;
+    view.push({ id: wh.id, name: wh.name, body: wh.body, color: wh.color, pos: ws.pos });
+    if (sim.mode === "flight" && (sim.status === "flying" || sim.status === "orbit") &&
+        !sim.interstellar && !whRide) {
+      const dist = Math.hypot(sim.craft.pos.x - ws.pos.x, sim.craft.pos.y - ws.pos.y);
+      if (!nearest || dist < nearest.dist) nearest = { wh, ws, dist };
+    }
+  }
+  sim.wormholesView = view;
+  sim.wormholeNear = nearest && nearest.dist < 5e6
+    ? { name: nearest.wh.name, dist: nearest.dist, leadsTo: wormholeDestName(nearest.wh) }
+    : null;
+  // Re-arm: after an exit you appear 700 m from the twin — no instant bounce-back.
+  if (whArmed && (!nearest || nearest.wh.id !== whArmed || nearest.dist > WH_REARM)) whArmed = null;
+  if (nearest && nearest.dist < WH_CAPTURE && !whArmed) startWormholeRide(nearest.wh, nearest.ws);
+}
+
+function startWormholeRide(wh, ws) {
+  if (whRide) return;
+  const rel = Math.hypot(sim.craft.vel.x - ws.vel.x, sim.craft.vel.y - ws.vel.y);
+  whRide = { wh, start: performance.now(), swapped: false,
+             relSpeed: Math.min(Math.max(rel, 40), 2500) };
+  sim.timeWarp = 1;
+  sim.craft.throttle = 0;
+  if (mapView) { mapView = false; Render.setFlightView("follow"); }
+  copilotSay("🌀 <b>" + wh.name + " has you!</b> Hold on — riding the throat to <b>" +
+    wormholeDestName(wh) + "</b>…");
+  buildWormholeOverlay();
+  requestAnimationFrame(tickWormholeRide);
+}
+
+function buildWormholeOverlay() {
+  const cv = document.createElement("canvas");
+  cv.id = "wormhole-ride";
+  cv.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;z-index:200;";
+  document.body.appendChild(cv);
+  // The throat's star-streaks: fixed random seeds, animated by wall-clock time.
+  const streaks = [];
+  for (let i = 0; i < 260; i++) {
+    streaks.push({ a: Math.random() * Math.PI * 2, r: Math.random(),
+                   w: 0.6 + Math.random() * 1.8 });
+  }
+  whRide.cv = cv;
+  whRide.streaks = streaks;
+}
+
+// Cinematic timeline (seconds, wall clock): the gate grabs you and the screen irises
+// dark → the throat (streak tunnel, accelerating, gate-colored bending to white) →
+// white flash (the universe is swapped just before it) → reveal the new sky.
+const WH_T_GRAB = 0.9, WH_T_SWAP = 3.1, WH_T_FLASH = 3.5, WH_T_END = 5.6;
+function tickWormholeRide() {
+  if (!whRide) return;
+  const s = (performance.now() - whRide.start) / 1000;
+  drawWormholeThroat(s);
+  if (s >= WH_T_SWAP && !whRide.swapped) doWormholeSwap();
+  if (s >= WH_T_END) endWormholeRide();
+  else requestAnimationFrame(tickWormholeRide);
+}
+
+function drawWormholeThroat(s) {
+  const cv = whRide.cv;
+  if (!cv) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const W = cv.clientWidth * dpr, H = cv.clientHeight * dpr;
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  const ctx = cv.getContext("2d");
+  ctx.clearRect(0, 0, W, H);
+  const col = new (function () { // gate color as r,g,b 0..255
+    const c = whRide.wh.color;
+    this.r = (c >> 16) & 255; this.g = (c >> 8) & 255; this.b = c & 255;
+  })();
+  // Background: fades IN over the grab, holds, fades OUT over the reveal.
+  const bgA = s < WH_T_GRAB ? s / WH_T_GRAB
+            : s < WH_T_FLASH ? 1
+            : Math.max(0, 1 - (s - WH_T_FLASH) / (WH_T_END - WH_T_FLASH));
+  ctx.fillStyle = "rgba(2,3,10," + bgA.toFixed(3) + ")";
+  ctx.fillRect(0, 0, W, H);
+  // The throat runs from mid-grab to the flash.
+  const p = Math.min(Math.max((s - WH_T_GRAB * 0.5) / (WH_T_FLASH - WH_T_GRAB * 0.5), 0), 1);
+  if (p > 0 && bgA > 0.05) {
+    const cx = W / 2 + Math.sin(s * 2.1) * W * 0.008; // slight drift — you're IN it
+    const cy = H / 2 + Math.cos(s * 1.7) * H * 0.008;
+    const maxR = Math.hypot(W, H) * 0.55;
+    const speed = 0.15 + 2.6 * p * p; // the ride accelerates
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = bgA;
+    for (const st of whRide.streaks) {
+      const r = (st.r + s * speed * 0.22) % 1;
+      const px = Math.pow(r, 1.55) * maxR;
+      const len = (14 + 220 * r * speed) * (0.35 + p) * dpr * 0.5;
+      const wMix = Math.min(1, r * 0.85 + p * 0.35); // gate color → white outward
+      const cr = Math.round(col.r + (255 - col.r) * wMix);
+      const cg = Math.round(col.g + (255 - col.g) * wMix);
+      const cb = Math.round(col.b + (255 - col.b) * wMix);
+      ctx.strokeStyle = "rgba(" + cr + "," + cg + "," + cb + "," + (0.12 + 0.75 * r).toFixed(3) + ")";
+      ctx.lineWidth = st.w * dpr * (0.5 + r);
+      const ca = Math.cos(st.a), sa = Math.sin(st.a);
+      ctx.beginPath();
+      ctx.moveTo(cx + ca * px, cy + sa * px);
+      ctx.lineTo(cx + ca * (px + len), cy + sa * (px + len));
+      ctx.stroke();
+    }
+    // Rushing rings of the throat wall.
+    for (let i = 0; i < 5; i++) {
+      const rr = ((s * speed * 0.28 + i / 5) % 1);
+      const rp = Math.pow(rr, 1.55) * maxR;
+      ctx.strokeStyle = "rgba(" + col.r + "," + col.g + "," + col.b + "," + (0.22 * (1 - rr)).toFixed(3) + ")";
+      ctx.lineWidth = 2.5 * dpr * (0.4 + rr * 2);
+      ctx.beginPath(); ctx.arc(cx, cy, rp, 0, Math.PI * 2); ctx.stroke();
+    }
+    // The far end: a white star growing as you close in.
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, 30 * dpr + p * p * 160 * dpr);
+    core.addColorStop(0, "rgba(255,255,255," + (0.5 + 0.5 * p) + ")");
+    core.addColorStop(0.4, "rgba(" + col.r + "," + col.g + "," + col.b + ",0.5)");
+    core.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = core;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    // Caption — kid-readable, names the trip.
+    ctx.font = "700 " + Math.round(17 * dpr) + "px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(232,238,252," + (0.85 * bgA).toFixed(3) + ")";
+    ctx.fillText("🌀 " + whRide.wh.name.toUpperCase() + "  →  " + wormholeDestName(whRide.wh),
+      W / 2, H - 46 * dpr);
+  }
+  // The flash: a clean white sheet around the swap moment.
+  const f = 1 - Math.min(Math.abs(s - WH_T_FLASH) / 0.45, 1);
+  if (f > 0) {
+    ctx.fillStyle = "rgba(255,255,255," + (f * f).toFixed(3) + ")";
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+function doWormholeSwap() {
+  const wh = whRide.wh;
+  whRide.swapped = true;
+  // Same flight-preserving universe swap the interstellar autopilot lands with.
+  if (wh.dest.seed === "@sol") returnToSol();
+  else {
+    const sys = generateSystem(wh.dest.seed);
+    setSystem(sys.bodies, sys.planetKeys,
+      { key: sys.key, name: sys.name, seed: sys.seed, stations: sys.stations, wormholes: sys.wormholes });
+    rememberVisit(sys);
+  }
+  Render.rebuildWorld();
+  refreshGalaxy();
+  injectPlayerStations();
+  UI.rebuildTargets();
+  sim.timeWarp = 1;
+  announced = freshAnnounced();
+  const t = sim.time || 0;
+  const twin = WORMHOLES.find((w) => w.id === wh.dest.twin);
+  const ts = twin ? stationStateAt(twin, t) : null;
+  if (ts) {
+    // Exit the twin mouth radially OUTWARD from its parent, at the speed you flew in
+    // with — 700 m clear of the swirl (outside WH_CAPTURE; whArmed guards the rest).
+    const bs = bodyStateAt(twin.body, t);
+    let ux = ts.pos.x - bs.pos.x, uy = ts.pos.y - bs.pos.y;
+    const um = Math.hypot(ux, uy) || 1; ux /= um; uy /= um;
+    sim.craft.pos = { x: ts.pos.x + ux * 700, y: ts.pos.y + uy * 700 };
+    sim.craft.vel = { x: ts.vel.x + ux * whRide.relSpeed, y: ts.vel.y + uy * whRide.relSpeed };
+    sim.craft.angle = Math.atan2(-ux, uy); // nose along the exit direction
+    sim.body = BODIES[twin.body] || BODIES.earth;
+    sim.target = twin.body;
+    announced.soi[sim.body.name] = true; // you arrive mid-SOI; skip the capture coaching
+    whArmed = twin.id;
+  } else {
+    // No twin (should be impossible — node-tested): arrive in home orbit instead.
+    const park = Physics.parkingOrbit("earth", t);
+    sim.craft.pos = park.pos; sim.craft.vel = park.vel; sim.craft.angle = park.angle;
+    sim.body = BODIES.earth; sim.target = "earth";
+  }
+  sim.landed = null;
+  sim.status = "flying";
+  sim.heat = 0;
+}
+
+function endWormholeRide() {
+  if (whRide && whRide.cv) whRide.cv.remove();
+  whRide = null;
+  copilotSay("🌀✅ <b>Welcome to " + SYSTEM.name + "!</b> You just rode a wormhole — a " +
+    "tunnel connecting two far-apart places in space. The real science: Einstein and " +
+    "Rosen's math found these 'bridges' in 1935, and the math really allows them — but " +
+    "nobody has ever seen one, and holding one open would take <b>exotic matter</b> " +
+    "(negative energy!) that no one has ever found. So the gates are this game's gift — " +
+    "like ✨ Teleport, an honest shortcut, not physics. The mouth behind you leads back " +
+    "the way you came. Everything else here is real flying.");
+}
+
 function frame(t) {
   const dt = last ? Math.min((t - last) / 1000, 0.05) : 0;
   last = t;
@@ -1624,7 +1880,9 @@ function frame(t) {
     return;
   }
 
-  if (sim.mode === "flight" && sim.status !== "crashed") {
+  // During a wormhole ride the cinematic owns the screen and sim time holds its
+  // breath (same rule as being aboard a station) — no controls, no physics.
+  if (sim.mode === "flight" && sim.status !== "crashed" && !whRide) {
     applyControls(dt);
     if (dt > 0) Physics.step(sim, dt * sim.timeWarp); // physics sub-steps adaptively
 
@@ -1667,6 +1925,7 @@ function frame(t) {
   // instant as the craft's, or at time-warp the station visibly lags kilometers
   // behind its true spot (his play-test report: "teleports you very far away").
   updateStationsSim();
+  updateWormholesSim();
   updateBasesSim();
   updateMeteorRain();
   updateInterstellar();

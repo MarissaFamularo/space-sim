@@ -568,3 +568,45 @@ Render.enterStation(info, cb)       // info gains .spin — centrifuge interior:
   sun-child's orbitRadius × 1.25 (ARRIVE_R*0.5 only as a fallback if a system had no
   planets). ARRIVE_R (4e12) is unchanged as the arrival-crossing bubble and the
   autopilot/brake target; `Physics.autopilotStep` and its tests are untouched.
+
+## CONTRACT REVISION 2026-07-22 — 🌀 Wormhole gates (his ask)
+
+- **New shared shape `WormholeDef`** (state.js): `{ id, name, body, altR, phase0,
+  dest: { seed, twin }, color }`. Same circular-orbit elements as `StationDef`
+  (main.js propagates both through `stationStateAt`); NOT a body — no gravity.
+  `dest.seed` is a Starmap seed (`"@sol"` = the Solar System); `dest.twin` is the
+  mouth id you exit from in the destination system; `color` is the gate's glow —
+  BY CONVENTION the color of the system it leads to (Sol Gates glow sun-gold
+  0xffd75e). All gates are two-way: `wormhole_test.mjs` proves every `dest.twin`
+  exists and points back.
+- **`WORMHOLES` export** (state.js): swapped in place by `setSystem` exactly like
+  `STATIONS`, from `meta.wormholes` (Sol restores `SOL_WORMHOLES`: Jupiter altR 18
+  past Ganymede → Owius; Saturn altR 1.9 INSIDE the ring band → Luhman 16; Uranus →
+  Youngcow; Neptune → Pandora — his spec). Famous systems carry their Sol-Gate twin
+  in `sys.wormholes`; generated systems have none. Every `setSystem` caller must
+  pass `wormholes: sys.wormholes` in meta (travelToSystem, arriveFromInterstellar,
+  doWormholeSwap do).
+- **Per-frame sim fields** (main.js `updateWormholesSim`, after the physics step like
+  stations): `sim.wormholesView` `[{id, name, body, color, pos}]` for render;
+  `sim.wormholeNear` `{name, dist, leadsTo}` within 5e6 m (snapshot field
+  `flight.nearWormhole` feeds the Navigator).
+- **Capture + ride** (main.js): flying (not landed/crashed/interstellar) within
+  `WH_CAPTURE` (320 m) of a mouth starts the ride: sim time HOLDS (frame() skips
+  controls+physics while `whRide` is set — the station-interior rule), a wall-clock
+  ~5.6 s canvas cinematic (`#wormhole-ride`, z-index 200; grab→throat→flash→reveal)
+  runs on its own rAF, the universe swaps at t≈3.1 s via the interstellar-arrival
+  machinery, and you exit the twin mouth 700 m radially out from its parent at the
+  clamped inbound relative speed (40–2500 m/s), nose outward. `whArmed` suppresses
+  re-capture until you clear `WH_REARM` (2500 m). Honestly-labeled magic (Teleport's
+  category): the Navigator's 🌀 WORMHOLE GATES bullet teaches Einstein–Rosen 1935 /
+  Morris–Thorne 1988 / exotic-matter honesty.
+- **Render** (render.js `wormholePool` / `updateWormholes`, mirrors stations): two
+  counter-rotating swirl discs (canvas texture: dark throat, gate-colored band,
+  3 spiral arms), HDR torus rim (×2.4 — bloom), halo sprite; group scale 260 (the
+  mouth is ~260 m). Map view: colored dot + "🌀 name" label, station declutter
+  rules. Disposed per-system in rebuildWorld.
+- **UI**: target picker gains `wormhole:<id>` options ("🌀 name"); `setTarget`
+  aims guidance at the parent planet; ✨ Teleport parks 900 m off the mouth,
+  co-moving, and pulls the follow camera back (`Render.zoomMap(40)`) so the swirl
+  is in frame. Tracking Center: dashed gate-colored orbit rings + double-circle
+  markers.

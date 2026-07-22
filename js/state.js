@@ -130,6 +130,27 @@ const SOL_STATIONS = [
 ];
 export const STATIONS = [...SOL_STATIONS];
 
+// 🌀 Wormhole mouths of the active system — orbiting gates that connect named
+// systems (his ask, 2026-07-22). Not bodies (no gravity); same circular-orbit
+// propagation as stations (body + altR + phase0). Fly INTO the swirl and you ride
+// the throat to the twin mouth in `dest`. Honestly-labeled magic (like ✨ Teleport):
+// real wormholes are unproven GR solutions — the Navigator teaches the true science.
+// dest.seed is a Starmap seed ("@sol" = home); dest.twin is the mouth you exit from.
+// Each gate glows the COLOR of the system it leads to.
+const SOL_WORMHOLES = [
+  // Past Ganymede (15.3 Rj), inside Callisto — exactly his spec.
+  { id: "wh_owius", name: "The Owius Gate", body: "jupiter", altR: 18.0, phase0: 2.2,
+    dest: { seed: "Owius", twin: "wh_sol_owius" }, color: 0x9ad4ff },
+  // INSIDE Saturn's ring system (RING_BAND 1.25–2.3), far inside Titan — his spec.
+  { id: "wh_luhman", name: "The Ember Gate", body: "saturn", altR: 1.9, phase0: 0.6,
+    dest: { seed: "Luhman 16", twin: "wh_sol_luhman" }, color: 0xd85a3a },
+  { id: "wh_youngcow", name: "The Youngcow Gate", body: "uranus", altR: 5.2, phase0: 4.0,
+    dest: { seed: "Youngcow", twin: "wh_sol_youngcow" }, color: 0xffdf6e },
+  { id: "wh_pandora", name: "The Pandora Gate", body: "neptune", altR: 5.2, phase0: 1.1,
+    dest: { seed: "Pandora", twin: "wh_sol_pandora" }, color: 0x4a7ac8 },
+];
+export const WORMHOLES = [...SOL_WORMHOLES];
+
 // Active-system metadata. `rev` bumps on every swap — modules that cache anything
 // derived from BODIES/PLANET_KEYS (physics' body list, render's world meshes) key
 // their cache on it.
@@ -146,6 +167,8 @@ export function setSystem(catalog, planetKeys, meta = {}) {
   PLANET_KEYS.push(...planetKeys);
   STATIONS.length = 0;
   STATIONS.push(...(meta.key === "sol" ? SOL_STATIONS : (meta.stations || [])));
+  WORMHOLES.length = 0;
+  WORMHOLES.push(...(meta.key === "sol" ? SOL_WORMHOLES : (meta.wormholes || [])));
   SYSTEM.key = meta.key || "custom";
   SYSTEM.name = meta.name || "Unknown System";
   SYSTEM.seed = meta.seed ?? null;

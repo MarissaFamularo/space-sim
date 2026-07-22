@@ -178,6 +178,12 @@ function pandoraSystem() {
     stations: [
       { id: "st_home", name: "Hell's Gate Station", body: "earth", altR: 2.3, phase0: 1.2 },
     ],
+    // 🌀 The way home: twin of Neptune's Pandora Gate. Sol-gold — gates glow the
+    // color of where they LEAD.
+    wormholes: [
+      { id: "wh_sol_pandora", name: "The Sol Gate", body: "earth", altR: 3.1, phase0: 4.4,
+        dest: { seed: "@sol", twin: "wh_pandora" }, color: 0xffd75e },
+    ],
     famous: "pandora",
     blurb: "🌿 <b>Welcome to the PANDORA system — from the movie Avatar!</b> Here's the " +
       "wild part: your homeworld is a <b>MOON</b>. Zoom the map out and you'll see Pandora " +
@@ -273,6 +279,11 @@ function youngcowSystem() {
     stations: [
       { id: "st_home", name: "Cradle Station", body: "earth", altR: 2.5, phase0: 1.0 },
     ],
+    // 🌀 Twin of Uranus's Youngcow Gate — parked CLEAR of Hundun's ring band (2.3).
+    wormholes: [
+      { id: "wh_sol_youngcow", name: "The Sol Gate", body: "earth", altR: 3.1, phase0: 2.7,
+        dest: { seed: "@sol", twin: "wh_youngcow" }, color: 0xffd75e },
+    ],
     famous: "youngcow",
     blurb: "🐄✨ <b>Welcome to the YOUNGCOW SYSTEM — a BABY solar system, designed by " +
       "you-know-who!</b> This yellow dwarf is like our Sun as a toddler, still wearing its " +
@@ -348,6 +359,11 @@ function luhmanSystem() {
     planetKeys: order.slice(1),
     stations: [
       { id: "st_home", name: "Lantern Station", body: "earth", altR: 2.4, phase0: 0.6 },
+    ],
+    // 🌀 Twin of Saturn's Ember Gate.
+    wormholes: [
+      { id: "wh_sol_luhman", name: "The Sol Gate", body: "earth", altR: 3.1, phase0: 3.5,
+        dest: { seed: "@sol", twin: "wh_luhman" }, color: 0xffd75e },
     ],
     famous: "luhman",
     blurb: "🌗🔥 <b>Welcome to LUHMAN 16 — a pair of BROWN DWARFS!</b> The in-between " +
@@ -438,6 +454,11 @@ function owiusSystem() {
     planetKeys: order.slice(1),
     stations: [
       { id: "st_home", name: "Lighthouse Station", body: "earth", altR: 2.6, phase0: 1.4 },
+    ],
+    // 🌀 Twin of Jupiter's Owius Gate — parked CLEAR of Sera's ring band (2.3).
+    wormholes: [
+      { id: "wh_sol_owius", name: "The Sol Gate", body: "earth", altR: 3.1, phase0: 5.3,
+        dest: { seed: "@sol", twin: "wh_owius" }, color: 0xffd75e },
     ],
     famous: "owius",
     blurb: "💠⚡ <b>Welcome to the OWIUS SYSTEM — five blue worlds around a PULSAR, " +

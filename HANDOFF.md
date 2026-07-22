@@ -9,6 +9,59 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-22): 🌀 WORMHOLE GATES — four two-way doors to the famous systems (his ask)
+
+His spec (via Mom): wormholes at Jupiter (past Ganymede → Owius), Saturn (inside the
+ring system, closer than Titan → the brown dwarfs), Uranus (→ Youngcow), Neptune
+(→ Pandora), with a cool ride-the-throat animation. Built exactly that, two-way
+(Mom approved paired twin mouths + cinematic-ride when offered the choice): every
+far system carries a sun-gold SOL GATE home. Gates glow the color of where they LEAD.
+
+**Flagged / rung 4 (play-test with him):**
+- **The swirl look is his acceptance test** (browser-shot wormhole-mouth.png is
+  gorgeous but pale-blue reads near-white under bloom). Knobs: rim
+  `multiplyScalar(2.4)` and the swirl gradient stops in render.js
+  `makeWormholeMesh`/`makeSwirlTexture`; tunnel look lives in main.js
+  `drawWormholeThroat` (streak count 260, ring count 5, timeline constants
+  `WH_T_*`).
+- **The ride was verified headlessly at 4 shots/run, not felt**: pacing (grab 0.9 s,
+  throat to 3.1 s, flash 3.5 s, out at 5.6 s) is a taste call — if it drags or
+  rushes for him, the `WH_T_*` constants at the top of the tunnel block are the
+  dial.
+- **The Saturn gate sits INSIDE the ring band (altR 1.9, his spec)** — flying down
+  through ring material to reach it is deliberately spicy, and ✨ Teleport parks you
+  IN the ring plane (sky full of shimmer — arguably the best view in the game,
+  possibly overwhelming; his call). The kid-flown approach is untested.
+- Exiting a gate at high inbound speed (clamped 40–2500 m/s) points you radially
+  away from the twin's parent — code-verified geometry; one human fly-through to
+  confirm it FEELS right.
+
+**Shipped (rung 3 — wormhole-check scripted run 22/22 GREEN incl. full Owius round
+trip; boot smoke + flight check ALL GREEN; all 17 node suites green incl. new
+wormhole_test.mjs 51/51; navigator_check ALL GREEN; zero console errors):**
+1. **`WORMHOLES` in state.js** (ARCHITECTURE "2026-07-22"): station-style orbital
+   elements + `dest {seed, twin}`; swapped by setSystem like STATIONS; famous.js
+   twins in all four destination systems (ring-clear altR 3.1 over Sera/Hundun —
+   node-tested). Round-trip twin links node-proven.
+2. **Capture + cinematic + swap** (main.js): 320 m capture (re-arm guard 2500 m),
+   sim time holds during a ~5.6 s wall-clock canvas tunnel (gate-colored streaks →
+   white flash → reveal), universe swap rides the interstellar-arrival machinery,
+   exit 700 m out of the twin at inbound speed. Browser-verified both directions,
+   zero page errors.
+3. **Gate render** (render.js): counter-rotating swirl discs + HDR rim + halo, ~260 m
+   across; map dots/labels; per-system disposal. Browser-shot at 900 m stand-off.
+4. **UI + Navigator**: 🎯 picker lists gates; ✨ Teleport parks 900 m off co-moving
+   and zooms the follow camera so the swirl is in frame (browser-shot); Tracking
+   Center draws dashed gate orbits. Navigator: snapshot `flight.nearWormhole` +
+   🌀 WORMHOLE GATES prompt bullet (safety block untouched — navigator_check green)
+   teaching the real science: Einstein–Rosen 1935, Morris–Thorne 1988, exotic
+   matter, none ever observed — gates are labeled magic like Teleport.
+
+No storage changes (visitedSystems reused as-is on arrival); parts.js untouched;
+physics untouched (gates are not bodies — no gravity; capture is a proximity rule,
+not a force). Gotcha paid: at rocket-zoom the overhead follow camera can't see a
+900-m-away mouth (it's off-frame, not invisible) — hence the Teleport zoom-out.
+
 ## Status (2026-07-20): 🌌🔭 FIXED — autopilot arrival parked you in the void ("the star system is just not there")
 
 His bug report (via Mom): autopilot flies you to another star, but on arrival the new

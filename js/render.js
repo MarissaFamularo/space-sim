@@ -171,6 +171,7 @@ let roverTrackL = null, roverTrackR = null;
 const TRACK_N = 48;
 let satPool = []; // [{ group, dot, label, name }]
 let stationPool = {}; // id -> { group, ring, blink, dot, label, abandoned }
+let wormholePool = {}; // id -> { group, disc, disc2, rim, glow, dot, label } — 🌀 gates
 
 // ---- Materials (created once in init) ----
 let MAT = null;
@@ -858,6 +859,13 @@ function rebuildWorld() {
     disposeWorldObject(e.label);
   }
   stationPool = {};
+  for (const id of Object.keys(wormholePool)) { // wormhole mouths are per-system too
+    const e = wormholePool[id];
+    disposeWorldObject(e.group);
+    disposeWorldObject(e.dot);
+    disposeWorldObject(e.label);
+  }
+  wormholePool = {};
   mapBase = 0; mapFrame = 0;   // the map auto-fit re-learns the new system's scale
   buildWorldObjects();
 }
@@ -2873,6 +2881,10 @@ function hideMapDots() {
     stationPool[id].dot.visible = false;
     stationPool[id].label.visible = false;
   }
+  for (const id of Object.keys(wormholePool)) {
+    wormholePool[id].dot.visible = false;
+    wormholePool[id].label.visible = false;
+  }
 }
 
 // =====================================================================
@@ -3147,6 +3159,7 @@ function updateFlight(sim) {
   updateRover(sim, states);
   updateSatellites(sim);
   updateStations(sim);
+  updateWormholes(sim);
 
   // Landed EVA: the Connie stands beside the ship on WHATEVER world she landed on
   // (only when someone's actually aboard — probes carry no Connie).
@@ -3742,6 +3755,144 @@ function updateStations(sim) {
   for (const id of Object.keys(stationPool)) { // hide anything not in this system
     if (!seen.has(id)) {
       const e = stationPool[id];
+      e.group.visible = false; e.dot.visible = false; e.label.visible = false;
+    }
+  }
+}
+
+// =====================================================================
+// 🌀 Wormhole mouths (state.js WORMHOLES, propagated by main into sim.wormholesView):
+// a near-black throat inside a swirling disc, a bright HDR rim that blooms, and a
+// soft halo. Each gate glows the COLOR of the system it leads to. Two counter-
+// rotating swirl discs give the throat its depth; main.js owns capture + the ride.
+// =====================================================================
+function makeSwirlTexture(colorHex, seedKey) {
+  const c = new THREE.Color(colorHex);
+  const R = Math.round(c.r * 255), G = Math.round(c.g * 255), B = Math.round(c.b * 255);
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 256;
+  const ctx = cv.getContext("2d");
+  const cx = 128, cy = 128;
+  // The glowing accretion band: transparent rim → gate color → dark throat.
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 128);
+  grad.addColorStop(0.0, "rgba(2,3,8,1)");
+  grad.addColorStop(0.20, "rgba(2,3,8,1)");                      // the hole itself
+  grad.addColorStop(0.34, "rgba(" + R + "," + G + "," + B + ",0.9)");
+  grad.addColorStop(0.62, "rgba(" + R + "," + G + "," + B + ",0.45)");
+  grad.addColorStop(1.0, "rgba(" + R + "," + G + "," + B + ",0)");
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(cx, cy, 128, 0, Math.PI * 2); ctx.fill();
+  // Three spiral arms winding into the throat (drawn as glowing point trails).
+  const rng = mulberry32(hashStr("swirl-" + seedKey));
+  ctx.globalCompositeOperation = "lighter";
+  for (let arm = 0; arm < 3; arm++) {
+    const a0 = (arm / 3) * Math.PI * 2 + rng() * 0.7;
+    for (let i = 0; i <= 60; i++) {
+      const f = i / 60;                       // 0 = rim, 1 = throat
+      const r = 122 - f * 92;
+      const a = a0 + f * 4.6;                 // ~3/4 turn per arm
+      const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+      const bright = 0.10 + 0.5 * f;          // arms brighten as they fall in
+      ctx.fillStyle = "rgba(255,255,255," + bright.toFixed(3) + ")";
+      ctx.beginPath(); ctx.arc(x, y, 2.6 - f * 1.2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.globalCompositeOperation = "source-over";
+  return new THREE.CanvasTexture(cv);
+}
+
+function makeWormholeMesh(wh) {
+  const g = new THREE.Group();
+  const mkDisc = (radius, opacity, seedSuffix) => {
+    const m = new THREE.Mesh(
+      new THREE.CircleGeometry(radius, 48),
+      new THREE.MeshBasicMaterial({ map: makeSwirlTexture(wh.color, wh.id + seedSuffix),
+        transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide }));
+    g.add(m);
+    return m;
+  };
+  const disc = mkDisc(1.0, 1.0, "");        // main swirl
+  const disc2 = mkDisc(1.22, 0.45, "-b");   // counter-rotating outer veil
+  disc2.position.z = -0.02;
+  // The rim: an HDR ring the bloom pass catches — the gate's "event horizon" glow.
+  const c = new THREE.Color(wh.color).multiplyScalar(2.4);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.045, 10, 64),
+    new THREE.MeshBasicMaterial({ color: c }));
+  g.add(rim);
+  // Soft halo sprite so the mouth reads from far off.
+  const hv = document.createElement("canvas");
+  hv.width = hv.height = 128;
+  const hctx = hv.getContext("2d");
+  const cc = new THREE.Color(wh.color);
+  const hR = Math.round(cc.r * 255), hG = Math.round(cc.g * 255), hB = Math.round(cc.b * 255);
+  const hg = hctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  hg.addColorStop(0, "rgba(" + hR + "," + hG + "," + hB + ",0.55)");
+  hg.addColorStop(1, "rgba(" + hR + "," + hG + "," + hB + ",0)");
+  hctx.fillStyle = hg;
+  hctx.fillRect(0, 0, 128, 128);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(hv), transparent: true, depthWrite: false }));
+  glow.scale.setScalar(4.2);
+  g.add(glow);
+  return { group: g, disc, disc2, rim, glow };
+}
+
+function ensureWormhole(wh) {
+  if (wormholePool[wh.id]) return wormholePool[wh.id];
+  const m = makeWormholeMesh(wh);
+  m.group.scale.setScalar(260); // the mouth is ~260 m across — it should feel BIG
+  m.group.visible = false;
+  scene.add(m.group);
+  const colorCss = "#" + new THREE.Color(wh.color).getHexString();
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6),
+    new THREE.MeshBasicMaterial({ color: wh.color }));
+  dot.frustumCulled = false;
+  dot.visible = false;
+  scene.add(dot);
+  const label = makeTextSprite("🌀 " + wh.name, colorCss);
+  scene.add(label);
+  wormholePool[wh.id] = { ...m, dot, label };
+  return wormholePool[wh.id];
+}
+
+function updateWormholes(sim) {
+  const list = (sim && sim.wormholesView) || [];
+  const t = (sim && sim.time) || 0;
+  const seen = new Set();
+  for (const wh of list) {
+    seen.add(wh.id);
+    const e = ensureWormhole(wh);
+    const sx = wh.pos.x - ORIGIN.x, sy = wh.pos.y - ORIGIN.y;
+    if (flightView === "map") {
+      e.group.visible = false;
+      const b = BODIES[wh.body];
+      const inFrame = mapFrame > 0 && Math.hypot(sx, sy) < mapFrame * 6;
+      const show = inFrame && b && mapFrame < b.soiRadius * 12; // same declutter as stations
+      e.dot.visible = show; e.label.visible = show;
+      if (show) {
+        e.dot.position.set(sx, sy, mapFrame * 0.015);
+        e.dot.scale.setScalar(mapFrame * 0.007);
+        const lblS = mapFrame * 0.03;
+        e.label.position.set(sx, sy - mapFrame * 0.03, mapFrame * 0.015);
+        e.label.scale.set(lblS * 2.6, lblS * 0.9, 1);
+      }
+    } else {
+      e.dot.visible = false; e.label.visible = false;
+      const d = Math.hypot(sx, sy);
+      e.group.visible = mode === "flight" && d < 150000; // reads from farther than stations
+      if (e.group.visible) {
+        e.group.position.set(sx, sy, 0);
+        e.disc.rotation.z = (t * 0.5) % (Math.PI * 2);    // the swirl turns…
+        e.disc2.rotation.z = (-t * 0.32) % (Math.PI * 2); // …the veil counter-turns
+        const pulse = 1 + 0.05 * Math.sin(t * 2.2);
+        e.rim.scale.setScalar(pulse);
+        e.glow.material.opacity = 0.75 + 0.25 * Math.sin(t * 1.7);
+      }
+    }
+  }
+  for (const id of Object.keys(wormholePool)) { // hide anything not in this system
+    if (!seen.has(id)) {
+      const e = wormholePool[id];
       e.group.visible = false; e.dot.visible = false; e.label.visible = false;
     }
   }

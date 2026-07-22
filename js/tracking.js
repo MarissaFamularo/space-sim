@@ -9,7 +9,7 @@
 //
 // API: Tracking.init({ getSim, getSatellites, onExit }) ; Tracking.show()
 
-import { BODIES, PLANET_KEYS, STATIONS, SYSTEM, bodyStateAt } from "./state.js";
+import { BODIES, PLANET_KEYS, STATIONS, WORMHOLES, SYSTEM, bodyStateAt } from "./state.js";
 import { Physics } from "./physics.js";
 
 let H = {};                 // handlers from init
@@ -81,6 +81,13 @@ function roster() {
     if (ss) out.push({ kind: "station", id: st.id, icon: st.abandoned ? "⚠" : st.yours ? "⭐" : "🛰", name: st.name,
                        pos: ss.pos, sub: (st.abandoned ? "derelict · " : "") + "orbiting " + BODIES[st.body].name +
                        " · lap " + fmtPeriod(ss.period), station: st });
+  }
+  for (const wh of WORMHOLES) { // 🌀 gates ride the same circular elements as stations
+    const ws = stationState(wh, t);
+    if (ws) out.push({ kind: "wormhole", id: wh.id, icon: "🌀", name: wh.name,
+                       pos: ws.pos, sub: "orbiting " + BODIES[wh.body].name + " · leads to " +
+                       (wh.dest.seed === "@sol" ? "the Solar System" : "the " + wh.dest.seed + " system"),
+                       wormhole: wh });
   }
   return out;
 }
@@ -328,6 +335,23 @@ function loop() {
     ctx.stroke();
   });
 
+  // wormhole-gate orbits — dashed rings in each gate's own color
+  for (const wh of WORMHOLES) {
+    const b = BODIES[wh.body];
+    if (!b) continue;
+    const pp = toPx(bodyStateAt(wh.body, t).pos);
+    const r = b.radius * wh.altR * scale;
+    if (r > 5 && r < 30000) {
+      const c = wh.color;
+      ctx.strokeStyle = "rgba(" + ((c >> 16) & 255) + "," + ((c >> 8) & 255) + "," + (c & 255) + ",0.4)";
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath();
+      ctx.arc(pp.x, pp.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
   // station orbits
   for (const st of STATIONS) {
     const b = BODIES[st.body];
@@ -357,6 +381,13 @@ function loop() {
     } else if (item.kind === "sat") {
       ctx.fillStyle = item.sat && item.sat.hasPower ? "#6effa0" : "#c9ccd4";
       ctx.fillRect(q.x - 3, q.y - 3, 6, 6);
+    } else if (item.kind === "wormhole") {
+      const c = item.wormhole.color;
+      ctx.strokeStyle = "rgb(" + ((c >> 16) & 255) + "," + ((c >> 8) & 255) + "," + (c & 255) + ")";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(q.x, q.y, 5, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(q.x, q.y, 2, 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = 1;
     } else {
       ctx.fillStyle = item.station && item.station.abandoned ? "#ff9a5e" : "#8cbfff";
       ctx.beginPath();
