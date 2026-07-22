@@ -9,6 +9,37 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-22 later): 🌀🔭 FIXED — arriving by wormhole showed a starfield void (his play-test bug)
+
+His report (via Mom): the gate said he arrived, the Navigator agreed the planets were
+there, but he couldn't SEE them. Reproduced headlessly on the first try (arrival
+litFraction 0.011 — a void).
+
+**Root cause (mechanism explains ALL observations, including why Starmap trips never
+hit it):** `makeBodyGroup` births every world mesh HIDDEN (`g.visible = false; //
+"shown in flight"`) and only `Render.setMode()` reveals them. `rebuildWorld()` never
+re-applied visibility — fine for Starmap travel (you land at the PAD in build mode;
+the next Launch calls setMode("flight")), but an IN-FLIGHT rebuild (wormhole ride —
+and the interstellar-arrival path it rides) left the whole new system invisible while
+the sim, HUD, and Navigator all correctly knew it was there. The Navigator reads
+BODIES, not pixels — that's why it "saw" planets he couldn't.
+
+**Fix (render.js rebuildWorld):** after `buildWorldObjects()`, re-apply the current
+mode's visibility (bodyGroups + orbitRings when mode === "flight") — deliberately NOT
+a full `setMode("flight")`, which would also reset the follow camera and user zoom
+mid-flight. Likely also cures the residual "black sky" flavor of the 2026-07-20
+autopilot-arrival report (that fix moved the parking spot; this one turns the lights
+on). Interstellar arrival itself not re-flown this session — worth one check.
+
+**Evidence:** wormhole-check re-run ALL GREEN with a new permanent regression guard
+("arrival WORLD actually draws", litFraction 0.432 vs 0.011 broken); boot smoke +
+flight check ALL GREEN (build-mode pad and Sol flight untouched); all 17 node suites
+green. Arrival debug shot shows Sera's ring bands + remnant sky from the exit point.
+
+**Also:** the arrival callout now ends by pointing him at 🗺 Map view — from the exit
+mouth the home planet sits off-frame behind you (honest camera geometry, not a bug),
+and the map lays the whole new system out. Rung 4: his next fly-through is the test.
+
 ## Status (2026-07-22): 🌀 WORMHOLE GATES — four two-way doors to the famous systems (his ask)
 
 His spec (via Mom): wormholes at Jupiter (past Ganymede → Owius), Saturn (inside the

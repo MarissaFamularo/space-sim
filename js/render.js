@@ -868,6 +868,17 @@ function rebuildWorld() {
   wormholePool = {};
   mapBase = 0; mapFrame = 0;   // the map auto-fit re-learns the new system's scale
   buildWorldObjects();
+  // Fresh groups are born HIDDEN ("shown in flight" — makeBodyGroup). Starmap trips
+  // rebuild while parked at the pad (build mode), where the next setMode("flight")
+  // reveals the world — but an IN-FLIGHT rebuild (wormhole ride, interstellar
+  // arrival) got no such call, leaving the whole new system invisible while the sim
+  // (and the Navigator) knew it was there. Re-apply the current mode's visibility
+  // here; deliberately NOT setMode("flight"), which would also reset the follow
+  // camera and zoom mid-flight.
+  if (mode === "flight") {
+    for (const key of ALL_KEYS) if (bodyGroups[key]) bodyGroups[key].visible = true;
+    for (const key of PLANET_KEYS) if (orbitRings[key]) orbitRings[key].visible = true;
+  }
 }
 
 // One body: sphere (+ stripes for gas giants), optional atmosphere halo, optional rings.

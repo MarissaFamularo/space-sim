@@ -1866,7 +1866,8 @@ function endWormholeRide() {
     "nobody has ever seen one, and holding one open would take <b>exotic matter</b> " +
     "(negative energy!) that no one has ever found. So the gates are this game's gift — " +
     "like ✨ Teleport, an honest shortcut, not physics. The mouth behind you leads back " +
-    "the way you came. Everything else here is real flying.");
+    "the way you came. Everything else here is real flying — open 🗺 <b>Map view</b> to " +
+    "see the whole system laid out around you.");
 }
 
 function frame(t) {
