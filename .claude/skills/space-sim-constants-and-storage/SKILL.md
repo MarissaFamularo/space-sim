@@ -129,7 +129,7 @@ dials — `space-sim-architecture-contract` owns the rationale. Do not tune them
 | Constant | Location | Value | Meaning / guard rails |
 |---|---|---|---|
 | `API_URL` | copilot.js:14 | `https://api.anthropic.com/v1/messages` | Browser-direct Anthropic Messages API. |
-| `MODEL` | copilot.js:15 | `"claude-opus-4-8"` | Prod model. The documented cost swap (inline comment, same line): `"claude-haiku-4-5"` for ~5x cheaper, faster replies — Exp, sanctioned, but not active. |
+| `MODEL` | copilot.js:15 | `"claude-sonnet-5"` | Prod model (owner downgraded from `"claude-opus-4-8"` 2026-07-26; Haiku considered and rejected — physics accuracy). Inline comment documents Opus (max quality) and Haiku (cheapest) alternatives. |
 | `MAX_TOKENS` | copilot.js:17 | `500` | Reply cap — keeps answers kid-short. |
 | `LS_KEY` | copilot.js:16 | `"spacesim_anthropic_key"` | See Part B. |
 | `SYSTEM` | copilot.js:19-50 | (prompt text) | **NOT a tunable.** The safety block is owner-frozen rule #1 — never weaken or bypass. `space-sim-navigator-and-safety` owns it. |

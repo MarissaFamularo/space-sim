@@ -12,7 +12,7 @@ import { BODIES, SYSTEM as ACTIVE_SYSTEM, isSol } from "./state.js";
 import { modsSummary } from "./mods.js"; // which parts he's modded/made — for the coding-mentor
 
 const API_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-opus-4-8"; // ← swap to "claude-haiku-4-5" for ~5x cheaper, faster replies
+const MODEL = "claude-sonnet-5"; // near-Opus physics reasoning at ~half Opus cost; "claude-opus-4-8" for max quality, "claude-haiku-4-5" for cheapest
 const LS_KEY = "spacesim_anthropic_key";
 const WISH_KEY = "spacesim.wishlist.v1"; // 📖 the Wish Book — his game-improvement ideas
 const MAX_TOKENS = 500;

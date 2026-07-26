@@ -72,7 +72,7 @@ A common wild goose chase is hunting copilot.js for a sentence that actually liv
 | Piece | Where (2026-07-06) | Facts |
 |---|---|---|
 | `API_URL` | copilot.js:14 | `https://api.anthropic.com/v1/messages`, called directly from the browser |
-| `MODEL` | copilot.js:15 | `"claude-opus-4-8"`; the file's own comment documents swapping to `"claude-haiku-4-5"` for ~5x cheaper/faster replies |
+| `MODEL` | copilot.js:15 | `"claude-sonnet-5"` (owner downgraded from `"claude-opus-4-8"` 2026-07-26; Haiku rejected — physics accuracy); inline comment documents Opus (max quality) and Haiku (cheapest) alternatives |
 | `LS_KEY` | copilot.js:16 | `"spacesim_anthropic_key"` — the ONLY place the key ever lives |
 | `MAX_TOKENS` | copilot.js:17 | `500` — replies are meant to be 2–4 kid-length sentences |
 | `SYSTEM` | copilot.js:19–50 | persona → SAFETY block → "How to talk" → ~15 teaching paragraphs |

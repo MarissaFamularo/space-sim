@@ -9,6 +9,24 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-26): 🧭💸 Navigator model downgraded — Opus → Sonnet 5 (owner cost call)
+
+Mom's call: `MODEL` in copilot.js:15 swapped `claude-opus-4-8` → `claude-sonnet-5`.
+Haiku was tried first (the inline comment's sanctioned cheap swap) but rejected the
+same session — Mom's concern was Haiku garbling the physics answers, and the
+Navigator's whole job is correct numbers from the snapshot. Sonnet 5 is near-Opus
+on reasoning at ~half Opus price ($3/$15 vs $5/$25 per MTok, intro $2/$10 through
+2026-08-31) and faster. Per-question cost at ~3K in / 500 out: Opus ≈2.8¢,
+Sonnet ≈1.1–1.7¢, Haiku ≈0.6¢ — cost was never large; speed + margin is the win.
+SYSTEM prompt, snapshot schema, MAX_TOKENS, key flow all untouched; kid-lock safety
+is prompt-structural, not model-dependent. Docs of record updated (this file's Key
+decisions line, navigator-and-safety + constants skills).
+
+**Flagged / rung 4:** evidence is syntax-check + all 17 node suites green
+(code-verified only — the model only manifests on a live keyed API call, which
+headless runs can't make). Worth one physics question in his browser (hard-reload
+first); if Sonnet's answers ever read thin, Opus is the same one-line edit back.
+
 ## Status (2026-07-22 later): 🌀🔭 FIXED — arriving by wormhole showed a starfield void (his play-test bug)
 
 His report (via Mom): the gate said he arrived, the Navigator agreed the planets were
@@ -1195,7 +1213,7 @@ python3 -m http.server 8011      # any free port; 8000 was often busy on this ma
 - **Superposed gravity everywhere; SOI is a display concept.** No frame switches to break.
 - **Guidance philosophy: window for the departure, course-correction for the arrival.**
   Don't try to make the window exact enough to skip corrections — corrections ARE the lesson.
-- **Navigator = browser-direct Claude API** (`copilot.js`, model constant `claude-opus-4-8`).
+- **Navigator = browser-direct Claude API** (`copilot.js`, model constant `claude-sonnet-5`).
   Key via 🔑 button → localStorage. Never hardcode. If ever hosted, add a server proxy.
 - **Kid-lock system prompt** hardened; identity claims ignored; topics locked to the game.
 
