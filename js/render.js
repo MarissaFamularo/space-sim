@@ -821,6 +821,22 @@ function buildWorldObjects() {
   }
 }
 
+// Rebuild map name labels from the CURRENT body names. The Cylan reveal renames
+// bodies mid-session, and text sprites bake their string at creation time.
+function refreshLabels() {
+  if (!scene) return;
+  for (const key of Object.keys(mapDots)) {
+    const e = mapDots[key];
+    if (!e || !e.label || !BODIES[key]) continue;
+    const style = styleFor(key);
+    const vis = e.label.visible;
+    disposeWorldObject(e.label);
+    e.label = makeTextSprite(BODIES[key].name, "#" + new THREE.Color(style.color).getHexString());
+    e.label.visible = vis;
+    scene.add(e.label);
+  }
+}
+
 function disposeWorldObject(obj) {
   scene.remove(obj);
   obj.traverse((o) => {
@@ -1048,7 +1064,9 @@ function makeBodyGroup(key) {
     // outer under time-warp, which is Kepler's third law happening on screen.
     // RingGeometry UVs are planar, so rewrite u = radial fraction to stripe the
     // texture into concentric rings.
-    const inner = b.radius * RING_BAND.inner, outer = b.radius * RING_BAND.outer;
+    // Per-body band override (style.ringBand): Cylan's ring is deliberately SMALL.
+    const band = style.ringBand || RING_BAND;
+    const inner = b.radius * band.inner, outer = b.radius * band.outer;
     const tiltG = new THREE.Group();
     tiltG.rotation.x = 0.45; // tilt out of the orbital plane so it reads in both views
     const geo = new THREE.RingGeometry(inner, outer, 128, 4);
@@ -5661,5 +5679,6 @@ export const Render = Object.freeze({
   zoomMap,
   setQuality,
   spawnMeteor, // ☄️ ring-rock strikes (recorded in ARCHITECTURE.md, 2026-07-16)
+  refreshLabels, // 🔭 Cylan reveal renames bodies mid-session; labels bake text at creation
   debug,
 });

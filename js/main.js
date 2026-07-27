@@ -76,6 +76,12 @@ const WORLD_FACTS = {
   Pebble: "Pebble is still gathering itself out of Hundun's ring — too small and lumpy for its own gravity to squeeze it round. Real small worlds like Arrokoth are potatoes for the same reason.",
   "Comet Konnie": "Comets are named after their discoverers — Halley, Hale-Bopp… and Konnie. Its tail always points AWAY from the star (starlight pushes it), and escape speed here is about bicycle speed. Jump gently!",
   Centdra: "Centdra is a planet still BEING BORN, wrapped in its own disc of infalling rock. Astronomers really photographed a disc like this around the young planet PDS 70c in 2021.",
+  // Cylan (his Planet Nine). Pre-discovery every readout says "Unknown Object" — the
+  // teaser fact carries the real mystery; the Cylan facts unlock with the name.
+  "Unknown Object": "Nobody has ever seen this world up close — not even real astronomers. Far past Neptune, small icy worlds bunch together like something BIG is herding them… fly out and see for yourself!",
+  Cylan: "Cylan is this game's PLANET NINE — a real scientific mystery! In 2016 astronomers noticed distant icy orbits clustering as if a hidden ~5-Earth-mass planet is shepherding them. No telescope has found it yet — you just did what the real hunt is still trying to do. (The REAL one, if it's out there, sits 5–10× farther than Pluto — we parked ours closer so the trip is flyable.)",
+  "Cylan I": "New moons get Roman-numeral names first and proper names later — that's real astronomy practice. These five are waiting for a discoverer to name them… that's YOU.",
+  "Cylan V": "A far-out moon on a stretched orbit is usually a CAPTURED wanderer — a passerby that flew too close and got kept. Watch it sprint at the close pass and crawl at the far end: Kepler's second law, live.",
 };
 
 // Any star in the active system: the sun role, plus star-styled companions
@@ -550,6 +556,43 @@ function copilotSay(txt) {
   log.appendChild(d); log.scrollTop = log.scrollHeight;
 }
 
+// ---- 🔭 Discoveries: the Cylan reveal (his Planet Nine) ----
+// Mystery bodies ship with a cover name ("Unknown Object", "Unknown Moon I–V") and flip
+// to their trueName the first time he flies close. Persisted under its OWN new versioned
+// key (frozen Rule 2: never reinterpret an existing key). {"cylan": true} = revealed.
+const DISCOVERY_KEY = "spacesim.discovery.v1";
+let DISCOVERED = {};
+try { DISCOVERED = JSON.parse(localStorage.getItem(DISCOVERY_KEY)) || {}; } catch {}
+function saveDiscoveries() { try { localStorage.setItem(DISCOVERY_KEY, JSON.stringify(DISCOVERED)); } catch {} }
+// Re-stamp true names onto the ACTIVE catalog. Run at boot and after every swap back to
+// Sol — returnToSol rebuilds BODIES fresh from REAL, which resets names to the cover.
+function applyDiscoveries() {
+  for (const key of Object.keys(BODIES)) {
+    const b = BODIES[key];
+    if (b.mystery && DISCOVERED[b.mystery] && b.trueName) b.name = b.trueName;
+  }
+}
+applyDiscoveries(); // boot: BODIES is built at import time, labels build later
+function checkMysteryReveal() {
+  const c = BODIES.cylan;
+  if (!c || !c.mystery || DISCOVERED[c.mystery]) return;
+  if (sim.mode !== "flight" || !sim.craft) return;
+  const bs = bodyStateAt("cylan", sim.time);
+  const d = Math.hypot(sim.craft.pos.x - bs.pos.x, sim.craft.pos.y - bs.pos.y);
+  if (d > c.soiRadius * 2.5) return; // reveal just BEFORE the SOI callout says the name
+  DISCOVERED[c.mystery] = true;
+  saveDiscoveries();
+  applyDiscoveries();
+  Render.refreshLabels();
+  UI.rebuildTargets();
+  copilotSay("🔭🎉 <b>DISCOVERY! The Unknown Object is yours to name — say hello to CYLAN.</b> " +
+    "You just did what every telescope on Earth is still trying to do: real astronomers predicted " +
+    "a ninth planet out here in 2016 from the way far icy worlds bunch together, but nobody has ever " +
+    "SEEN it. Neptune was found the same way — math first, telescope second (1846). Cylan brought " +
+    "friends too: <b>five moons</b>, numbered I to V the way real new moons are, waiting for proper " +
+    "names from their discoverer. Ask the Navigator for Cylan's story!");
+}
+
 // ---- 🌌 Starmap travel: swap the active system, rebuild the world, back to the pad ----
 // The name IS the system (seeded generation) — see stargen.js. Sol is always home.
 const VISITED_KEY = "spacesim.visitedSystems.v1";
@@ -625,6 +668,7 @@ function travelToSystem(seed) {
 function travelHome() {
   if (isSol()) { copilotSay("You're already home — this IS the Solar System. 🌍"); return; }
   returnToSol();
+  applyDiscoveries(); // Sol rebuilt fresh from REAL: re-stamp Cylan if he's found it
   arriveInSystem();
   copilotSay("🏠 <b>Home again — the real Solar System.</b> Same Sun, same Earth, same Moon waiting.");
 }
@@ -944,6 +988,8 @@ function flightCallouts() {
       (sim.orbit.apoapsis / 1000).toFixed(0) + " km, periapsis " + (sim.orbit.periapsis / 1000).toFixed(0) +
       " km. From here you can go ANYWHERE — the Moon, Mars, all of it. Pick a target and follow the gold Burn marker on the map.");
   }
+  // The Cylan reveal fires just before its SOI callout would say the name.
+  checkMysteryReveal();
   // Entering any new sphere of influence.
   if (sim.soi && !announced.soi[sim.soi]) {
     announced.soi[sim.soi] = true;
@@ -1274,7 +1320,7 @@ function arriveFromInterstellar() {
   const speed = Math.hypot(vx, vy);
   const inX = it.dir.x, inY = it.dir.y; // inbound direction of travel
   // Swap the universe under the ship — flight-preserving (unlike the Starmap fold).
-  if (it.seed === "@sol") returnToSol();
+  if (it.seed === "@sol") { returnToSol(); applyDiscoveries(); }
   else {
     const sys = generateSystem(it.seed);
     setSystem(sys.bodies, sys.planetKeys,
@@ -1817,7 +1863,7 @@ function doWormholeSwap() {
   const wh = whRide.wh;
   whRide.swapped = true;
   // Same flight-preserving universe swap the interstellar autopilot lands with.
-  if (wh.dest.seed === "@sol") returnToSol();
+  if (wh.dest.seed === "@sol") { returnToSol(); applyDiscoveries(); }
   else {
     const sys = generateSystem(wh.dest.seed);
     setSystem(sys.bodies, sys.planetKeys,

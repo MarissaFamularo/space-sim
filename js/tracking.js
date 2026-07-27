@@ -31,6 +31,8 @@ const DOT = {
   mars: "#e07b53", phobos: "#9b8878", deimos: "#9b8878", jupiter: "#d9a76a", io: "#e8d060",
   europa: "#d8cdb8", ganymede: "#a99f92", callisto: "#8a8378", saturn: "#e6cf9a",
   titan: "#e0a83f", uranus: "#9bd4d9", neptune: "#5f83e0", pluto: "#d6c7b8",
+  cylan: "#3b5fc0", cylan1: "#9fb2c4", cylan2: "#7f93ad", cylan3: "#8aa4c8",
+  cylan4: "#6b7686", cylan5: "#b0bccf",
 };
 
 function fmtKm(m) {

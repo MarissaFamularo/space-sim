@@ -96,6 +96,13 @@ for (const key of PLANET_KEYS) {
     p.radius > BODIES.saturn.radius * RING_BAND.outer,
     `r=${(p.radius / BODIES.saturn.radius).toFixed(2)} R vs ring outer ${RING_BAND.outer} R`);
 
+  // Cylan's SMALL ring (style.ringBand override) — park clear of ITS band, not the shared one.
+  const cy = Physics.parkingOrbit("cylan", 0);
+  const cyOuter = BODIES.cylan.style.ringBand.outer;
+  check("Cylan teleport parks outside its small ring band",
+    cy.radius > BODIES.cylan.radius * cyOuter,
+    `r=${(cy.radius / BODIES.cylan.radius).toFixed(2)} R vs small-ring outer ${cyOuter} R`);
+
   const sys = famousSystem("Youngcow");
   setSystem(sys.bodies, sys.planetKeys, { key: sys.seed, name: sys.name, seed: sys.seed });
   const hundun = Physics.parkingOrbit("earth", 0); // Hundun is Youngcow's home ("earth" role key)

@@ -296,6 +296,51 @@ const check = (name, ok, detail = "") => {
     `status=${sim.status} on=${sim.landed && sim.landed.body} chute=${everOpen}`);
 }
 
+// --- 6c. Cylan (his Planet Nine): 2x Pluto, ~5 Earth masses, hidden name, five moons ---
+{
+  const C = BODIES.cylan;
+  check("Cylan orbits at exactly 2x Pluto (owner spec)",
+    Math.abs(C.orbitRadius / BODIES.pluto.orbitRadius - 2) < 1e-9,
+    `ratio=${(C.orbitRadius / BODIES.pluto.orbitRadius).toFixed(4)}`);
+  check("Cylan is ~5 Earth masses (the real Planet Nine guess)",
+    Math.abs(C.mass / BODIES.earth.mass - 5) < 0.1,
+    `${(C.mass / BODIES.earth.mass).toFixed(2)} Earth masses`);
+  check("Cylan ships under its cover name until discovered",
+    C.name === "Unknown Object" && C.trueName === "Cylan" && C.mystery === "cylan");
+  const moons = ["cylan1", "cylan2", "cylan3", "cylan4", "cylan5"];
+  check("all five moons share the reveal group with numbered cover names",
+    moons.every((k, i) => BODIES[k].mystery === "cylan" &&
+      BODIES[k].name.startsWith("Unknown Moon") && BODIES[k].trueName === "Cylan " + ["I","II","III","IV","V"][i]));
+  let ok = true;
+  for (const k of moons) if (!(BODIES[k].soiRadius > BODIES[k].radius * 2)) ok = false;
+  check("every Cylan moon's SOI comfortably clears its surface (all orbitable)", ok);
+  check("all moon orbits nest well inside Cylan's SOI",
+    moons.every((k) => BODIES[k].orbitRadius * (1 + (BODIES[k].ecc || 0)) < C.soiRadius * 0.5),
+    `outermost apo=${(BODIES.cylan5.orbitRadius * 1.28 / 1e6).toFixed(0)} Mm SOI=${(C.soiRadius / 1e6).toFixed(0)} Mm`);
+  check("Cylan V's stretched orbit never dips near the planet or crosses IV",
+    BODIES.cylan5.ecc === 0.28 &&
+    BODIES.cylan5.orbitRadius * (1 - 0.28) > BODIES.cylan4.orbitRadius,
+    `peri=${(BODIES.cylan5.orbitRadius * 0.72 / 1e6).toFixed(1)} Mm vs IV at ${(BODIES.cylan4.orbitRadius / 1e6).toFixed(1)} Mm`);
+  const t = 7000;
+  const m3 = bodyStateAt("cylan3", t), cs = bodyStateAt("cylan", t);
+  check("Cylan III circles the moving Cylan",
+    Math.abs(Math.hypot(m3.pos.x - cs.pos.x, m3.pos.y - cs.pos.y) - BODIES.cylan3.orbitRadius) < 1);
+  check("low orbit near Cylan belongs to Cylan",
+    dominantBody({ x: cs.pos.x + C.radius * 3, y: cs.pos.y }, t).body.key === "cylan");
+
+  // Ice giant honesty: no surface — diving in must crush or burn, never "land".
+  const sim = newSimState(E);
+  sim.mode = "flight"; sim.status = "flying"; sim.target = "cylan";
+  sim.craft.pos = { x: cs.pos.x + C.radius + C.atmosphere.height + 50000, y: cs.pos.y };
+  sim.craft.vel = { x: cs.vel.x - 3000, y: cs.vel.y };
+  sim.craft.mass = 2; sim.craft.throttle = 0; sim.time = t;
+  let steps = 0;
+  while (sim.status !== "crashed" && sim.status !== "landed" && steps++ < 400000) Physics.step(sim, 0.05);
+  check("diving into Cylan never 'lands' — ice giants have no ground",
+    sim.status === "crashed" && (sim.sankIntoClouds === true || sim.burnedUp === true),
+    `status=${sim.status} sank=${!!sim.sankIntoClouds} burned=${!!sim.burnedUp}`);
+}
+
 // --- 7. Gas giants have no surface ---
 {
   const js = bodyStateAt("jupiter", 0);

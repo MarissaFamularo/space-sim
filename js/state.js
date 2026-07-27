@@ -48,6 +48,32 @@ const REAL = {
   // is stretched and tilted (it even dips inside Neptune's) — ours is circular at its
   // semi-major axis, like every body here; the Navigator teaches the real shape.
   pluto:   { radius: 1.1883e6, g0: 0.62,  parent: "sun",   a: 5.9064e12, solid: true,  atmo: null, phase0: 2.9 },
+  // CYLAN — his Planet Nine (2026-07-27 spec via Mom: ice giant, dark blue, small ring,
+  // five moons, name hidden until you fly close). Planet Nine is a REAL hypothesis:
+  // Batygin & Brown 2016 noticed distant icy orbits clustering as if shepherded by an
+  // unseen ~5-Earth-mass planet. Nobody has ever seen it. Our numbers are the honest
+  // guess: 2.4 Earth radii + g0 8.5 works out to ~5 Earth masses (mu = g0*r^2).
+  // HONEST COMPROMISE (owner call): parked at 2x Pluto so the trip is flyable; the real
+  // hypothesis puts it 400-700 AU out (5-10x farther than Pluto) — the Navigator
+  // teaches the real number. `mystery` is the reveal group: every readout shows `name`
+  // ("Unknown Object") until main.js flips it to `trueName` on close approach.
+  cylan:  { radius: 1.53e7, g0: 8.5, parent: "sun", a: 1.18128e13, solid: false,
+            atmo: { height: 900000, seaLevelDensity: 0.45 }, phase0: 4.6,
+            mystery: "cylan", name: "Unknown Object", trueName: "Cylan",
+            style: { color: 0x1d3a7a, halo: 0x2f55b8, rings: true, ringBand: { inner: 1.3, outer: 1.7 } } },
+  // Cylan's five moons — Roman numerals are REAL practice (new moons get numbers first,
+  // proper names later; he's invited to name them). All reveal with the planet.
+  cylan1: { radius: 4.2e5, g0: 0.35, parent: "cylan", a: 8.0e7,  solid: true, atmo: null, phase0: 0.7,
+            mystery: "cylan", name: "Unknown Moon I",   trueName: "Cylan I",   style: { color: 0x9fb2c4 } },
+  cylan2: { radius: 6.8e5, g0: 0.55, parent: "cylan", a: 1.5e8,  solid: true, atmo: null, phase0: 2.8,
+            mystery: "cylan", name: "Unknown Moon II",  trueName: "Cylan II",  style: { color: 0x7f93ad } },
+  cylan3: { radius: 1.2e6, g0: 0.80, parent: "cylan", a: 2.9e8,  solid: true, atmo: null, phase0: 4.9,
+            mystery: "cylan", name: "Unknown Moon III", trueName: "Cylan III", style: { color: 0x8aa4c8 } },
+  cylan4: { radius: 3.0e5, g0: 0.25, parent: "cylan", a: 5.5e8,  solid: true, atmo: null, phase0: 1.9,
+            mystery: "cylan", name: "Unknown Moon IV",  trueName: "Cylan IV",  style: { color: 0x6b7686 } },
+  // V rides a stretched (elliptical) orbit — far, loose moons are usually CAPTURED wanderers.
+  cylan5: { radius: 5.0e5, g0: 0.40, parent: "cylan", a: 1.05e9, solid: true, atmo: null, phase0: 5.7,
+            ecc: 0.28, mystery: "cylan", name: "Unknown Moon V", trueName: "Cylan V", style: { color: 0xb0bccf } },
 };
 
 // Build a scaled BODIES table from REAL-style defs. Parents must come before children
@@ -73,6 +99,9 @@ export function buildCatalog(defs, order, scale = SCALE) {
     };
     if (d.style) body.style = d.style;
     if (d.face) body.face = d.face;
+    // Mystery bodies (Cylan group): name stays the cover name until main.js reveals
+    // trueName on close approach (persisted in spacesim.discovery.v1).
+    if (d.mystery) { body.mystery = d.mystery; body.trueName = d.trueName; }
     if (d.gen) body.gen = true;
     if (d.blackHole) body.blackHole = true;
     // Optional ELLIPTICAL rail (2026-07-16, his ask: a lava moon on a stretched orbit).
@@ -103,7 +132,8 @@ export function buildCatalog(defs, order, scale = SCALE) {
 
 const SOL_ORDER = ["sun", "mercury", "venus", "earth", "moon", "mars", "phobos", "deimos",
                    "jupiter", "io", "europa", "ganymede", "callisto",
-                   "saturn", "titan", "uranus", "neptune", "pluto"];
+                   "saturn", "titan", "uranus", "neptune", "pluto",
+                   "cylan", "cylan1", "cylan2", "cylan3", "cylan4", "cylan5"];
 
 // THE ACTIVE SYSTEM. BODIES and PLANET_KEYS are swapped IN PLACE by setSystem() so
 // every module's existing `import { BODIES }` keeps working — same object identity,
@@ -115,7 +145,8 @@ export const BODIES = buildCatalog(REAL, SOL_ORDER);
 
 // Every body except the star, ordered for target pickers / map labels.
 export const PLANET_KEYS = ["mercury", "venus", "earth", "moon", "mars", "phobos", "deimos",
-  "jupiter", "io", "europa", "ganymede", "callisto", "saturn", "titan", "uranus", "neptune", "pluto"];
+  "jupiter", "io", "europa", "ganymede", "callisto", "saturn", "titan", "uranus", "neptune", "pluto",
+  "cylan", "cylan1", "cylan2", "cylan3", "cylan4", "cylan5"];
 
 // Space stations of the active system — scattered in orbit, dockable. Not bodies
 // (no gravity of their own); main.js propagates their circular orbits per frame.

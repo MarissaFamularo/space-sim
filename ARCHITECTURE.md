@@ -610,3 +610,41 @@ Render.enterStation(info, cb)       // info gains .spin — centrifuge interior:
   co-moving, and pulls the follow camera back (`Render.zoomMap(40)`) so the swirl
   is in frame. Tracking Center: dashed gate-colored orbit rings + double-circle
   markers.
+
+## CONTRACT REVISION 2026-07-27 — 🔭 Cylan, his Planet Nine (mystery bodies + the reveal)
+
+His spec (via Mom): a hypothetical "Planet 9" at 2× Pluto — ice giant, blue but dark,
+small ring, five moons; named "Unknown Object" until you fly close, then revealed as
+**Cylan**. The real Planet Nine hypothesis (Batygin & Brown 2016, never observed) is
+taught by the Navigator; 2× Pluto vs the real 400–700 AU is a disclosed compromise.
+
+- **Six new Sol bodies in `REAL`/`SOL_ORDER`/`PLANET_KEYS`** (state.js): `cylan`
+  (a = 1.18128e13 = exactly 2× Pluto, r 1.53e7, g0 8.5 → ~5.0 Earth masses,
+  solid: false, Neptune-like atmo) + `cylan1..cylan5` (moons; `cylan5` rides
+  `ecc: 0.28`). All orbits nest inside Cylan's SOI with ≥2× margin (node-tested).
+- **New optional body-def fields, copied by `buildCatalog`:** `mystery` (reveal-group
+  id string) and `trueName`. A mystery body's `name` ships as its cover name
+  ("Unknown Object", "Unknown Moon I–V") — every consumer of `BODIES[key].name`
+  (HUD, picker, map labels, callouts, Navigator snapshot) stays spoiler-safe for free.
+- **Sol bodies may now carry inline `style`** (previously only generated/famous bodies
+  did): Cylan's dark-blue look + ring live in state.js, so physics sees `style.rings`
+  generically (no key special-case needed).
+- **`style.ringBand` override** (revises 2026-07-18): render draws and
+  `Physics.parkingOrbit` clears `style.ringBand || RING_BAND` — Cylan's SMALL ring is
+  {inner: 1.3, outer: 1.7}; Teleport parks at 1.955 R (predicted, then measured,
+  browser + node).
+- **New storage key `spacesim.discovery.v1`** — `{"cylan": true}` once revealed.
+  main.js owns it: `applyDiscoveries()` re-stamps `trueName` onto the active catalog
+  at boot and after every `returnToSol()` (Sol rebuilds reset names);
+  `checkMysteryReveal()` (frame loop, before the SOI announce) fires within
+  2.5× Cylan's SOI — renames the group, saves, rebuilds labels + picker, celebration
+  callout. Existing keys untouched (frozen Rule 2: new key, no reinterpretation).
+- **New Render API: `refreshLabels()`** — rebuilds map name sprites from current
+  `BODIES[key].name` (text sprites bake their string at creation; the reveal renames
+  mid-session).
+- **Navigator**: snapshot gains top-level `discoveredCylan` (present only when true;
+  reads the storage key defensively — absent in node). SYSTEM prompt gains the
+  UNKNOWN OBJECT bullet (spoiler rule keyed to `discoveredCylan`, the real Planet
+  Nine science, 2×-Pluto honesty, Roman-numeral moon-naming invitation). Safety
+  block untouched — navigator_check green.
+- **`WORLD_FACTS`** gains "Unknown Object" (teaser), "Cylan", "Cylan I", "Cylan V".

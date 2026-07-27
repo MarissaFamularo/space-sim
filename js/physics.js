@@ -746,8 +746,9 @@ export const Physics = {
     // the whole sky. Real missions park clear of ring material for the same reason.
     // (Sol's Saturn keeps its ring flag in render's style table, hence the key check.)
     const st = b.style || {};
+    const ringOuter = (st.ringBand || RING_BAND).outer; // Cylan's small ring overrides the shared band
     const ringClear = Math.max(
-      (st.rings || key === "saturn") ? b.radius * RING_BAND.outer * 1.15 : 0,
+      (st.rings || key === "saturn") ? b.radius * ringOuter * 1.15 : 0,
       st.formingDisc ? b.radius * FORMING_DISC_BAND.outer * 1.15 : 0);
     const r = Math.max(b.radius * 1.35, ringClear,
                        b.radius + 3 * ((b.atmosphere && b.atmosphere.height) || 0));

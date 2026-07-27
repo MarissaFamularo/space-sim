@@ -9,6 +9,65 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-27): 🔭🪐 CYLAN — his Planet Nine (ice giant at 2× Pluto, hidden name, 5 moons)
+
+His spec (via Mom): add "Planet 9" — an ice giant, blue but dark, with a small ring and
+five moons, parked at 2× Pluto (owner's distance call). Near it you see only an
+"unknown object"; fly closer and the name reveals: **Cylan**. Built exactly that, on the
+real Planet Nine hypothesis (Batygin & Brown 2016 — never observed; the Navigator
+teaches the real science and the honest 2×-Pluto-vs-400–700-AU compromise).
+
+**Flagged / rung 4 (play-test with him):**
+- **The look is his acceptance test** (graphics snob): map view shows a deep-navy globe
+  with a small tan ring (browser-shot cylan-map.png was gorgeous). The ring uses the
+  shared Saturn-warm `ringTexture()` — if he wants an ICIER ring, the tint knob is the
+  `cols.push(c, c*0.94, c*0.82)` warm factors in render.js's ring block.
+- **The reveal moment was fired headlessly, not felt**: it triggers at 2.5× Cylan's SOI
+  (~35 Gm out), just before the SOI-entry callout would say the name. Steps for the
+  real test: fresh state (or leave his saves alone — his localStorage has no
+  `spacesim.discovery.v1` yet, so the mystery is live), 🎯 pick "Unknown Object" (last
+  planet in the picker), ✨ Teleport for the fast version — the callout + rename +
+  picker/label flip should land in one moment. The honest flight is the epic version:
+  ~40 sim-years of cruise ≈ 10 real minutes at top warp (2× Pluto is FAR). If that
+  drags for him, a new top warp tier is a candidate — NOT built.
+- **Moon names are deliberately unfinished**: Cylan I–V (real Roman-numeral practice).
+  The Navigator invites him to name them — expect Wish Book entries; renaming is a
+  one-line `trueName` edit per moon in state.js.
+
+**Shipped (evidence per claim):**
+1. **Six bodies in state.js** — `cylan` (exactly 2× Pluto's a, ~5.0 Earth masses from
+   g0 8.5 + 2.4 R⊕, solid:false, Neptune-like atmo) + `cylan1..5` (V on ecc 0.28).
+   Node-tested: planets_test 6c (orbit ratio 2.0000, mass 5.00 M⊕, SOI nesting,
+   ellipse clearances, no-surface crush) — 41/41 green.
+2. **Mystery reveal** — new fields `mystery`/`trueName` (buildCatalog), cover names
+   flow to every consumer of `BODIES[key].name`; main.js `checkMysteryReveal()` +
+   `applyDiscoveries()` + NEW storage key `spacesim.discovery.v1` (Rule 2: new key,
+   old keys untouched); `Render.refreshLabels()` + picker rebuild + celebration
+   callout on the flip. Browser-verified end-to-end (cylan-check.mjs, ALL GREEN 16/16:
+   pre-reveal spoiler-free picker/HUD, reveal flip, persistence across reload,
+   fresh-state restore, zero page errors).
+3. **Small ring** — `style.ringBand` override ({1.3, 1.7} vs shared {1.25, 2.3});
+   render + `Physics.parkingOrbit` both honor it. Predicted park 1.955 R / 1461 km /
+   2579 m/s → browser-measured err 0.00%; teleport_test asserts the clearance.
+4. **Navigator** — snapshot `discoveredCylan` (absent until true; node-safe try/catch);
+   SYSTEM prompt UNKNOWN OBJECT bullet with a hard spoiler rule keyed to that field
+   (safety block untouched — navigator_check ALL GREEN). WORLD_FACTS: teaser +
+   Cylan/Cylan I/Cylan V facts.
+5. **All 17 node suites green**; ARCHITECTURE.md CONTRACT REVISION 2026-07-27 written;
+   `cylan-check.mjs` added to the browser-verification skill's scripts (self-contained:
+   injects its own reveal hook into the scratch copy).
+
+**Gotchas paid this session:**
+- Playwright's actionability gate TIMES OUT clicking the front-door overlay buttons
+  under `__TEST_DRIVE` (no rAF) even though hit-testing shows them on top — dismiss
+  menus with JS-dispatched clicks (`button.click()` / `dispatchEvent`) from
+  `page.evaluate`, as cylan-check.mjs does.
+- DOM screenshots include the front-door menu overlays; `__renderAndSample()` reads
+  only the WebGL canvas behind them. A "black screen" litFraction near Cylan can also
+  just be the honest night side of a dark world — assert lit pixels in MAP view.
+- `__teleport()` needs an ACTIVE flight — `__loadRocket` + `__launch()` first
+  (flight-check pattern), or soi comes back undefined.
+
 ## Status (2026-07-26): 🧭💸 Navigator model downgraded — Opus → Sonnet 5 (owner cost call)
 
 Mom's call: `MODEL` in copilot.js:15 swapped `claude-opus-4-8` → `claude-sonnet-5`.
