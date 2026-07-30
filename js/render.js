@@ -914,15 +914,20 @@ function makeBodyGroup(key) {
     const shell = new THREE.Mesh(new THREE.TorusGeometry(major, rim, 14, 160),
       new THREE.MeshStandardMaterial({ color: 0x776848, roughness: 0.44, metalness: 0.76,
         emissive: 0x211c0e, emissiveIntensity: 0.22 }));
+    // The ring is deliberately enormous compared with the nearby craft. Never let a
+    // conservative mesh bounding sphere make its distant edge disappear mid-approach.
+    shell.frustumCulled = false;
     g.add(shell);
     const living = new THREE.Mesh(new THREE.TorusGeometry(major, rim * 0.42, 10, 160),
       new THREE.MeshStandardMaterial({ color: 0x4c9a68, roughness: 0.7, metalness: 0.18,
         emissive: 0x164425, emissiveIntensity: 0.58 }));
     living.scale.z = 0.55;
+    living.frustumCulled = false;
     g.add(living);
     const lights = new THREE.Mesh(new THREE.TorusGeometry(major, rim * 0.09, 8, 160),
       new THREE.MeshBasicMaterial({ color: 0xd8c778, transparent: true, opacity: 0.82 }));
     lights.scale.z = 0.18;
+    lights.frustumCulled = false;
     g.add(lights);
     return g;
   }
@@ -3250,12 +3255,18 @@ function updateFlight(sim) {
   // A ringworld is millions of metres across but intentionally has no planet-sized
   // gravity sphere. Without this framing floor, a ship right beside its rim gets the
   // normal rocket close-up and the whole loop sits outside the camera view.
-  const targetBody = sim.target && BODIES[sim.target];
-  const ringMajor = targetBody && targetBody.style && targetBody.style.ringworld
-    ? targetBody.radius * targetBody.style.ringworld.majorR : 0;
-  const targetDist = targetBody ? Math.hypot(sim.craft.pos.x - states[targetBody.key].pos.x,
-    sim.craft.pos.y - states[targetBody.key].pos.y) : Infinity;
-  const ringFrame = ringMajor > 0 && targetDist < ringMajor * 6 ? ringMajor * 2.7 : 0;
+  // Do not rely on the selected target: a player can arrive at the Halo Ring while
+  // still targeting Polyphemus or one of its moons. Any nearby ringworld earns a
+  // generous, automatic wide shot, so its full loop stays in view on approach.
+  let ringFrame = 0;
+  for (const key of PLANET_KEYS) {
+    const body = BODIES[key];
+    if (!body || !body.style || !body.style.ringworld || !states[key]) continue;
+    const major = body.radius * body.style.ringworld.majorR;
+    const distance = Math.hypot(sim.craft.pos.x - states[key].pos.x,
+      sim.craft.pos.y - states[key].pos.y);
+    if (distance < major * 8) ringFrame = Math.max(ringFrame, major * 5);
+  }
   const camDist = Math.max(20, craftHeight * 4 + 30, ringFrame) * followZoom;
   followDist = camDist; // arrows scale with it so guides stay readable zoomed out
   const se = Math.sin(followCam.elevation), ce = Math.cos(followCam.elevation);
