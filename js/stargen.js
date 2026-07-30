@@ -58,6 +58,52 @@ function makeName(rng) {
 const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
 const range = (rng, lo, hi) => lo + rng() * (hi - lo);
 
+// ---- SYSTEM FORGE ----------------------------------------------------------
+// A forge code is deliberately short, readable, and shareable in the existing
+// Starmap. The choices are *requests*, not raw physics dials: generateSystem still
+// picks real, stable values for the star, rails, gravity, and launchable homeworld.
+//
+// forge:v1|Snakestar|blue|9|ice|twins
+//     version | name     | star | worlds | home | signature
+const FORGE_VERSION = "forge:v1";
+const FORGE_STARS = {
+  random: null,
+  red:    { cls: "M", label: "red dwarf",     m: [0.2, 0.5], r: [0.25, 0.6], color: 0xff8a5c, glow: "255,138,92" },
+  orange: { cls: "K", label: "orange dwarf",  m: [0.5, 0.8], r: [0.6, 0.9],  color: 0xffb45e, glow: "255,180,94" },
+  gold:   { cls: "G", label: "golden star",   m: [0.8, 1.2], r: [0.9, 1.1],  color: 0xffd75e, glow: "255,215,94" },
+  blue:   { cls: "F", label: "blue-white star", m: [1.2, 1.6], r: [1.1, 1.4], color: 0xa8d8ff, glow: "168,216,255" },
+};
+const FORGE_HOMES = new Set(["ocean", "desert", "ice"]);
+const FORGE_FEATURES = new Set(["none", "rings", "twins", "outpost", "lava"]);
+
+function cleanForgeName(value) {
+  return String(value || "My System").trim().replace(/[|<>&\n\r]/g, " ").slice(0, 32) || "My System";
+}
+function cleanForgeChoice(value, allowed, fallback) {
+  return allowed.has(value) ? value : fallback;
+}
+export function parseForgeCode(seedName) {
+  const bits = String(seedName || "").trim().split("|");
+  if (bits.length !== 6 || bits[0].toLowerCase() !== FORGE_VERSION) return null;
+  const worlds = Number(bits[3]);
+  const star = Object.hasOwn(FORGE_STARS, bits[2]) ? bits[2] : "random";
+  return {
+    name: cleanForgeName(bits[1]),
+    star,
+    worlds: Number.isInteger(worlds) && worlds >= 4 && worlds <= 9 ? worlds : 6,
+    home: cleanForgeChoice(bits[4], FORGE_HOMES, "ocean"),
+    feature: cleanForgeChoice(bits[5], FORGE_FEATURES, "none"),
+  };
+}
+export function makeForgeCode(name, choices = {}) {
+  const star = Object.hasOwn(FORGE_STARS, choices.star) ? choices.star : "random";
+  const worlds = Number.isInteger(Number(choices.worlds)) && Number(choices.worlds) >= 4 && Number(choices.worlds) <= 9
+    ? Number(choices.worlds) : 6;
+  const home = cleanForgeChoice(choices.home, FORGE_HOMES, "ocean");
+  const feature = cleanForgeChoice(choices.feature, FORGE_FEATURES, "none");
+  return [FORGE_VERSION, cleanForgeName(name), star, worlds, home, feature].join("|");
+}
+
 // Rocky-family looks; gas/ice get band palettes. base/accent are canvas colors for
 // the face painter (render.js default branch); color/halo are THREE hex ints.
 const LOOKS = {
@@ -122,13 +168,17 @@ export function interstellarVector(fromSeed, toSeed) {
 }
 
 export function generateSystem(seedName) {
-  const seed = String(seedName).trim();
-  const norm = seed.toLowerCase();
+  const rawSeed = String(seedName).trim();
+  const forge = parseForgeCode(rawSeed);
+  // The whole code feeds the RNG so two differently designed "Snakestar" systems
+  // never collide. `seed` stays the code for sharing; `name` is the human display name.
+  const seed = forge ? forge.name : rawSeed;
+  const norm = (forge ? rawSeed : seed).toLowerCase();
 
   // FAMOUS SYSTEMS first: a few legendary names are hand-built, not rolled — the
   // Kerbol system (KSP), the Pandora system (Avatar), … see famous.js. Any alias
   // ("kerbin", "avatar") lands on the same canonical system, so shares still work.
-  const fam = famousSystem(seed);
+  const fam = forge ? null : famousSystem(seed);
   if (fam) return fam;
 
   const rng = mulberry32(hashStr("system:" + norm));
@@ -141,7 +191,9 @@ export function generateSystem(seedName) {
   // gravity doesn't care what the mass IS, only how much there is. Fall past the
   // horizon and you don't melt — you just never come back.
   const wantsBH = norm.replace(/[^a-z0-9]/g, "").includes("blackhole");
-  const isBlackHole = wantsBH || rng() < 0.07;
+  // A Forge star choice is a promise. Black holes remain a delightful Starmap
+  // surprise (or an explicit "blackhole" name) instead of replacing his chosen star.
+  const isBlackHole = !forge && (wantsBH || rng() < 0.07);
 
   let sc, mass, hab, starLabel, starClass;
   const defs = {};
@@ -161,9 +213,12 @@ export function generateSystem(seedName) {
       style: { color: 0xb08aff, blackHole: true, glow: "170,195,255" }, // violet map accent
     };
   } else {
-    let roll = rng();
-    sc = STAR_CLASSES[0];
-    for (const c of STAR_CLASSES) { if (roll < c.w) { sc = c; break; } roll -= c.w; }
+    if (forge && forge.star !== "random") sc = FORGE_STARS[forge.star];
+    else {
+      let roll = rng();
+      sc = STAR_CLASSES[0];
+      for (const c of STAR_CLASSES) { if (roll < c.w) { sc = c; break; } roll -= c.w; }
+    }
     mass = range(rng, sc.m[0], sc.m[1]);          // solar masses
     const sradius = range(rng, sc.r[0], sc.r[1]); // solar radii
     hab = AU * Math.pow(mass, 1.75);              // habitable-zone center (~sqrt(L), L~m^3.5)
@@ -179,7 +234,7 @@ export function generateSystem(seedName) {
   const planetKeys = [];
 
   // --- Planet slots: geometric spacing (Titius–Bode-ish), scaled to the star ---
-  const count = 4 + Math.floor(rng() * 6); // 4..9
+  const count = forge ? forge.worlds : 4 + Math.floor(rng() * 6); // 4..9
   let a = hab * range(rng, 0.25, 0.4);
   const slots = [];
   for (let i = 0; i < count; i++) {
@@ -206,7 +261,8 @@ export function generateSystem(seedName) {
       d = {
         name: makeName(rng), radius, g0: range(rng, 7.5, 10.5),
         solid: true, atmo: { height: range(rng, 65000, 90000), seaLevelDensity: range(rng, 0.9, 1.4) },
-        home: true, ...LOOKS.terra(),
+        home: true, ...(forge && forge.home === "desert" ? LOOKS.desert()
+          : forge && forge.home === "ice" ? LOOKS.ice() : LOOKS.terra()),
       };
     } else if (aP < frost) {
       const t = aP / hab; // how close to the star, in habitable units
@@ -278,6 +334,19 @@ export function generateSystem(seedName) {
       defs.moon.style = { color: defs.moon.color };
       order.push("moon");
       planetKeys.push("moon");
+      // Twin moons are a real configuration (Mars has two), just not an Earth-like
+      // one. Keep both well within the homeworld's SOI, so the tutorial still works.
+      if (forge && forge.feature === "twins") {
+        const twinLook = LOOKS.ice();
+        defs.moon2 = {
+          name: makeName(rng), radius: range(rng, 0.12, 0.22) * d.radius,
+          g0: range(rng, 0.5, 1.3), parent: "earth", a: soiP * range(rng, 0.52, 0.57),
+          solid: true, atmo: null, phase0: rng() * Math.PI * 2, gen: true, ...twinLook,
+        };
+        defs.moon2.style = { color: defs.moon2.color };
+        order.push("moon2");
+        planetKeys.push("moon2");
+      }
     } else if (d.gas) {
       const nm = Math.floor(rng() * 3.4); // 0..3 moons
       let am = d.radius * range(rng, 4, 6);
@@ -300,6 +369,20 @@ export function generateSystem(seedName) {
     }
   }
 
+  // A forge signature always changes the actual catalog, not merely the welcome text.
+  if (forge && forge.feature === "rings") {
+    const host = planetKeys.map((k) => defs[k]).find((d) => d && d.parent === "sun" && !d.home && d.gas) ||
+      planetKeys.map((k) => defs[k]).find((d) => d && d.parent === "sun" && !d.home);
+    if (host) host.style = { ...(host.style || {}), rings: true };
+  }
+  if (forge && forge.feature === "lava") {
+    const host = planetKeys.map((k) => defs[k]).find((d) => d && d.parent === "sun" && !d.home) || defs.earth;
+    if (host) {
+      const look = LOOKS.lava();
+      Object.assign(host, look, { atmo: null, style: { color: look.color, halo: look.halo } });
+    }
+  }
+
   // Stations: every system gets one over the homeworld; half get a second one out
   // at another planet — and sometimes THAT one is a wreck nobody ever came back for.
   const stations = [{
@@ -317,12 +400,17 @@ export function generateSystem(seedName) {
       });
     }
   }
+  if (forge && forge.feature === "outpost") {
+    stations[0].name = "Lost " + makeName(rng) + " Outpost";
+    stations[0].abandoned = true;
+  }
 
   const bodies = buildCatalog(defs, order);
   return {
     key: "gen:" + norm,
     name: seed,
-    seed,
+    seed: forge ? makeForgeCode(seed, forge) : seed,
+    forge,
     blackHole: isBlackHole,
     starClass,
     starLabel,

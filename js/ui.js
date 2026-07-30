@@ -2,6 +2,7 @@
 
 import { BODIES, PLANET_KEYS, STATIONS, WORMHOLES, SYSTEM } from "./state.js";
 import { FAMOUS_LIST } from "./famous.js";
+import { makeForgeCode } from "./stargen.js";
 
 // Destinations for the target picker, derived from the ACTIVE system (the Starmap can
 // swap it): home's moon first (the tutorial trip), then the other planets outward with
@@ -266,6 +267,13 @@ export const UI = {
     row.appendChild(input); row.appendChild(go);
     panel.appendChild(row);
 
+    const forge = document.createElement("button");
+    forge.textContent = "🛠 Design a new system";
+    forge.style.cssText = "margin-top:9px;width:100%;background:#274064;border-color:#5a84bd;font-weight:700;";
+    forge.title = "Choose the kind of star, worlds, home planet, and one special feature";
+    forge.onclick = () => this._openForge(panel);
+    panel.appendChild(forge);
+
     // ⭐ Famous systems — the universe comes pre-populated with a few legends.
     const fh = document.createElement("div");
     fh.style.cssText = "font-size:11px;color:#9fb3da;margin:10px 0 4px;";
@@ -287,7 +295,7 @@ export const UI = {
       panel.appendChild(vh);
       for (const v of visited.slice(0, 8)) {
         const b = document.createElement("button");
-        b.textContent = "⭐ " + v.seed;
+        b.textContent = (v.forge ? "🛠 " : "⭐ ") + (v.name || v.seed);
         b.style.cssText = "display:block;width:100%;margin-top:4px;text-align:left;font-size:12px;";
         b.onclick = () => { this._toggleStarmap(); this.handlers.onStarmapTravel && this.handlers.onStarmapTravel(v.seed); };
         panel.appendChild(b);
@@ -305,6 +313,79 @@ export const UI = {
     panel.appendChild(close);
     document.getElementById("app").appendChild(panel);
     input.focus();
+  },
+
+  // The Forge gives imaginative choices; stargen.js still protects the real physics.
+  _openForge(panel) {
+    panel.replaceChildren();
+    panel.style.width = "390px";
+    const h = document.createElement("h3");
+    h.textContent = "🛠 System Forge";
+    panel.appendChild(h);
+    const intro = document.createElement("div");
+    intro.textContent = "Design a whole star system. The Forge handles the tricky physics; you choose what makes it yours.";
+    intro.style.cssText = "font-size:12px;color:#9fb3da;line-height:1.5;margin-bottom:10px;";
+    panel.appendChild(intro);
+
+    const name = document.createElement("input");
+    name.placeholder = "Name your system… (e.g. Snakestar)";
+    name.maxLength = 32;
+    name.style.cssText = "width:100%;background:#0a1020;border:1px solid #38527d;color:#e8eefc;border-radius:7px;padding:8px 9px;font-size:14px;";
+    panel.appendChild(name);
+
+    const choices = [
+      ["Star", "star", [["random", "Surprise me"], ["red", "Red dwarf"], ["orange", "Orange star"], ["gold", "Golden star"], ["blue", "Blue-white star"]]],
+      ["Worlds", "worlds", [["4", "4 — tiny neighborhood"], ["6", "6 — just right"], ["9", "9 — giant system"]]],
+      ["Home", "home", [["ocean", "Blue-green ocean world"], ["desert", "Copper desert world"], ["ice", "Icy blue world"]]],
+      ["Signature", "feature", [["none", "A beautiful ordinary system"], ["rings", "A ringed world"], ["twins", "Twin home moons"], ["outpost", "A lost outpost"], ["lava", "A lava world"]]],
+    ];
+    const values = {};
+    for (const [label, key, opts] of choices) {
+      const row = document.createElement("label");
+      row.style.cssText = "display:grid;grid-template-columns:78px 1fr;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:#b8c8e6;";
+      row.appendChild(document.createTextNode(label));
+      const select = document.createElement("select");
+      select.style.cssText = "min-width:0;background:#0a1020;border:1px solid #38527d;color:#e8eefc;border-radius:6px;padding:6px;font:inherit;";
+      for (const [value, text] of opts) {
+        const option = document.createElement("option");
+        option.value = value; option.textContent = text;
+        select.appendChild(option);
+      }
+      if (key === "worlds") select.value = "6";
+      values[key] = select;
+      row.appendChild(select);
+      panel.appendChild(row);
+    }
+
+    const preview = document.createElement("div");
+    preview.style.cssText = "margin-top:11px;padding:9px 10px;border-radius:8px;background:rgba(45,77,120,.34);border:1px solid #304c78;font-size:12px;line-height:1.45;color:#c8d8f5;";
+    const refreshPreview = () => {
+      const feature = values.feature.options[values.feature.selectedIndex].textContent.toLowerCase();
+      preview.textContent = "Blueprint: " + (name.value.trim() || "Unnamed system") + " — a " + values.star.options[values.star.selectedIndex].textContent.toLowerCase() + " with " + values.worlds.value + " worlds, a " + values.home.options[values.home.selectedIndex].textContent.toLowerCase() + ", and " + feature + ".";
+    };
+    name.oninput = refreshPreview;
+    Object.values(values).forEach((select) => { select.onchange = refreshPreview; });
+    refreshPreview();
+    panel.appendChild(preview);
+
+    const create = document.createElement("button");
+    create.textContent = "✨ Forge this system";
+    create.style.cssText = "margin-top:10px;width:100%;background:linear-gradient(180deg,#2f6fdc,#1d47a0);border-color:#6a9ced;font-size:14px;font-weight:800;";
+    const fire = () => {
+      const code = makeForgeCode(name.value, { star: values.star.value, worlds: Number(values.worlds.value), home: values.home.value, feature: values.feature.value });
+      panel.remove(); this.els.starmap = null;
+      this.handlers.onStarmapTravel && this.handlers.onStarmapTravel(code);
+    };
+    create.onclick = fire;
+    panel.appendChild(create);
+    name.onkeydown = (e) => { if (e.key === "Enter") fire(); };
+
+    const back = document.createElement("button");
+    back.textContent = "← Back to Starmap";
+    back.style.cssText = "margin-top:7px;width:100%;";
+    back.onclick = () => { panel.remove(); this.els.starmap = null; this._toggleStarmap(); };
+    panel.appendChild(back);
+    name.focus();
   },
 
   // stats: from computeStats (build mode). sim: SimState (flight mode).

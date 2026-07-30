@@ -1,6 +1,6 @@
 // Star-system generator tests (node, no browser): determinism, contract shape, and
 // "every generated system is flyable" properties over a pile of seeds.
-import { generateSystem } from "../js/stargen.js";
+import { generateSystem, makeForgeCode, parseForgeCode } from "../js/stargen.js";
 import { BODIES, PLANET_KEYS, SYSTEM, setSystem, returnToSol, bodyStateAt, dominantBody } from "../js/state.js";
 
 let pass = 0, fail = 0;
@@ -16,6 +16,26 @@ check("same seed, same system", JSON.stringify(a1) === JSON.stringify(a2));
 check("seed is case/space-insensitive key", generateSystem("  kepler-sally ").key === a1.key);
 const b = generateSystem("Snakestar");
 check("different seeds differ", JSON.stringify(a1.bodies) !== JSON.stringify(b.bodies));
+
+// --- System Forge: choices become a compact, reproducible system share code ---
+const forgeCode = makeForgeCode("Paddy's Blue Forge", { star: "blue", worlds: 9, home: "ice", feature: "twins" });
+const forge = generateSystem(forgeCode);
+check("forge code parses its choices", JSON.stringify(parseForgeCode(forgeCode)) === JSON.stringify({
+  name: "Paddy's Blue Forge", star: "blue", worlds: 9, home: "ice", feature: "twins",
+}));
+check("forge is deterministic from its share code", JSON.stringify(generateSystem(forgeCode)) === JSON.stringify(forge));
+check("forge preserves its friendly display name", forge.name === "Paddy's Blue Forge" && forge.seed === forgeCode);
+check("forge honors star + world-count choices", forge.starClass === "F" && forge.planetCount === 9 && !forge.blackHole);
+check("forge home is icy but remains a launchable world", forge.bodies.earth.face.kind === "ice" && forge.bodies.earth.solid &&
+  forge.bodies.earth.g0 >= 7 && forge.bodies.earth.g0 <= 11 && !!forge.bodies.earth.atmosphere);
+check("forge twin moons both stay in the home SOI", !!forge.bodies.moon2 && forge.bodies.moon2.parent === "earth" &&
+  forge.bodies.moon2.orbitRadius < forge.bodies.earth.soiRadius * 0.6 && forge.planetKeys.includes("moon2"));
+const ringForge = generateSystem(makeForgeCode("Ring Forge", { star: "gold", worlds: 6, home: "ocean", feature: "rings" }));
+check("forge ring signature makes a real ringed world", ringForge.planetKeys.some((k) => k !== "earth" && ringForge.bodies[k].style && ringForge.bodies[k].style.rings));
+const lavaForge = generateSystem(makeForgeCode("Lava Forge", { star: "red", worlds: 4, home: "desert", feature: "lava" }));
+check("forge lava signature makes a real lava world", lavaForge.planetKeys.some((k) => lavaForge.bodies[k].face && lavaForge.bodies[k].face.kind === "lava"));
+const outpostForge = generateSystem(makeForgeCode("Outpost Forge", { feature: "outpost" }));
+check("forge outpost signature makes a real abandoned station", outpostForge.stations[0].abandoned === true && /Outpost/.test(outpostForge.stations[0].name));
 
 // --- Contract shape (one system, thoroughly) ---
 const sys = a1;

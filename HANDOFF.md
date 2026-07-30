@@ -9,6 +9,35 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-30): 🛠 SYSTEM FORGE — design a star system, then fly it
+
+Mom's call: Paddy loves finding and designing star systems. The Starmap now has
+**🛠 Design a new system**, a compact System Forge that asks for a name, star color/type,
+4/6/9 worlds, blue-green/desert/icy homeworld, and one signature (rings, twin home moons,
+lost outpost, or lava world). It deliberately offers *creative choices*, not raw numbers:
+the existing generator still sets physical mass, gravity, spacing, and SOIs, so every
+forged home remains launchable and the Moon-transfer tutorial still works.
+
+**Shipped:**
+1. `stargen.makeForgeCode()` / `parseForgeCode()` — a stable share format
+   `forge:v1|name|star|worlds|home|feature`. Its entire code is the seed, so the same
+   design rebuilds exactly on another computer; ordinary name-seeds and famous systems
+   are unchanged. A forge star can never be silently replaced with a black hole.
+2. Forge signatures alter real catalog data: a ringed body, a second home moon, an
+   abandoned station, or a lava face. Forge visits display the friendly name in the
+   Starmap list, and the Navigator arrival message gives the pasteable share code.
+3. `tests/stargen_test.mjs`: 10 new checks cover parsing, reproducibility, chosen star /
+   planet count / home style, twin-moon SOI safety, and every signature. Full 17-suite
+   node run green; `git diff --check` green.
+
+**Flagged / rung 4:** Have Paddy use the Forge once. The one acceptance test that matters
+is whether the five choices feel exciting enough and whether seeing the long-but-readable
+share code in the Navigator feels like a treasure or like clutter. The next natural rung
+is a visual system preview before he presses “Forge this system” — intentionally not built
+until we see what he wants to preview most.
+
+---
+
 ## Status (2026-07-27): 🔭🪐 CYLAN — his Planet Nine (ice giant at 2× Pluto, hidden name, 5 moons)
 
 His spec (via Mom): add "Planet 9" — an ice giant, blue but dark, with a small ring and

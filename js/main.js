@@ -601,8 +601,14 @@ function loadVisited() {
 }
 function rememberVisit(sys) {
   const list = loadVisited().filter((v) => v.seed.toLowerCase() !== sys.seed.toLowerCase());
-  list.unshift({ seed: sys.seed, star: sys.starLabel, planets: sys.planetCount });
+  list.unshift({ seed: sys.seed, name: sys.name, star: sys.starLabel, planets: sys.planetCount, forge: !!sys.forge });
   try { localStorage.setItem(VISITED_KEY, JSON.stringify(list.slice(0, 12))); } catch {}
+}
+
+function shareSystemLine(sys) {
+  return sys.forge
+    ? "<br><br>🛠 <b>You forged this one.</b> Its share code is <code>" + sys.seed + "</code> — paste that into the Starmap on another computer and the whole system comes back exactly the same."
+    : " Tell a friend the name <b>" + sys.seed + "</b> and they'll find this exact system!";
 }
 
 // The galaxy neighborhood for the zoomed-out map: Sol + every system he's visited,
@@ -653,7 +659,7 @@ function travelToSystem(seed) {
       "exactly like a star of the same mass. The glow you see is the <b>accretion disk</b> — " +
       "the hole itself makes no light at all. Just never fly INTO it: past the horizon, " +
       "not even light comes back. Your moon here is <b>" + sys.moonName +
-      "</b>. Tell a friend the name <b>" + sys.seed + "</b> and they'll find this exact black hole!");
+      "</b>." + shareSystemLine(sys));
   } else {
     copilotSay("🌌 <b>Welcome to the " + sys.name + " system!</b> Your ship is on the pad of <b>" +
       sys.homeName + "</b> (gravity " + home.g0.toFixed(1) + " vs Earth's 9.8), under a " +
@@ -661,7 +667,7 @@ function travelToSystem(seed) {
       sys.moonName + "</b> — same trip as ever: orbit, burn prograde, time the arrival. " +
       "Worlds close to the star are rock and lava; past the frost line it's gas and ice — " +
       "that's real astronomy, and it's why this system looks the way it does. " +
-      "Tell a friend the name <b>" + sys.seed + "</b> and they'll find the exact same system!");
+      shareSystemLine(sys));
   }
 }
 

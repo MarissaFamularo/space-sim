@@ -185,6 +185,15 @@ be "Hyven"); NEVER show a hardcoded "Earth"/"Sun" string — read `.name`. `star
 guarantees every generated home is launchable (solid, g0 7–11, chute-worthy air) and every
 generated system passes the flyability property tests in `tests/stargen_test.mjs`.
 
+**System Forge (CONTRACT REVISION 2026-07-30):** `stargen.makeForgeCode(name, choices)`
+creates a compact reproducible code (`forge:v1|name|star|worlds|home|feature`), and
+`generateSystem()` parses it before generation. Forge choices are deliberately bounded
+requests — `star` (random/red/orange/gold/blue), `worlds` (4/6/9), `home`
+(ocean/desert/ice), and one `feature` (none/rings/twins/outpost/lava) — never raw
+physics values. The generator still owns mass, gravity, SOI, and orbital-spacing rules.
+Forged systems keep the readable system name, but their full forge code is `SYSTEM.seed`
+and is the share/revisit key. A second home moon, when requested, is role-keyed `moon2`.
+
 After a swap the sim must be rebuilt (`newSimState`), the render world rebuilt
 (`Render.rebuildWorld()`), and the target picker refilled (`UI.rebuildTargets()`) —
 `main.js arriveInSystem()` is the one place that does this dance.
