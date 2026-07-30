@@ -929,6 +929,10 @@ function makeBodyGroup(key) {
     lights.scale.z = 0.18;
     lights.frustumCulled = false;
     g.add(lights);
+    // Unlike ordinary spherical bodies, the ring takes this early-return path, so
+    // attach it here as well. Without this, its mesh existed in memory but was never
+    // added to the visible Three.js scene.
+    scene.add(g);
     return g;
   }
 
