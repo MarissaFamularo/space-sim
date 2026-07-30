@@ -129,6 +129,13 @@ function pandoraSystem() {
     polyii: { name: "Polyphemus II", radius: 2.4e6, g0: 1.8, parent: "polyphemus", a: 1.35e9,
               solid: true, atmo: null, phase0: 4.6, gen: true,
               style: { color: 0xcfe0ea }, face: { kind: "ice", base: "#d5e4ec", accent: "#9ab8c8", accent2: "#b06a4a" } },
+    // THE HALO RING — an artificial world, not a moon. It shares Polyphemus's orbital
+    // neighborhood with Pandora and its moons, so reaching it means first capturing the
+    // gas giant, then making a second moon-style transfer. `g0` is deliberately tiny:
+    // its surface gravity is spun-up technology, not a magic asteroid pulling ships in.
+    ringworld: { name: "Halo Ring", radius: 2.0e7, g0: 0.02, parent: "polyphemus", a: 1.92e9,
+                 solid: true, atmo: null, phase0: 5.55, gen: true,
+                 style: { color: 0xb7a76d, ringworld: { majorR: 3.1, rimR: 0.075 } } },
     boreas: { name: "Boreas", radius: 2.5e7, g0: 10.0, parent: "sun", a: 4.1 * AU,
               solid: false, atmo: { height: 9.0e5, seaLevelDensity: 0.4 }, phase0: 3.6, gen: true, gas: true,
               style: { color: 0x7fa8c8, halo: 0xa8c8e0 },
@@ -149,7 +156,7 @@ function pandoraSystem() {
                solid: false, atmo: null, phase0: 5.2, gen: true,
                style: { color: 0xff6a4a, star: true, glow: "255,106,74" } },
   };
-  const order = ["sun", "prometheus", "polyphemus", "polyi", "earth", "moon", "polyii", "boreas",
+  const order = ["sun", "prometheus", "polyphemus", "polyi", "earth", "moon", "polyii", "ringworld", "boreas",
                  "acb", "proxima"];
   const bodies = buildCatalog(defs, order);
   // Companion-star SOI: buildCatalog's Laplace formula a·(mu/muA)^0.4 assumes the child
@@ -194,7 +201,9 @@ function pandoraSystem() {
       "circles far outside — really ~13,000 AU out; we drew it ~200x closer so your map " +
       "isn't all empty black. Pandora's air is thicker than Earth's — lovely for parachutes, " +
       "poisonous to breathe, so the Connies keep their bubble helmets sealed. Hell's Gate " +
-      "Station is overhead. 🌌",
+      "Station is overhead. Look farther out around Polyphemus for the <b>Halo Ring</b>: " +
+      "not a moon but a tiny artificial world, held together by technology. To reach it, " +
+      "first capture Polyphemus, then make a second transfer just like a moon encounter. 🌌",
   };
 }
 

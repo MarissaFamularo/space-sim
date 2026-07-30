@@ -194,6 +194,14 @@ physics values. The generator still owns mass, gravity, SOI, and orbital-spacing
 Forged systems keep the readable system name, but their full forge code is `SYSTEM.seed`
 and is the share/revisit key. A second home moon, when requested, is role-keyed `moon2`.
 
+**Ringworld object (CONTRACT REVISION 2026-07-30b):** a body may carry
+`style.ringworld:{majorR,rimR}`. It is targetable and rides a normal parent-body rail,
+but it is not a spherical moon: render draws a torus, physics skips its tiny mass for
+long-range gravity, and collision accepts contact only on the narrow ring rim. A landed
+craft remains co-moving with the ring's center using its usual `landed.offset`; safe
+ringworld touchdown requires landing legs and ≤8 m/s relative speed. `parkingOrbit()`
+returns a formation-flying position outside the rim, never a fictional orbit around it.
+
 After a swap the sim must be rebuilt (`newSimState`), the render world rebuilt
 (`Render.rebuildWorld()`), and the target picker refilled (`UI.rebuildTargets()`) —
 `main.js arriveInSystem()` is the one place that does this dance.

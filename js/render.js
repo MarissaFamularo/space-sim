@@ -904,6 +904,29 @@ function makeBodyGroup(key) {
   const style = styleFor(key);
   const g = new THREE.Group();
 
+  // Halo Ring: a tiny artificial world, not a spherical moon. The green inner ribbon
+  // is the living side; the dark-gold outside is the forged machinery that spins it
+  // and supplies the artificial gravity. Its actual orbital position still comes from
+  // bodyStateAt like every other object, so nearby planets really see it loop past.
+  if (style.ringworld) {
+    const major = b.radius * style.ringworld.majorR;
+    const rim = b.radius * style.ringworld.rimR;
+    const shell = new THREE.Mesh(new THREE.TorusGeometry(major, rim, 14, 160),
+      new THREE.MeshStandardMaterial({ color: 0x776848, roughness: 0.44, metalness: 0.76,
+        emissive: 0x211c0e, emissiveIntensity: 0.22 }));
+    g.add(shell);
+    const living = new THREE.Mesh(new THREE.TorusGeometry(major, rim * 0.42, 10, 160),
+      new THREE.MeshStandardMaterial({ color: 0x4c9a68, roughness: 0.7, metalness: 0.18,
+        emissive: 0x164425, emissiveIntensity: 0.58 }));
+    living.scale.z = 0.55;
+    g.add(living);
+    const lights = new THREE.Mesh(new THREE.TorusGeometry(major, rim * 0.09, 8, 160),
+      new THREE.MeshBasicMaterial({ color: 0xd8c778, transparent: true, opacity: 0.82 }));
+    lights.scale.z = 0.18;
+    g.add(lights);
+    return g;
+  }
+
   const detail = key === "earth" ? [96, 64] : [48, 32];
   let mat;
   const tex = (style.star || b.blackHole) ? null : planetTexture(key);

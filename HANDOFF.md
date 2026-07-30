@@ -9,6 +9,34 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-07-30): 💍 HALO RING — Polyphemus's tiny artificial world (his spec)
+
+Paddy's call: add the Halo ring world to the Proxima/Pandora system; it orbits the gas
+giant with other visible moons, is an object rather than a moon, and requires a difficult
+landing on its living side. Built in the existing **Pandora System** (its map already has
+Proxima Centauri as the outer third star): arrive via Starmap/Proxima/Pandora or Neptune's
+Pandora wormhole, capture Polyphemus, then target the Halo Ring for the second encounter.
+The target picker nests it under Polyphemus, so it follows that exact orbital sequence.
+
+**Shipped:**
+1. `famous.js`: `ringworld` on a 1.92-Gm Polyphemus rail beyond Pandora, inside the
+   giant's SOI. Pandora, Little Sister, Polyphemus I, and Polyphemus II remain the other
+   local moons. Arrival brief explains the two-burn route.
+2. `render.js`: a small torus with a green living ribbon and a dark-gold forged tech side;
+   it is an actual moving system object, so it is visible from nearby moon/planet surfaces.
+3. `physics.js`: no fake planet gravity from the ring's tiny mass; it is a precision rim
+   landing—legs required and ≤8 m/s relative speed. The teleport shortcut only flies
+   formation outside its rim; it does not pretend the ring has a conventional orbit.
+4. Navigator fact + two Pandora regression tests. `famous_test` (134 checks) and
+   `teleport_test` (37 checks) are green.
+
+**Flagged / rung 4:** the required human test is visual: from Pandora's surface, verify
+the torus reads as a loop around Polyphemus and the green/forged sides read at the chosen
+camera angle. The primary taste knobs are `majorR`, `rimR`, and the three torus materials
+in `render.js makeBodyGroup`.
+
+---
+
 ## Status (2026-07-30): 🛠 SYSTEM FORGE — design a star system, then fly it
 
 Mom's call: Paddy loves finding and designing star systems. The Starmap now has

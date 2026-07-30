@@ -92,6 +92,10 @@ for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16", "Owius"]) {
   check("Pandora gravity ≈ 0.8 g (canon)", approx(B.earth.g0, 7.85, 0.01), "");
   check("Pandora's air is thicker than Earth's",
     B.earth.atmosphere.seaLevelDensity > 1.225, "");
+  check("Halo Ring is an artificial Polyphemus-orbiting object, not a moon sphere",
+    B.ringworld.parent === "polyphemus" && B.ringworld.style.ringworld && B.ringworld.solid === true, "");
+  check("Halo Ring sits outside Pandora and inside Polyphemus's SOI",
+    B.ringworld.orbitRadius > B.earth.orbitRadius && B.ringworld.orbitRadius < B.polyphemus.soiRadius * 0.6, "");
   check("Little Sister isn't a tinyMoon (readouts stay honest)", !B.moon.tinyMoon,
     `soi=${(B.moon.soiRadius / 1000).toFixed(0)} km vs r=${(B.moon.radius / 1000).toFixed(0)} km`);
 }

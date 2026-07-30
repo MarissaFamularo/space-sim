@@ -51,6 +51,7 @@ const WORLD_FACTS = {
   Ganymede: "Ganymede is the biggest moon in the solar system — bigger than the planet Mercury!",
   Callisto: "Callisto has the most craters of any world — its surface is 4 billion years of bullseyes.",
   Titan: "Titan's air is thicker than Earth's, with rain and lakes — but of liquid methane. The Huygens probe landed here by parachute in 2005.",
+  "Halo Ring": "The Halo Ring is an artificial world, not a moon: its tiny mass cannot hold you down. The green living surface spins so the floor pushes on your boots like gravity, while the dark-gold outer side is forged machinery. Match its speed with landing legs, then touch down VERY gently.",
   Uranus: "Uranus rolls around the Sun on its side — its seasons last 21 Earth-years each.",
   Neptune: "Neptune has the fastest winds in the solar system — over 2,000 km/h. Only Voyager 2 has ever visited it.",
   Pluto: "Pluto is a dwarf planet with a giant heart-shaped nitrogen glacier. New Horizons flew past in 2015 after a 9-year trip. (Its REAL orbit is stretched and tilted — it even dips inside Neptune's!)",

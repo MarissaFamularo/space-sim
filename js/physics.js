@@ -237,6 +237,9 @@ export const Physics = {
       // Gravity from EVERYONE (restricted n-body superposition).
       const acc = { x: 0, y: 0 };
       for (const s of states) {
+        // Ringworld gravity is centrifugal tech at the surface, not a planet-sized
+        // mass pulling spacecraft across the Polyphemus system.
+        if (s.body.style && s.body.style.ringworld) continue;
         const g = gravToward(pos, s.pos, s.body.mu);
         acc.x += g.x; acc.y += g.y;
       }
@@ -307,6 +310,23 @@ export const Physics = {
       for (const s of states) {
         const relX = pos.x - s.pos.x, relY = pos.y - s.pos.y;
         const rM = Math.hypot(relX, relY);
+        if (s.body.style && s.body.style.ringworld) {
+          const rw = s.body.style.ringworld;
+          const major = s.body.radius * rw.majorR, rim = s.body.radius * rw.rimR;
+          if (Math.abs(rM - major) > rim) continue; // fly through the empty middle
+          const ur = rM > 0 ? { x: relX / rM, y: relY / rM } : { x: 0, y: 1 };
+          const vrel = { x: vel.x - s.vel.x, y: vel.y - s.vel.y };
+          // A ring is a precision landing: only its living face has a safe, spun-up
+          // floor, and the forged machinery on the other side is not forgiving.
+          const safe = (c.legCount || 0) > 0 && Math.hypot(vrel.x, vrel.y) <= 8;
+          pos.x = s.pos.x + ur.x * major; pos.y = s.pos.y + ur.y * major;
+          vel.x = s.vel.x; vel.y = s.vel.y;
+          if (safe) {
+            landed = true;
+            landedInfo = { body: s.key, offset: { x: ur.x * major, y: ur.y * major }, ringworld: true };
+          } else { crashed = true; sim.crashedInto = s.key; sim.ringworldImpact = true; }
+          break;
+        }
         if (rM > s.body.radius) continue;
         const ur = rM > 0 ? { x: relX / rM, y: relY / rM } : { x: 0, y: 1 };
         const vrel = { x: vel.x - s.vel.x, y: vel.y - s.vel.y };
@@ -737,6 +757,18 @@ export const Physics = {
         pos: { x: bs.pos.x + off * Math.cos(th), y: bs.pos.y + off * Math.sin(th) },
         vel: { x: bs.vel.x, y: bs.vel.y }, // fly formation with the moon
         angle: th + Math.PI / 2, // heading (-sin a, cos a) = -(cos th, sin th): nose AT the moon
+        radius: off, altitude: off - b.radius, speed: 0, coOrbit: true,
+      };
+    }
+    // A ringworld has no planet-like mass to park around. Teleport therefore puts the
+    // ship in formation just outside its rim, co-moving in Polyphemus orbit — matching
+    // its speed is still the real trick before a precision landing.
+    if (b.style && b.style.ringworld) {
+      const rw = b.style.ringworld;
+      const off = b.radius * (rw.majorR + rw.rimR * 3);
+      return {
+        pos: { x: bs.pos.x + off * Math.cos(th), y: bs.pos.y + off * Math.sin(th) },
+        vel: { x: bs.vel.x, y: bs.vel.y }, angle: th + Math.PI / 2,
         radius: off, altitude: off - b.radius, speed: 0, coOrbit: true,
       };
     }
