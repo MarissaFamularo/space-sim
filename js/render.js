@@ -3247,7 +3247,16 @@ function updateFlight(sim) {
   const radial = _v2.set(dom.rel.x, dom.rel.y, 0);
   if (rl > 0.5) radial.multiplyScalar(1 / rl); else radial.set(0, 1, 0);
 
-  const camDist = Math.max(20, craftHeight * 4 + 30) * followZoom;
+  // A ringworld is millions of metres across but intentionally has no planet-sized
+  // gravity sphere. Without this framing floor, a ship right beside its rim gets the
+  // normal rocket close-up and the whole loop sits outside the camera view.
+  const targetBody = sim.target && BODIES[sim.target];
+  const ringMajor = targetBody && targetBody.style && targetBody.style.ringworld
+    ? targetBody.radius * targetBody.style.ringworld.majorR : 0;
+  const targetDist = targetBody ? Math.hypot(sim.craft.pos.x - states[targetBody.key].pos.x,
+    sim.craft.pos.y - states[targetBody.key].pos.y) : Infinity;
+  const ringFrame = ringMajor > 0 && targetDist < ringMajor * 6 ? ringMajor * 2.7 : 0;
+  const camDist = Math.max(20, craftHeight * 4 + 30, ringFrame) * followZoom;
   followDist = camDist; // arrows scale with it so guides stay readable zoomed out
   const se = Math.sin(followCam.elevation), ce = Math.cos(followCam.elevation);
   const sa = Math.sin(followCam.azimuth), ca = Math.cos(followCam.azimuth);
