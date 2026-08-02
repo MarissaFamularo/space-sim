@@ -9,6 +9,77 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-08-02): 💍🔨 HALO RING TUNNELS, THE ROCKET FORGE DUEL & 📁 THE PELICAN (his spec)
+
+Paddy's spec (via Mom, verbatim intent): the ring gets an INNER LAYER — habitable,
+FLAT, landable; the ring is big enough to pick as an orbit target; once landed there
+are TUNNELS leading around the ring with "mini battles… a rocket building contest,
+best score wins"; winning unlocks the craft file PELICAN — a vehicle carrier that
+lands on bottom boosters, with 2 stages you activate/deactivate with SHIFT (first
+the bottom boosters for takeoff/landing, second the propulsion one). Built all of it.
+
+**Shipped (rung 3 — ring-forge-check.mjs 24/24 ALL GREEN; boot smoke 9/9 + flight
+check 14/14 green; all 18 node suites green incl. NEW tests/contest_test.mjs 38
+checks; navigator_check ALL GREEN; zero page errors):**
+1. **Flat habitable inner layer** (render.js): the old squashed green torus ribbon is
+   now a FLAT painted band on the ring's inner surface — seeded meadows, lakes, warm
+   field-lights (emissiveMap so they read on the night side), forged rails on both
+   edges (`ringworldBandTexture`). Physics landing band unchanged (legs + ≤8 m/s on
+   the living side, shipped 2026-07-30). Orbit-target ask was already true: the 🎯
+   picker lists Halo Ring (browser-asserted) and ✨ Teleport flies formation; the
+   existing arrival callout honestly teaches WHY you fly formation instead of
+   orbiting (its mass is tiny — same as real probes at Mars's moons).
+2. **🔩 THE RING TUNNELS** (render.js + main.js): landed on the ring, B drops you
+   INSIDE it — a 3-room chain `ringtunnel → ringtunnel → forge` riding the proven
+   multi-room machinery, spin-gravity floors (the hint bar teaches it), forged-gold
+   walls, amber guide-strips running the corridor. Landing callout says the floor is
+   humming and points at B.
+3. **🔨 THE ROCKET FORGE** (new js/contest.js + a "contest" console kind): the
+   deepest chamber holds the duel anvil, a furnace, and the rivals' scoreboard
+   (Rustbolt 4,800 · Gearspark 6,200 · Vex, Forge Champion 7,000). Touching the
+   anvil opens the BUILD-OFF panel: up to 6 chemical parts, live readout, score =
+   REAL Δv (Tsiolkovsky — same math loadStage flies), and the build must clear
+   TWR ≥ 1 at Pandora, so "all tanks, no engine" honestly never leaves the pad.
+   Node-tested against hand-computed numbers: hawk+2 mega = 6,776 (loses!),
+   hawk+3 mega = 7,245 (the discoverable winner), hawk+osprey+3 mega = 8,411 (the
+   clever mix — the vacuum-engine lesson pays). Losing round still saves a personal
+   best; retry lives inside the panel; the anvil re-arms when you step away
+   (`Render.rearmContest`). Win pays +50 science with a Tsiolkovsky fact.
+4. **📁 THE PELICAN** (contest.js + builder.js + main.js): first win writes NEW key
+   `spacesim.pelican.v1` (Rule 2 — his five old keys untouched, garbage-tolerant,
+   node-tested) and a gold 📁 PELICAN button appears in the VAB palette forever
+   after. It loads a standard v:1 share-code (proven importCraft path): belly
+   boosters (800 kN, `engineMode:"lift"`) at the BOTTOM, legs, mega tank, cruise
+   drive (260 kN, ve 4,800, `engineMode:"cruise"`), a ROVER in the bay (Space
+   releases it when landed — existing machinery), Swift cockpit, chute.
+5. **SHIFT = engine groups** (main.js only — physics.js untouched): engines tagged
+   `engineMode` form lift/cruise groups sharing one tank; launch lights LIFT (the
+   takeoff-and-landing set), SHIFT swaps groups (callouts teach the trade: big
+   thirsty push vs more speed per ton — Starship's sea-level vs vacuum Raptors),
+   staging keeps the pilot's group when it survives. Untagged craft behave exactly
+   as before — school mode regression green.
+6. **Navigator taught** (safety block untouched): snapshot `flight.onHaloRing`,
+   `flight.engineGroup`, `forge {pelicanUnlocked, bestScore_ms}`; SYSTEM bullet
+   teaches ringworlds-are-fiction + spin-gravity-is-real, the rocket equation as
+   the duel's score, and hint-first coaching (never hand over the winning build).
+   ARCHITECTURE.md CONTRACT REVISION 2026-08-02 written; constants skill catalogs
+   the new key; ring-forge-check.mjs added to the browser-verification skill.
+
+**Flagged / rung 4 (play-test with him):**
+- **The forge duel is the acceptance test**: watch him tinker — is beating Vex
+  (7,000) the right difficulty? His likely first big build (hawk + 2 mega) loses by
+  224 m/s, which is DESIGNED to force one more idea; if it frustrates instead of
+  hooks, the rival scores are one array in contest.js (`RIVALS`).
+- **The flat living band is browser-verified but only from formation distance** —
+  worth a landed look-around with him (the knobs are `ringworldBandTexture` colors
+  and the band's `rim * 1.15` width in render.js makeBodyGroup).
+- **Pelican feel**: SHIFT toggling is browser-verified (800↔260 kN); the actual
+  fly-a-rover-somewhere-and-land-on-boosters mission is his to fly. If the belly
+  boosters feel too strong/weak, the numbers live in contest.js `PELICAN_PARTS`.
+- Forge panel keyboard: arrows/E are blocked while it's open (capture-phase) — a
+  stray tap can't walk the Connie or exit the station under the panel. Verified
+  headlessly; one human confirmation that typing feels right is worth it.
+
 ## Status (2026-07-30): 💍 HALO RING — Polyphemus's tiny artificial world (his spec)
 
 Paddy's call: add the Halo ring world to the Proxima/Pandora system; it orbits the gas

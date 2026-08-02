@@ -665,3 +665,52 @@ taught by the Navigator; 2× Pluto vs the real 400–700 AU is a disclosed compr
   Nine science, 2×-Pluto honesty, Roman-numeral moon-naming invitation). Safety
   block untouched — navigator_check green.
 - **`WORLD_FACTS`** gains "Unknown Object" (teaser), "Cylan", "Cylan I", "Cylan V".
+
+## CONTRACT REVISION 2026-08-02 — 💍 Halo Ring tunnels, 🔨 the Rocket Forge duel, 📁 the Pelican
+
+His spec (via Mom): the ring gets a flat habitable inner layer you can land on and
+pick as an orbit target; landing opens TUNNELS around the ring with a "mini battle" —
+a rocket BUILDING CONTEST, best score wins; the prize is the PELICAN craft file (a
+vehicle carrier that lands on belly boosters, with two SHIFT-switched engine stages).
+
+- **New module `js/contest.js`** — pure duel logic (node-tested,
+  tests/contest_test.mjs, 38 checks) + the forge DOM panel (browser-only section).
+  Score = real Δv (Tsiolkovsky) computed with the SAME per-stage model as main.js
+  `loadStage` (thrust sums, exhaust velocity averages, all fuelMass shared); a build
+  must clear TWR ≥ 1 at Pandora (`PANDORA_G0` asserted against famous.js in the
+  test). Exports `PELICAN_CODE` — a standard v:1 share-code whose two special
+  engines travel in `myParts` (rides the proven `importCraft` path unchanged).
+- **New storage key `spacesim.pelican.v1`** — `{ v: 1, unlocked, best }`, written by
+  `savePelican()` on a forge win / new personal best; parsed by pure
+  `parsePelicanSave` (garbage → locked, node-tested). Rule 2: new key, his five old
+  keys untouched.
+- **Engine groups (`sim.craft.engineModes` / `sim.craft.engineMode`)** — main.js
+  `activeStage` now also buckets a stage's engines by the optional PartDef field
+  `engineMode: "lift" | "cruise"` (untagged engines burn always). `loadStage` keeps
+  the pilot's group across staging when it survives; SHIFT (new flight key,
+  `toggleEngineMode`) swaps groups and recomputes `sim.craft.thrust` /
+  `exhaustVelocity` only — physics.js untouched, fuel stays one shared tank. A craft
+  with no tagged engines behaves exactly as before (`engineModes: null`).
+- **Interior contract extensions (render.js `enterStation`)** — `info.ringworld`
+  pins the room plan `["ringtunnel","ringtunnel","forge"]` (new archetypes: walls,
+  signs, MOOD lights, labels; forge holds the furnace, the rival scoreboard, and a
+  console of new kind `"contest"`). A contest console fires `cb.onContest` instead
+  of `onScience` (no points for walking up). New frozen-API method
+  **`Render.rearmContest()`** — main.js calls it when the forge panel closes; the
+  anvil re-arms once the Connie steps ≥1.6 m away (prevents same-frame re-fire).
+- **`Builder.refreshPalette()`** (new API method) — re-renders the palette so the
+  📁 PELICAN button (shown when `loadPelican().unlocked`) appears the moment the
+  duel is won; the button loads `PELICAN_CODE` through the share-code path.
+- **Render: the ring's living layer is now a FLAT band** — `ringworldBandTexture`
+  (painted meadows/lakes/field-lights, emissiveMap for the night side) on an
+  open-ended cylinder replacing the old squashed green torus; the physics landing
+  band is unchanged.
+- **Navigator** — snapshot adds `flight.onHaloRing`, `flight.engineGroup`, and
+  top-level `forge {pelicanUnlocked, bestScore_ms}` (defensive localStorage read);
+  SYSTEM prompt gains the 💍🔨 HALO RING & ROCKET FORGE bullet (ringworlds are
+  fiction + spin gravity is real, the rocket equation, Starship's two engine sets,
+  hint-first duel coaching). Safety block untouched — navigator_check green.
+- **Verification**: `ring-forge-check.mjs` added to the browser-verification skill
+  (24 checks, ALL GREEN: picker target, formation teleport, real-collision ring
+  landing, tunnel chain, anvil → panel → hand-computed 7,245 win → unlock →
+  reload → 📁 button → Pelican load → SHIFT lift/cruise/lift → climb).

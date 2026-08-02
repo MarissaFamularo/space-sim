@@ -26,6 +26,8 @@ import { makeInstance, findPart } from "./state.js";
 // Mods (Phase 3): the part editor saves overrides/custom parts through here. The catalog
 // we render is the merged live array (main passes Mods.PARTS as partsCatalog).
 import * as Mods from "./mods.js";
+// 🔨 Forge prize (pure data + save reader; contest.js never imports builder — no cycle).
+import { loadPelican, PELICAN_CODE } from "./contest.js";
 
 // Module-local handles, set in init().
 let _craft = null;
@@ -138,6 +140,13 @@ export const Builder = {
     closeEditor(); // don't leave part code floating over the flight view
     if (_shareEl) _shareEl.style.display = "none"; // nor a share code
   },
+
+  // 🔨 Re-render the palette so the 📁 PELICAN button appears the moment the forge
+  // duel is won (main.js calls this from the win handler). Contract extension —
+  // recorded in ARCHITECTURE.md alongside init/show/hide/setFacility.
+  refreshPalette() {
+    renderPalette();
+  },
 };
 
 Object.freeze(Builder);
@@ -199,6 +208,19 @@ function renderPalette() {
       "text-transform:uppercase;color:#ffd479;border-top:1px solid #24304d;padding-top:6px;";
     _paletteWrap.appendChild(divider);
     for (const def of customs) _paletteWrap.appendChild(makePaletteRow(def));
+  }
+
+  // 📁 THE PELICAN — the forge-duel prize craft. The button exists only once the
+  // win is saved (spacesim.pelican.v1); loading rides the proven share-code path.
+  if (loadPelican().unlocked) {
+    const pel = document.createElement("button");
+    pel.textContent = "📁 PELICAN — the forge prize";
+    pel.title = "The ring builders' vehicle-carrier: belly boosters for takeoff and landing, " +
+      "a cruise drive for the trip, a Rover in the bay. SHIFT switches engines in flight.";
+    pel.style.cssText = "margin-top:8px;padding:7px 8px;font-weight:700;background:#3a2f14;" +
+      "color:#ffd870;border:1px solid #c8a84a;border-radius:6px;cursor:pointer;";
+    pel.addEventListener("click", loadPelicanCraft);
+    _paletteWrap.appendChild(pel);
   }
 
   if (Mods.hasMods()) {
@@ -459,7 +481,15 @@ function openShareImport() {
 function loadFromSharePanel() {
   const v = Mods.importCraft(_shareArea.value, _catalog);
   if (!v.ok) { _shareMsg.textContent = v.error; _shareMsg.style.color = "#ff9a8a"; return; }
-  // Any custom parts the code carries that we don't have yet become his parts too.
+  applyImportedCraft(v);
+  _shareMsg.textContent = `"${v.name}" is on the pad! ` +
+    (v.newParts.length ? `(${v.newParts.length} custom part${v.newParts.length > 1 ? "s" : ""} joined your palette.)` : "");
+  _shareMsg.style.color = "#8affa8";
+}
+
+// Shared tail of every craft-code load (share panel + the Pelican prize):
+// any custom parts the code carries that we don't have yet become his parts too.
+function applyImportedCraft(v) {
   for (const def of v.newParts) Mods.addCustom(def);
   _craft.parts.length = 0; // in place — main.js holds the reference
   for (const id of v.stack) _craft.parts.push(makeInstance(id, 0));
@@ -467,9 +497,16 @@ function loadFromSharePanel() {
   reflowStages();
   renderPalette();
   commit();
-  _shareMsg.textContent = `"${v.name}" is on the pad! ` +
-    (v.newParts.length ? `(${v.newParts.length} custom part${v.newParts.length > 1 ? "s" : ""} joined your palette.)` : "");
-  _shareMsg.style.color = "#8affa8";
+}
+
+// 📁 Load the forge prize. The code is module data (node-tested to import cleanly),
+// but fail friendly anyway — a broken load must never crash the palette.
+function loadPelicanCraft() {
+  const v = Mods.importCraft(PELICAN_CODE, _catalog);
+  if (!v.ok) { showHint(v.error); return; }
+  applyImportedCraft(v);
+  showHint("📁 The PELICAN is on the pad! Belly boosters light first for liftoff and landing — " +
+    "press SHIFT in flight to switch to the cruise drive.");
 }
 
 // ----------------------------------------------------------------------------

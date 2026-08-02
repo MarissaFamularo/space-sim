@@ -15,6 +15,7 @@ import { pickCrew, loadCrewPicks } from "./connies.js";
 import { Menu } from "./menu.js";
 import { Tracking } from "./tracking.js";
 import { School } from "./school.js";
+import { openForgePanel, loadPelican, savePelican } from "./contest.js";
 
 const canvas = document.getElementById("scene");
 let craft = newCraft();
@@ -93,6 +94,12 @@ const isStarKey = (k) => k === "sun" || !!(BODIES[k] && BODIES[k].style && BODIE
 function activeStage(craft, stageNum) {
   let thrust = 0, veSum = 0, engines = 0, stageFuel = 0, remainingMass = 0, chutes = 0, docks = 0;
   let legs = 0, solar = 0, rovers = 0, wings = 0, stationParts = 0, centrifuges = 0, shields = 0;
+  // 📁 Engine GROUPS (the Pelican): an engine may carry engineMode:"lift"|"cruise".
+  // Tagged engines burn only when their group is selected (SHIFT switches); untagged
+  // engines burn always. Real ships do exactly this — landing engines and cruise
+  // engines are different machines sharing one tank.
+  const modes = { lift: { thrust: 0, veSum: 0, n: 0 }, cruise: { thrust: 0, veSum: 0, n: 0 },
+                  always: { thrust: 0, veSum: 0, n: 0 } };
   for (const inst of craft.parts) {
     const def = findPart(PARTS, inst.partId);
     if (!def) continue;
@@ -109,12 +116,19 @@ function activeStage(craft, stageNum) {
       if (def.type === "shield") shields++;
     }
     if (inst.stage === stageNum) {
-      if (def.type === "engine") { thrust += def.thrust || 0; veSum += def.exhaustVelocity || 0; engines++; }
+      if (def.type === "engine") {
+        thrust += def.thrust || 0; veSum += def.exhaustVelocity || 0; engines++;
+        const grp = (def.engineMode === "lift" || def.engineMode === "cruise") ? def.engineMode : "always";
+        modes[grp].thrust += def.thrust || 0;
+        modes[grp].veSum += def.exhaustVelocity || 0;
+        modes[grp].n++;
+      }
       stageFuel += def.fuelMass || 0;
     }
   }
   return { thrust, exhaustVelocity: engines ? veSum / engines : 0, stageFuel, remainingMass,
-           chutes, legs, solar, rovers, docks, wings, stationParts, centrifuges, shields };
+           chutes, legs, solar, rovers, docks, wings, stationParts, centrifuges, shields,
+           modes, hasModes: modes.lift.n > 0 || modes.cruise.n > 0 };
 }
 function maxStage(craft) {
   return craft.parts.reduce((m, i) => Math.max(m, i.stage || 0), 0);
@@ -138,6 +152,46 @@ function loadStage(stageNum) {
   sim.craft.shieldCount = s.shields; // physics: a heat shield soaks ~70% of reentry heating
   sim.stageWeightKN = s.remainingMass * BODIES.earth.g0;
   sim.cantLiftOff = s.thrust <= sim.stageWeightKN;
+  // 📁 Engine groups: keep the pilot's chosen mode across a staging event if the new
+  // stage still has that group; a fresh modes-craft starts on its LIFT group (that's
+  // the takeoff-and-landing set — exactly what the pad and the touchdown need).
+  if (s.hasModes) {
+    sim.craft.engineModes = s.modes;
+    const prev = sim.craft.engineMode;
+    sim.craft.engineMode = (prev && s.modes[prev] && s.modes[prev].n > 0) ? prev
+      : (s.modes.lift.n > 0 ? "lift" : "cruise");
+    applyEngineMode();
+  } else {
+    sim.craft.engineModes = null;
+    sim.craft.engineMode = null;
+  }
+}
+
+// Recompute live thrust/exhaust from the selected engine group (+ any always-on
+// engines). Pure bookkeeping over which engines are LIT — physics.js is untouched
+// and the tank is shared, exactly like a real multi-engine ship.
+function applyEngineMode() {
+  const m = sim.craft.engineModes;
+  if (!m) return;
+  const g = m[sim.craft.engineMode] || { thrust: 0, veSum: 0, n: 0 };
+  const thrust = m.always.thrust + g.thrust;
+  const n = m.always.n + g.n;
+  sim.craft.thrust = thrust;
+  sim.craft.exhaustVelocity = n ? (m.always.veSum + g.veSum) / n : 0;
+  sim.cantLiftOff = thrust <= (sim.craft.mass || 0) * BODIES.earth.g0;
+}
+
+// SHIFT in flight: switch engine groups (the Pelican's two-stage trick — "first time
+// it activates the bottom boosters… second time it fires the propulsion one").
+function toggleEngineMode() {
+  if (sim.mode !== "flight" || sim.status === "crashed" || !sim.craft.engineModes) return;
+  const to = sim.craft.engineMode === "lift" ? "cruise" : "lift";
+  if (!sim.craft.engineModes[to] || sim.craft.engineModes[to].n === 0) return;
+  sim.craft.engineMode = to;
+  applyEngineMode();
+  copilotSay(to === "lift"
+    ? "🔥 <b>Belly boosters lit</b> (" + Math.round(sim.craft.thrust) + " kN) — the landing group: big push, thirsty. This is the set for takeoffs and touchdowns. SHIFT switches back."
+    : "🚀 <b>Cruise drive burning</b> (" + Math.round(sim.craft.thrust) + " kN) — gentler push but far more speed per ton of fuel. This is the engine for going PLACES. SHIFT brings the boosters back for landing.");
 }
 
 // Crew policy: a Connie flies only when a CREWED pod is aboard. A probe-core-only rocket
@@ -808,6 +862,7 @@ window.addEventListener("keydown", (e) => {
     else startEva();
   }
   if (e.key === " ") { e.preventDefault(); doStage(); }
+  if (e.key === "Shift" && !e.repeat) toggleEngineMode();
   if (e.key === "b" || e.key === "B") boardBase();
   // Any flight input takes the ship back from the 🤖 autopilot (real-autopilot rule).
   if ("zZxX.,".includes(e.key) && sim.interstellar && sim.interstellar.auto) autopilotOff();
@@ -1083,6 +1138,7 @@ function flightCallouts() {
         (crew ? crew + " is out of the capsule, standing on another world — look beside your ship!"
               : "Uncrewed and perfect — the probe's instruments are already sniffing the ground, like a real robot lander.") + fact +
         ((sim.craft.roverCount || 0) > 0 ? " You've got a <b>Rover</b> aboard — press Space to set it loose!" : "") +
+        (sim.landed.ringworld ? " And listen — the floor is HUMMING. Press <b>B</b>: there are tunnels inside the ring." : "") +
         " If you've still got fuel, throttle up (Z, then ↑) to lift off again.");
     }
   }
@@ -1141,8 +1197,9 @@ const SCIENCE_FACTS = {
   alien: ["👽🎵 The resident hums at you — in PRIME NUMBERS. 2, 3, 5, 7, 11… Math is the one language every scientist expects the universe to share. It taps its console and gifts you its notes: ALIEN SCIENCE!",
         "👽📐 It draws you a right triangle and hums three notes: 3, 4, 5. Pythagoras works in every star system — that's WHY scientists think math is how we'd talk to aliens first."],
   monument: ["🗼📖 The story screen wakes for you. In pictures: a golden star… the star swelling, angry… a thousand ships rising together, all lights on… and one tower left glowing behind, pointed at the sky. They SAW their supernova coming and sailed away in time — and here's the real science hiding in it: stars announce a supernova ages ahead (astronomers watch Betelgeuse for exactly this), and the blast leaves a spinning lighthouse behind. Their beacon still shines. So does the star's.",],
+  forgewin: ["🔨🏆 <b>FORGE CHAMPION!</b> You beat the ring's builders at their own game with the same equation Tsiolkovsky wrote in 1903: Δv = exhaust speed × ln(full mass ÷ empty mass). That one line is why rockets are mostly fuel — and why staging, light parts, and efficient engines win. The builders hand over their prize: the <b>📁 PELICAN</b>, their vehicle-carrier, is now in your VAB!",],
 };
-const SCIENCE_VALUE = { bio: 10, materials: 10, astro: 10, salvage: 15, basewreck: 15, alien: 25, vault: 50, monument: 25 };
+const SCIENCE_VALUE = { bio: 10, materials: 10, astro: 10, salvage: 15, basewreck: 15, alien: 25, vault: 50, monument: 25, forgewin: 50 };
 let factRotor = 0;
 function awardScience(kind) {
   const pts = SCIENCE_VALUE[kind] || 10;
@@ -1548,6 +1605,9 @@ function updateBasesSim() {
 }
 function boardBase() {
   if (Render.isInside()) return;
+  // 💍 Landed on the Halo Ring's living side: B goes DOWN, into the ring itself —
+  // the forged service tunnels that run around it, and the Rocket Forge at the end.
+  if (sim.status === "landed" && sim.landed && sim.landed.ringworld) { boardRingTunnels(); return; }
   const nb = nearestBase();
   if (!nb) return;
   const base = nb.base;
@@ -1561,6 +1621,39 @@ function boardBase() {
     : base.wrecked
     ? "🚪🔦 <b>You step into " + base.name + ".</b> Real gravity — nothing floats here, and everything that fell is still where it landed. Look at those long scrapes down the walls… something big shouldered through. Find the log screen and learn what happened."
     : "🚪🏠 <b>Welcome to " + base.name + "!</b> Real planet gravity underfoot — walk with ← →, jump with ↑. The greenhouse is thriving and the science screens are glowing. This is what a working off-world outpost looks like.");
+}
+
+// ---- 💍 The Halo Ring tunnels + 🔨 the Rocket Forge duel (his spec) ----
+let pelicanState = loadPelican(); // spacesim.pelican.v1 — NEW key, his old saves untouched
+function boardRingTunnels() {
+  Render.enterStation(
+    { name: "Halo Ring Tunnels", ringworld: true, spin: true,
+      seedKey: SYSTEM.key + "/ringworld" },
+    { onScience: awardScience,
+      onContest: openForgeContest,
+      onExit: () => copilotSay("🚀 Back on the ring's living surface — your ship is right where you parked it, and the whole sky is Polyphemus.") });
+  copilotSay("🚪💍 <b>You drop through a hatch INTO the Halo Ring.</b> Forged tunnels curve away in both directions — follow one far enough and you'd walk the whole loop, " +
+    "millions of steps around. The floor presses up on your boots because the ring SPINS — centrifuge gravity, the only honest way to make gravity with machinery. " +
+    "Amber guide-strips point deeper: the builders left something running down there…");
+}
+function openForgeContest() {
+  copilotSay("🔨 <b>THE ROCKET FORGE wakes up!</b> The builder bots challenge you to their old game: forge the best rocket. Your score is real <b>Δv</b> — the rocket equation, no tricks. Beat every bot on the board!");
+  openForgePanel({
+    catalog: PARTS,
+    best: pelicanState.best,
+    onScore: (score) => { // a losing round still records a personal best
+      if (score > pelicanState.best) pelicanState = savePelican({ ...pelicanState, best: score });
+    },
+    onWin: (score) => {
+      const first = !pelicanState.unlocked;
+      pelicanState = savePelican({ unlocked: true, best: Math.max(score, pelicanState.best) });
+      if (first) {
+        awardScience("forgewin");
+        Builder.refreshPalette(); // the 📁 PELICAN button appears in the VAB
+      }
+    },
+    onClose: () => Render.rearmContest(), // the anvil fires again once she steps away
+  });
 }
 
 // ---- ☄️ Ring-rock rain (Hundun, style.meteorRain): the young ring still sheds ----

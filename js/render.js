@@ -17,6 +17,7 @@ import { UnrealBloomPass } from "../vendor/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "../vendor/postprocessing/OutputPass.js";
 import { BODIES, PLANET_KEYS, SYSTEM, bodyStateAt, dominantBody, RING_BAND, FORMING_DISC_BAND } from "./state.js";
 import { PARTS } from "./mods.js"; // merged catalog: stock + the kid's mods
+import { RIVALS } from "./contest.js"; // 🔨 forge-duel scoreboard (pure data, no cycle)
 import { Physics } from "./physics.js"; // pure math only (satellite propagation)
 
 // ---- Module-private Three.js state (no other module touches three) ----
@@ -918,10 +919,17 @@ function makeBodyGroup(key) {
     // conservative mesh bounding sphere make its distant edge disappear mid-approach.
     shell.frustumCulled = false;
     g.add(shell);
-    const living = new THREE.Mesh(new THREE.TorusGeometry(major, rim * 0.42, 10, 160),
-      new THREE.MeshStandardMaterial({ color: 0x4c9a68, roughness: 0.7, metalness: 0.18,
-        emissive: 0x164425, emissiveIntensity: 0.58 }));
-    living.scale.z = 0.55;
+    // THE LIVING LAYER (his spec: "an inner layer… habitable… flat"): not a rounded
+    // ribbon but a FLAT floor — a painted band of meadows, lakes, and field-lights
+    // laid on the ring's inner surface, the way every classic ringworld drawing has
+    // it. The spin that holds you to it is the same spin the tunnels' hint teaches.
+    const bandTex = ringworldBandTexture(key);
+    const living = new THREE.Mesh(
+      new THREE.CylinderGeometry(major - rim * 0.55, major - rim * 0.55, rim * 1.15, 200, 1, true),
+      new THREE.MeshStandardMaterial({ map: bandTex, side: THREE.DoubleSide,
+        roughness: 0.75, metalness: 0.1,
+        emissive: 0xffffff, emissiveMap: bandTex, emissiveIntensity: 0.3 }));
+    living.rotation.x = Math.PI / 2; // cylinder axis -> Z: the band lies flat in the ring's plane
     living.frustumCulled = false;
     g.add(living);
     const lights = new THREE.Mesh(new THREE.TorusGeometry(major, rim * 0.09, 8, 160),
@@ -1453,6 +1461,40 @@ function loadEarthTextures(mat, group, b) {
 // Saturn's ring strip: icy bands + the Cassini Division, painted once. Alpha lives in
 // the canvas so the gap is genuinely see-through.
 let _ringTex = null;
+// The Halo Ring's flat living floor: seeded meadows, lakes, warm field-lights, and
+// the forged rails along both edges. Repeats around the loop; emissiveMap makes the
+// field-lights read on the night side.
+let _ringBandTex = null;
+function ringworldBandTexture(key) {
+  if (_ringBandTex) return _ringBandTex;
+  const cv = document.createElement("canvas");
+  cv.width = 1024; cv.height = 64;
+  const ctx = cv.getContext("2d");
+  const rng = mulberry32(hashStr("ringband:" + key));
+  ctx.fillStyle = "#3f8f5e";
+  ctx.fillRect(0, 0, 1024, 64);
+  for (let i = 0; i < 260; i++) { // meadow patchwork
+    ctx.fillStyle = ["#357f50", "#4c9a68", "#5aa872", "#2e6f46"][Math.floor(rng() * 4)];
+    ctx.fillRect(rng() * 1024, rng() * 64, 8 + rng() * 30, 4 + rng() * 14);
+  }
+  for (let i = 0; i < 40; i++) { // lakes
+    ctx.fillStyle = "rgba(96,176,232,0.92)";
+    ctx.beginPath();
+    ctx.ellipse(rng() * 1024, 8 + rng() * 48, 2 + rng() * 7, 1.5 + rng() * 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = "#6b5c34"; // the forged rails either side of the floor
+  ctx.fillRect(0, 0, 1024, 5);
+  ctx.fillRect(0, 59, 1024, 5);
+  ctx.fillStyle = "rgba(255,220,140,0.9)"; // field-lights
+  for (let i = 0; i < 90; i++) ctx.fillRect(rng() * 1024, 8 + rng() * 48, 1.5, 1.5);
+  _ringBandTex = new THREE.CanvasTexture(cv);
+  _ringBandTex.wrapS = THREE.RepeatWrapping;
+  _ringBandTex.repeat.x = 24; // fields repeat all the way around the loop
+  _ringBandTex.colorSpace = THREE.SRGBColorSpace;
+  return _ringBandTex;
+}
+
 function ringTexture() {
   if (_ringTex) return _ringTex;
   const W = 512;
@@ -4575,7 +4617,13 @@ function enterStation(info, cb) {
   };
   let rooms = info._rooms;
   if (!rooms) {
-    if (info.ground) {
+    if (info.ringworld) {
+      // 💍 THE HALO RING TUNNELS (his spec: "tunnels leading around the ring and
+      // inside of it there are mini battles"). Land on the living side, drop below
+      // the floor: forged service tunnels curve away around the ring, and the
+      // deepest chamber is THE ROCKET FORGE — the builders' dueling hall.
+      rooms = ["ringtunnel", "ringtunnel", "forge"];
+    } else if (info.ground) {
       // Ground bases: main room + a back room (the greenhouse keeps the crew fed).
       // Alien monuments (the Silent Spire) are ONE great hall — nobody lives there.
       rooms = info.monument ? ["spire"] : ["base", derelict ? "base" : "garden"];
@@ -4624,7 +4672,8 @@ function enterStation(info, cb) {
 
   // Hull: a cylinder seen from INSIDE, with end caps. Wall tint says what kind of
   // place this is (seeded pastel only for labs/bases, like before).
-  const ARCH_WALL = { hub: 0x7e8894, depot: 0x9a8e78, garden: 0xaac8a2, observatory: 0x39415a, vault: 0x4a3a5e, spire: 0x263042 };
+  const ARCH_WALL = { hub: 0x7e8894, depot: 0x9a8e78, garden: 0xaac8a2, observatory: 0x39415a, vault: 0x4a3a5e, spire: 0x263042,
+    ringtunnel: 0x6e5f38, forge: 0x54432a }; // the ring's dark forged gold, deepening toward the forge
   const wallColor = derelict ? 0x3a3236
     : ARCH_WALL[arch] || new THREE.Color().setHSL(rng(), 0.12, 0.72).getHex();
   // Painted panel quilt (seams, rivets, vents, placards, the archetype's stripe) —
@@ -4695,7 +4744,7 @@ function enterStation(info, cb) {
       const toArch = rooms[roomIndex + (sx > 0 ? 1 : -1)];
       const SIGN = { hub: "\u{1F4E6} CARGO HUB", depot: "⛽ FUEL DEPOT", garden: "\u{1F33F} GREENHOUSE",
         observatory: "\u{1F52D} OBSERVATORY", lab: "\u{1F52C} SCIENCE LAB", base: "\u{1F3E0} MAIN ROOM",
-        vault: "\u{1F3DB} THE VAULT" };
+        vault: "\u{1F3DB} THE VAULT", ringtunnel: "\u{1F529} RING TUNNEL", forge: "\u{1F528} THE ROCKET FORGE" };
       const sc = document.createElement("canvas");
       sc.width = 192; sc.height = 40;
       const sctx = sc.getContext("2d");
@@ -4882,6 +4931,7 @@ function enterStation(info, cb) {
       hub: ["materials", "astro"], depot: ["materials", "materials"],
       garden: ["bio", "bio"], observatory: ["astro", "astro"], vault: [], spire: [],
       lab: ["bio", "materials", "astro"], base: ["bio", "materials", "astro"],
+      ringtunnel: ["materials"], forge: [], // the forge's own console is the duel anvil, added below
     };
     const kindList = ARCH_CONSOLES[arch] || ARCH_CONSOLES.lab;
     const n = arch === "lab" || arch === "base" ? 1 + Math.floor(rng() * 3) : kindList.length;
@@ -4928,6 +4978,51 @@ function enterStation(info, cb) {
         }));
       pillar.position.set(len * 0.02, 0, 0);
       iScene.add(pillar);
+    }
+    // 🔨 THE ROCKET FORGE — the dueling hall at the deepest end of the ring tunnels.
+    // The hot-gold console is the duel anvil: walk up and the contest begins
+    // (main.js opens the forge panel via cb.onContest). The wall scoreboard shows
+    // the standing rivals — the numbers to beat.
+    if (arch === "forge") {
+      addConsole(len * 0.3, conY != null ? conY : -0.4, "contest",
+        new THREE.Color(2.4, 1.5, 0.3)); // hot gold — blooms like fresh metal
+      const furnace = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.5, 0.9),
+        new THREE.MeshStandardMaterial({ color: 0x3a3026, roughness: 0.85, metalness: 0.3 }));
+      furnace.material._isClone = true;
+      furnace.position.set(-len * 0.3, (conY != null ? conY : -0.5) + 0.1, -rad + 0.7);
+      iScene.add(furnace);
+      const mouth = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(3.0, 1.1, 0.2) })); // HDR ember glow
+      mouth.position.set(-len * 0.3, (conY != null ? conY : -0.5) + 0.05, -rad + 1.16);
+      iScene.add(mouth);
+      const sb = document.createElement("canvas");
+      sb.width = 256; sb.height = 160;
+      const sctx2 = sb.getContext("2d");
+      sctx2.fillStyle = "#1a1408"; sctx2.fillRect(0, 0, 256, 160);
+      sctx2.strokeStyle = "#c8a84a"; sctx2.lineWidth = 4; sctx2.strokeRect(4, 4, 248, 152);
+      sctx2.fillStyle = "#ffd870"; sctx2.font = "700 20px system-ui"; sctx2.textAlign = "center";
+      sctx2.fillText("FORGE DUELS", 128, 30);
+      sctx2.font = "600 16px system-ui";
+      [...RIVALS].reverse().forEach((r, i) => { // champion on top
+        sctx2.fillStyle = i === 0 ? "#ffd870" : "#c8b890";
+        sctx2.textAlign = "left"; sctx2.fillText(r.emoji + " " + r.name, 16, 64 + i * 30);
+        sctx2.textAlign = "right"; sctx2.fillText(String(r.score), 240, 64 + i * 30);
+      });
+      const board = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.05),
+        new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sb) }));
+      board.position.set(len * 0.02, (conY != null ? conY : 0) + 1.25, -rad + 0.1);
+      iScene.add(board);
+    }
+    // 🔩 RING TUNNELS: amber guide-strips run the whole corridor — the tunnel
+    // visibly LEADS somewhere, like a service way under a city street.
+    if (arch === "ringtunnel") {
+      const stripMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.8, 1.2, 0.3) });
+      for (const sz of [-1, 1]) {
+        const strip = new THREE.Mesh(new THREE.BoxGeometry(len - 0.6, 0.05, 0.05), stripMat);
+        strip.material._isClone = true;
+        strip.position.set(0, -(rad - 0.98), sz * 0.9);
+        iScene.add(strip);
+      }
     }
     // A plant rack, where plants belong — gardens overflow with them (built below),
     // labs keep a small one, ground bases run a proper greenhouse shelf.
@@ -5342,6 +5437,8 @@ function enterStation(info, cb) {
       observatory: { amb: 0x2a2430, ambI: 1.0, pt: 0xff4838, ptI: 14 },
       vault: { amb: 0x2e2618, ambI: 1.05, pt: 0xffd870, ptI: 24 },
       spire: { amb: 0x1a2836, ambI: 1.1, pt: 0x5ae0e8, ptI: 26 }, // beacon-cyan dusk
+      ringtunnel: { amb: 0x2e2818, ambI: 1.15, pt: 0xffb860, ptI: 30 }, // forged amber dusk
+      forge: { amb: 0x362416, ambI: 1.2, pt: 0xff9840, ptI: 46 },       // furnace glow
     };
     const m = MOOD[arch] || { amb: 0xf4efe6, ambI: 1.4, pt: 0xfff0d8, ptI: 40 };
     iScene.add(new THREE.AmbientLight(m.amb, m.ambI));
@@ -5367,7 +5464,7 @@ function enterStation(info, cb) {
     "padding:6px 14px;font:600 13px system-ui,sans-serif;z-index:15;";
   const ARCH_LABEL = { hub: "📦 cargo hub", depot: "⛽ fuel depot", garden: "🌿 greenhouse",
     observatory: "🔭 observatory", lab: "🔬 science lab", vault: "🏛 the Founders' Vault",
-    spire: "🗼 an alien monument" };
+    spire: "🗼 an alien monument", ringtunnel: "🔩 ring tunnel", forge: "🔨 the Rocket Forge" };
   hintEl.textContent = "🐍 " + info.name + (ARCH_LABEL[arch] ? " · " + ARCH_LABEL[arch] : "") +
     " — arrows float · drift to a glowing screen for science · E to return to your ship";
   document.getElementById("app").appendChild(hintEl);
@@ -5437,6 +5534,13 @@ function interiorGoRoom(dir) {
 // True while any "person mode" owns time and the keys: aboard a station OR out on EVA.
 // main.js freezes physics and ignores flight keys whenever this is true.
 function isInside() { return !!interior || !!eva; }
+
+// 🔨 Called by main.js when the forge panel closes: let the duel anvil fire again,
+// but only once the Connie has stepped away from it (see the console loop).
+function rearmContest() {
+  if (!interior) return;
+  for (const con of interior.consoles) if (con.kind === "contest" && con.done) con.await = true;
+}
 
 function updateInterior() {
   const it = interior;
@@ -5527,10 +5631,24 @@ function updateInterior() {
   // Science: drift close to a live screen and it fires (once each per BOARDING —
   // hopping between rooms and back can't re-farm a spent screen).
   it.consoles.forEach((con, ci) => {
+    // 🔨 A closed forge panel re-arms only after she steps AWAY from the anvil —
+    // otherwise it would fire again the same frame it re-armed.
+    if (con.done && con.await &&
+        Math.hypot(c.position.x - con.x, c.position.y - con.y) > 1.6) {
+      con.done = false; con.await = false;
+      con.screen.material.color = new THREE.Color(2.4, 1.5, 0.3);
+      return;
+    }
     if (con.done) return;
     if (Math.hypot(c.position.x - con.x, c.position.y - con.y) < 1.15) {
       con.done = true;
       con.screen.material.color = new THREE.Color(2.0, 1.8, 0.4); // flashes gold
+      if (con.kind === "contest") {
+        // The duel anvil is not a science screen — it opens the forge (no points
+        // for walking up; the win pays out through the contest itself).
+        if (it.cb && it.cb.onContest) it.cb.onContest();
+        return;
+      }
       if (it.sci) {
         it.sci[it.roomIndex] = it.sci[it.roomIndex] || [];
         it.sci[it.roomIndex][ci] = true;
@@ -5726,6 +5844,7 @@ export const Render = Object.freeze({
   zoomMap,
   setQuality,
   spawnMeteor, // ☄️ ring-rock strikes (recorded in ARCHITECTURE.md, 2026-07-16)
+  rearmContest, // 🔨 forge duel re-arm (recorded in ARCHITECTURE.md, 2026-08-02)
   refreshLabels, // 🔭 Cylan reveal renames bodies mid-session; labels bake text at creation
   debug,
 });
