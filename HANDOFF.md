@@ -9,6 +9,27 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-08-02 later): 🪨🌊 FIXED — rocks floating on water (his report)
+
+His report (via Mom): "rocks on water — which shouldn't be possible." He's right, and
+the mechanism was simple: the near-ground patch (`groundTexture`) and the descent
+rock field were both tinted from the body's MAP color — and on ocean worlds (Sol
+Earth's blue marble 0x2a6cc4, every terra face whose painted `base` is the sea) the
+map color IS the water, so the close-up ground read as open sea with grey boulders
+sitting on it.
+
+**Fix (render.js, cosmetic):** new `groundColorFor(key)` — the ground you touch down
+on reads as LAND: a terra face's painted land `accent`, shore-green for Sol Earth,
+and (unchanged) the map color on dry worlds. Both the ground patch and the rock tint
+now use it. Browser-verified: Earth ascent shot shows green coast underfoot (was
+blue sea), boot smoke 9/9 + flight check 14/14 green, zero page errors, all 18 node
+suites green.
+
+**Flagged / rung 4:** his eyeball is the acceptance test — hard-reload and fly low
+over Earth or Pandora. If what he actually WANTS is real coastlines (water you can
+see with rocks only on the land parts), that's a bigger painted-ground feature
+(sample the face texture per rock slot) — a good Wish Book candidate, not built.
+
 ## Status (2026-08-02): 💍🔨 HALO RING TUNNELS, THE ROCKET FORGE DUEL & 📁 THE PELICAN (his spec)
 
 Paddy's spec (via Mom, verbatim intent): the ring gets an INNER LAYER — habitable,

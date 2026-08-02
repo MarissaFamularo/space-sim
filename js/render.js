@@ -3330,20 +3330,34 @@ function updateFlight(sim) {
 
 // Local dirt texture for the ground patch: the body's color with dusty speckle. Up
 // close, ground looks like ground — the map-scale continents live on the big sphere.
+// The color of the GROUND you touch down on. On ocean worlds the map color is the
+// SEA — Earth's blue marble, and every terra face whose painted `base` is ocean —
+// and the near-ground patch plus the rock field were tinted with it, so boulders
+// sat on open water (his bug report: rocks on water, which shouldn't be possible —
+// correct!). The close-up ground is where you LAND, so it reads as LAND: the
+// face's painted land `accent`, or shore-green for Sol's blue marble.
+function groundColorFor(key) {
+  const b = BODIES[key];
+  const face = b && b.face;
+  if (face && face.kind === "terra" && face.accent) return new THREE.Color(face.accent);
+  if (key === "earth") return new THREE.Color(0x5a7a42); // Sol Earth: green-brown coast
+  return new THREE.Color(styleFor(key).color); // dry worlds: the map color IS the ground
+}
+
 function groundTexture(key) {
   if (_groundTexCache[key]) return _groundTexCache[key];
   const cv = document.createElement("canvas");
   cv.width = cv.height = 256;
   const ctx = cv.getContext("2d");
   const rng = mulberry32(hashStr(key + "-ground"));
-  const style = styleFor(key);
-  const base = new THREE.Color(style.color).multiplyScalar(0.82);
+  const gcol = groundColorFor(key);
+  const base = gcol.clone().multiplyScalar(0.82);
   ctx.fillStyle = "#" + base.getHexString();
   ctx.fillRect(0, 0, 256, 256);
   const tint = new THREE.Color();
   for (let i = 0; i < 700; i++) {
     ctx.globalAlpha = 0.05 + rng() * 0.1;
-    tint.set(style.color).multiplyScalar(rng() > 0.5 ? 0.95 : 0.6);
+    tint.copy(gcol).multiplyScalar(rng() > 0.5 ? 0.95 : 0.6);
     ctx.fillStyle = "#" + tint.getHexString();
     ctx.beginPath();
     ctx.arc(rng() * 256, rng() * 256, 1 + rng() * 5, 0, Math.PI * 2);
@@ -3548,8 +3562,9 @@ function updateSurfaceExtras(sim, dom) {
       const Rb = dom.body.radius;
       const cx = dom.center.x - ORIGIN.x, cy = dom.center.y - ORIGIN.y;
       const phi = Math.atan2(dom.rel.y, dom.rel.x);
-      const style = styleFor(dom.body.key);
-      if (style) rockField.material.color.set(style.color).multiplyScalar(0.55);
+      // Rocks tint with the LAND color (groundColorFor), not the map color — on
+      // ocean worlds the map color is the sea, and sea-blue boulders were the tell.
+      rockField.material.color.copy(groundColorFor(dom.body.key)).multiplyScalar(0.55);
       rockField.material.emissive.copy(rockField.material.color);
       const bodySeed = hashStr(dom.body.key);
       // Two tiers: a DENSE strip right along the ground track (the ground-rush cue as
