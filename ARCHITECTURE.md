@@ -332,6 +332,10 @@ Render.exitEva()
 Render.isInside()                   // now true for station interiors AND EVA (time freezes)
 Render.enterStation(info, cb)       // info gains .spin — centrifuge interior: gravity mode
                                     //   (walk/jump on the floor instead of zero-g drift)
+Render.spawnStageDebris(sim, {parts}) // staging: the jettisoned stage's mesh falls away,
+                                    //   coasting under the dominant body's gravity. Cosmetic
+                                    //   only — sim physics never tracks it; probe-core stages
+                                    //   that deploy as satellites skip it. main.doStage calls it.
 ```
 
 ### Builder + parts

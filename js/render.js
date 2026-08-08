@@ -156,6 +156,7 @@ const PLANT_COUNT = 64;
 let boneField = null;      // instanced rib arches on fossil worlds (Monk)
 const BONE_COUNT = 48;
 let meteors = [];          // ☄️ falling ring rocks: {p0, p1, t0, life, line, flash}
+let stageDebris = [];      // 🧨 jettisoned stages falling away (spawnStageDebris/updateStageDebris)
 let interMarker = null;    // 🌌 interstellar destination beacon {sprite, label}
 const ROCK_COUNT = 240;
 const ROCK_ARC = 130; // meters of ground between rock slots
@@ -2314,6 +2315,114 @@ function resolveDefs(craft) {
 }
 
 // =====================================================================
+// Render.spawnStageDebris — the jettisoned stage FALLS AWAY instead of
+// vanishing. Cosmetic only: the sim never tracks it (probe-core stages
+// that become satellites are physics' job and skip this). The dropped
+// stage's real mesh spawns exactly where it was drawn — the bottom of
+// the stack — then coasts ballistically under the local world's gravity
+// while the live rocket burns on ahead, so the gap opens honestly: the
+// booster isn't pushed down so much as LEFT BEHIND.
+// =====================================================================
+const DEBRIS_LIFE = 45; // s of sim time before a dropped stage is cleaned up
+function spawnStageDebris(sim, dropped) {
+  if (mode !== "flight" || !sim || !sim.craft || !dropped) return;
+  if (sim.status === "landed" || sim.status === "crashed") return;
+  const defs = resolveDefs(dropped);
+  if (!defs.length) return;
+  if (!MAT) makeMaterials();
+
+  let h = 0;
+  for (const def of defs) h += def.height || 0;
+  const group = new THREE.Group();
+  let cursor = -h / 2;
+  for (const def of defs) {
+    const ph = def.height || 1;
+    const partObj = makePartObject(def, ph, def.radius || 0.5);
+    partObj.position.y = cursor + ph / 2;
+    group.add(partObj);
+    cursor += ph;
+  }
+  scene.add(group);
+
+  const a = sim.craft.angle || 0;
+  const ax = -Math.sin(a), ay = Math.cos(a); // nose direction (world frame)
+  const t = sim.time || 0;
+  const side = (Math.random() - 0.5) * 1.6;  // the separation springs never push perfectly straight
+  stageDebris.push({
+    group, h,
+    // The physics point is the craft's BASE; the dropped stage sat just above it,
+    // so its center is half its own height up the axis.
+    x: sim.craft.pos.x + ax * h * 0.5,
+    y: sim.craft.pos.y + ay * h * 0.5,
+    // Craft velocity minus a ~2 m/s separation-spring kick down the axis.
+    vx: sim.craft.vel.x - ax * 2.0 - ay * side,
+    vy: sim.craft.vel.y - ay * 2.0 + ax * side,
+    angle: a, spin: (Math.random() - 0.5) * 0.8,
+    t0: t, lastT: t, grounded: null,
+  });
+}
+
+function updateStageDebris(sim, t) {
+  for (let i = stageDebris.length - 1; i >= 0; i--) {
+    const d = stageDebris[i];
+    const dt = t - d.lastT;
+    d.lastT = t;
+    // Done: lived its life, or the clock jumped (new flight / heavy warp).
+    if (t < d.t0 || t - d.t0 > DEBRIS_LIFE || dt < 0 || dt > 20) {
+      scene.remove(d.group); disposeGroup(d.group);
+      stageDebris.splice(i, 1);
+      continue;
+    }
+    if (!d.grounded && dt > 0) {
+      // Ballistic coast under the dominant body's gravity — same physics the ship
+      // obeys, integrated here only because the sim doesn't track dropped stages.
+      // Each substep evaluates the body at ITS OWN moment (ts): planets move
+      // ~km/s along their orbits, so judging a stale debris position against an
+      // end-of-frame planet buries the stage kilometers "underground".
+      const steps = Math.max(1, Math.ceil(dt / 0.25));
+      const hs = dt / steps;
+      for (let s = 0; s < steps; s++) {
+        const ts = t - dt + s * hs;
+        const dom = dominantBody({ x: d.x, y: d.y }, ts);
+        const rx = d.x - dom.center.x, ry = d.y - dom.center.y;
+        const r = Math.hypot(rx, ry) || 1;
+        if (dom.body.radius && r < dom.body.radius + d.h * 0.35) {
+          // Touchdown: remember the surface point; it rides the body from here on.
+          d.grounded = { key: dom.body.key, ux: rx / r, uy: ry / r,
+                         r: dom.body.radius + d.h * 0.35 };
+          break;
+        }
+        const g = dom.body.mu / (r * r);
+        d.vx -= (rx / r) * g * hs; d.vy -= (ry / r) * g * hs;
+        d.x += d.vx * hs; d.y += d.vy * hs;
+      }
+      d.angle += d.spin * Math.min(dt, 0.12); // slow tumble, readable at any warp
+    }
+    if (d.grounded) {
+      // The empty booster lies where it fell, riding the surface point.
+      const bs = bodyStateAt(d.grounded.key, t);
+      d.x = bs.pos.x + d.grounded.ux * d.grounded.r;
+      d.y = bs.pos.y + d.grounded.uy * d.grounded.r;
+    }
+    // Distance check AFTER integrating — a stale pre-step position vs the craft's
+    // fresh origin reads as "far away" any time several sim steps pass per render.
+    const sx = d.x - ORIGIN.x, sy = d.y - ORIGIN.y;
+    if (Math.hypot(sx, sy) > 3e4) { // out of sight (also catches ✨ Teleport jumps)
+      scene.remove(d.group); disposeGroup(d.group);
+      stageDebris.splice(i, 1);
+      continue;
+    }
+    d.group.position.set(sx, sy, 0);
+    d.group.rotation.set(0, 0, d.angle);
+  }
+}
+
+function clearStageDebris() {
+  for (const d of stageDebris) { scene.remove(d.group); disposeGroup(d.group); }
+  stageDebris.length = 0;
+}
+
+// =====================================================================
 // Part looks (the "fancier rocket parts" pass): painted-canvas details —
 // panel seams, rivets, hazard stripes, gold foil, solar cells — on lathe
 // profiles with domed shoulders, real engine bells, and greebles. All
@@ -2957,6 +3066,7 @@ function setMode(m) {
     if (rockField) rockField.visible = false;
     if (reticle) reticle.visible = false;
     if (warpStreaks) { warpStreaks.obj.visible = false; warpStreaks.obj.material.opacity = 0; }
+    clearStageDebris(); // last flight's dropped stages don't belong in the studio
     if (groundPatch) groundPatch.visible = false;
     if (surfaceRover) surfaceRover.visible = false;
     if (roverTrackL) roverTrackL.visible = false;
@@ -3218,6 +3328,7 @@ function updateFlight(sim) {
     ls.mesh.quaternion.setFromUnitVectors(_v1.set(0, 0, 1), _v2.set(dx / d, dy / d, 0));
   }
   updateMeteors(t); // ☄️ falling ring rocks (Hundun)
+  updateStageDebris(sim, t); // 🧨 jettisoned stages falling away
 
   // 🌌 Interstellar destination beacon: the target star, drawn as a nav marker along
   // its true BEARING (the real point sits ~1000x past the far plane — direction is
@@ -5830,6 +5941,7 @@ function debug() {
     rocketOnScreen: ndc,
     canvas: renderer ? [renderer.domElement.width, renderer.domElement.height] : null,
     sceneChildren: scene ? scene.children.length : 0,
+    stageDebris: stageDebris.length, // 🧨 falling jettisoned stages currently alive
   };
 }
 
@@ -5859,6 +5971,7 @@ export const Render = Object.freeze({
   zoomMap,
   setQuality,
   spawnMeteor, // ☄️ ring-rock strikes (recorded in ARCHITECTURE.md, 2026-07-16)
+  spawnStageDebris, // 🧨 jettisoned stage falls away (recorded in ARCHITECTURE.md, 2026-08-08)
   rearmContest, // 🔨 forge duel re-arm (recorded in ARCHITECTURE.md, 2026-08-02)
   refreshLabels, // 🔭 Cylan reveal renames bodies mid-session; labels bake text at creation
   debug,

@@ -408,13 +408,15 @@ function doStage() {
   const next = (sim.craft.currentStage || 0) + 1;
   if (next > maxStage(craft)) { copilotSay("No more stages to drop — you're flying the last one."); return; }
   // What's in the stage being jettisoned? A probe core let go in a stable orbit stays
-  // up there as a SATELLITE.
-  const droppedDefs = craft.parts
-    .filter((i) => (i.stage || 0) === next - 1) // ONLY the stage being let go right now
-    .map((i) => findPart(PARTS, i.partId)).filter(Boolean);
+  // up there as a SATELLITE. Anything else falls away as debris (render draws it).
+  const droppedInsts = craft.parts
+    .filter((i) => (i.stage || 0) === next - 1); // ONLY the stage being let go right now
+  const droppedDefs = droppedInsts.map((i) => findPart(PARTS, i.partId)).filter(Boolean);
   const dropsProbe = droppedDefs.some((d) => d.type === "command" && d.uncrewed);
   const dropsSolar = droppedDefs.some((d) => d.type === "solar");
-  if (dropsProbe && sim.orbit && sim.orbit.isOrbit && sim.status !== "landed") deploySatellite(dropsSolar);
+  const becameSat = dropsProbe && sim.orbit && sim.orbit.isOrbit && sim.status !== "landed"
+    && deploySatellite(dropsSolar);
+  if (!becameSat) Render.spawnStageDebris(sim, { parts: droppedInsts });
   loadStage(next);
   const remaining = { name: craft.name, parts: craft.parts.filter((i) => (i.stage || 0) >= next) };
   Render.buildCraftMesh(remaining);

@@ -9,6 +9,44 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-08-08): 🧨 STAGING — the dropped stage now FALLS AWAY (his ask)
+
+His ask (via Mom): when you decouple, the piece "just gets deleted" — he wants to see
+it fall away from the rocket. Built it as a cosmetic render effect: new
+`Render.spawnStageDebris(sim, {parts})` (recorded in ARCHITECTURE.md) — `doStage`
+hands it the jettisoned stage's part instances, render spawns that stage's REAL mesh
+exactly where it was drawn and coasts it ballistically under the dominant body's
+gravity (same equations the ship obeys, integrated render-side because the sim
+doesn't track dropped stages — honest physics, not an animation). It gets a ~2 m/s
+separation-spring kick, a slow tumble, lands and lies on the surface if it comes
+down, and cleans itself up after 45 s of sim time or once it's beyond sight (30 km).
+Probe-core stages that deploy as satellites skip the effect (no double body);
+staging while landed skips it too (nothing to fall).
+
+**Evidence (rung 3):** new scripted `debris-check.mjs` 8/8 GREEN (staging via the real
+Space-key path spawns exactly one debris stage — counter now surfaced in
+`Render.debug().stageDebris` — alive at +4 s, cleaned up after life, zero page
+errors); screenshots show the booster drifting free after a burnout separation and
+tumbling away below once the upper stage relights. Boot smoke 9/9 + flight check
+14/14 green; all 18 node suites green. ARCHITECTURE.md updated (Render API
+extensions).
+
+**Gotchas paid for (both are the same lesson — never mix per-frame-stale debris
+state with fresh world state):** (1) the out-of-sight cleanup must run AFTER the
+ballistic step — checked before it, the craft's own frame-to-frame motion (~9.4 km/s
+of shared orbital velocity when several sim steps pass per render) reads as
+"debris far away" and kills it on the spot; (2) the integrator must evaluate the
+dominant body at each substep's OWN time — planets move km/s along their orbits, so
+judging the debris' start-of-frame position against an end-of-frame planet buried
+the stage 2.5 km "underground" and false-triggered ground contact.
+
+**Flagged / rung 4:** worth a human play-test — fly the school two-stage rocket, hit
+Space after burnout, watch the booster tumble away (best seen coasting, then again
+under thrust). Not modeled (deliberate, cosmetic-only scope): debris ignores
+atmosphere drag and other-body tides, doesn't collide with the rocket, and vanishes
+past 30 km / 45 s. If he asks "where did my booster land," THAT's a feature request
+(persistent wreck sites), not a bug.
+
 ## Status (2026-08-02 later): 🪨🌊 FIXED — rocks floating on water (his report)
 
 His report (via Mom): "rocks on water — which shouldn't be possible." He's right, and
