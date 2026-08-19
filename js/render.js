@@ -59,6 +59,7 @@ let showTarget = true, showHeading = true, showPrograde = true;
 
 let craftGroup = null;
 let craftHeight = 0;
+let sidePlumes = [];       // strap-on booster plumes (die with the craft mesh on staging)
 
 let earthClouds = null;    // drifting cloud shell (child of Earth's group, async-loaded)
 let bhDisk = null;         // black hole accretion disk (spun in updateFlight)
@@ -2147,6 +2148,12 @@ function updatePlume(sim, dom) {
   const burning = mode === "flight" && sim.status !== "crashed" &&
     (c.throttle || 0) > 0 && (c.thrust || 0) > 0 && (c.fuelRemaining || 0) > 0;
   plume.group.visible = burning;
+  // Strap-on plumes share the craft's burn state — parallel staging means the pair
+  // and the core light together; staging rebuilds the mesh, so they die with it.
+  for (const sp of sidePlumes) {
+    sp.group.visible = burning;
+    sp.light.intensity = 0; // the main plume's light already paints the rocket
+  }
   if (!burning) { plume.light.intensity = 0; return; }
 
   const t = sim.time || 0;
@@ -2164,6 +2171,12 @@ function updatePlume(sim, dom) {
   plume.outer.material.opacity = (inVacuum ? 0.22 : 0.32) * (0.8 + 0.4 * Math.random());
   plume.glow.scale.setScalar(plume.r * (4.5 + throttle * 2.5) * flick);
   plume.light.intensity = 500 * throttle * (0.85 + 0.3 * Math.random());
+  for (const sp of sidePlumes) {
+    sp.core.scale.set(flick, throttle * flick, flick);
+    sp.outer.scale.set(widen * flick, throttle * (0.9 + 0.2 * flick), widen * flick);
+    sp.outer.material.opacity = (inVacuum ? 0.22 : 0.32) * (0.8 + 0.4 * Math.random());
+    sp.glow.scale.setScalar(sp.r * (4.5 + throttle * 2.5) * flick);
+  }
   if (plume.beamMesh) { // the lance barely flickers — lasers don't gutter like flames
     plume.beamMesh.scale.set(0.9 + 0.15 * flick, 0.7 + 0.35 * throttle, 0.9 + 0.15 * flick);
     plume.beamMesh.material.opacity = 0.6 + 0.25 * throttle;
@@ -2509,13 +2522,17 @@ function buildCraftMesh(craft) {
     craftGroup = null;
   }
   plume = null; // its geometries died with the group; rebuilt below
+  sidePlumes = [];
   craftHeight = 0;
 
   if (!craft || !craft.parts || craft.parts.length === 0) {
     return;
   }
 
-  const defs = resolveDefs(craft);
+  // Strap-on side boosters (PartInstance.side) hang OFF the stack — split them out
+  // so the center stack's "array order = bottom→top" geometry is untouched.
+  const sideInsts = craft.parts.filter((i) => i.side);
+  const defs = resolveDefs({ parts: craft.parts.filter((i) => !i.side) });
   if (defs.length === 0) return;
 
   // Sky-crane bridle: a crane above a rover (directly, or across the release-latch
@@ -2563,6 +2580,37 @@ function buildCraftMesh(craft) {
     cursor += h;
   }
 
+  // The strap-on pair rides beside the stack, bases level with the bottom (strap-ons
+  // stand on the pad with the core, like the SLS boosters). Two struts each, and a
+  // plume of its own — at liftoff the whole spread lights: core + both boosters.
+  if (sideInsts.length) {
+    const coreR = (defs[0] && defs[0].radius) || 0.6;
+    for (const inst of sideInsts) {
+      const def = PARTS.find((p) => p.id === inst.partId);
+      if (!def) continue;
+      const sgn = inst.side < 0 ? -1 : 1;
+      const bh = def.height || 1;
+      const br = def.radius || 0.5;
+      const bx = sgn * (coreR + br + 0.12);
+      const obj = makePartObject(def, bh, br);
+      obj.position.set(bx, -total / 2 + bh / 2, 0);
+      group.add(obj);
+      for (const fy of [0.3, 0.8]) { // attach struts to the core
+        const strut = new THREE.Mesh(
+          new THREE.BoxGeometry(coreR + br * 0.8, 0.09, 0.14), MAT.decoupler);
+        strut.position.set(sgn * (coreR * 0.5 + br * 0.35), -total / 2 + bh * fy, 0);
+        group.add(strut);
+      }
+      if (def.type === "engine") {
+        const sp = makeExhaustPlume(br, Math.max(3.0, bh * 2.0),
+          (def.exhaustVelocity || 0) >= 20000, false);
+        sp.group.position.set(bx, -total / 2, 0);
+        group.add(sp.group);
+        sidePlumes.push(sp);
+      }
+    }
+  }
+
   // Exhaust plume at the stack's bottom (defs[0] — the stage that's actually firing).
   // Sized by the bottom-most engine's bell; harmless if this stage has none (it only
   // shows when sim thrust + throttle + fuel say the engines are truly burning).
@@ -2604,39 +2652,54 @@ const DEBRIS_LIFE = 45; // s of sim time before a dropped stage is cleaned up
 function spawnStageDebris(sim, dropped) {
   if (mode !== "flight" || !sim || !sim.craft || !dropped) return;
   if (sim.status === "landed" || sim.status === "crashed") return;
-  const defs = resolveDefs(dropped);
-  if (!defs.length) return;
+  if (!dropped.parts || !dropped.parts.length) return;
   if (!MAT) makeMaterials();
-
-  let h = 0;
-  for (const def of defs) h += def.height || 0;
-  const group = new THREE.Group();
-  let cursor = -h / 2;
-  for (const def of defs) {
-    const ph = def.height || 1;
-    const partObj = makePartObject(def, ph, def.radius || 0.5);
-    partObj.position.y = cursor + ph / 2;
-    group.add(partObj);
-    cursor += ph;
-  }
-  scene.add(group);
 
   const a = sim.craft.angle || 0;
   const ax = -Math.sin(a), ay = Math.cos(a); // nose direction (world frame)
+  const px = ay, py = -ax;                   // craft-local +x in the world (mesh side axis)
   const t = sim.time || 0;
-  const side = (Math.random() - 0.5) * 1.6;  // the separation springs never push perfectly straight
-  stageDebris.push({
-    group, h,
-    // The physics point is the craft's BASE; the dropped stage sat just above it,
-    // so its center is half its own height up the axis.
-    x: sim.craft.pos.x + ax * h * 0.5,
-    y: sim.craft.pos.y + ay * h * 0.5,
-    // Craft velocity minus a ~2 m/s separation-spring kick down the axis.
-    vx: sim.craft.vel.x - ax * 2.0 - ay * side,
-    vy: sim.craft.vel.y - ay * 2.0 + ax * side,
-    angle: a, spin: (Math.random() - 0.5) * 0.8,
-    t0: t, lastT: t, grounded: null,
-  });
+
+  // One debris body per piece that really separates: the center stack chunk falls
+  // as one, but a strap-on PAIR splits — each booster peels away OUTWARD off its
+  // own side (the butterfly sep every Shuttle and Artemis launch video shows).
+  const spawnOne = (insts, lateral) => {
+    const defs = resolveDefs({ parts: insts });
+    if (!defs.length) return;
+    let h = 0;
+    for (const def of defs) h += def.height || 0;
+    const group = new THREE.Group();
+    let cursor = -h / 2;
+    for (const def of defs) {
+      const ph = def.height || 1;
+      const partObj = makePartObject(def, ph, def.radius || 0.5);
+      partObj.position.y = cursor + ph / 2;
+      group.add(partObj);
+      cursor += ph;
+    }
+    scene.add(group);
+    // Where this piece was drawn: side boosters sit a little off-axis.
+    const off = lateral * ((defs[0].radius || 0.5) + 0.8);
+    const side = lateral === 0
+      ? (Math.random() - 0.5) * 1.6      // springs never push perfectly straight
+      : lateral * 3.0;                   // boosters: a firm outward push, away from the core
+    stageDebris.push({
+      group, h,
+      // The physics point is the craft's BASE; the dropped piece sat just above it,
+      // so its center is half its own height up the axis (plus its side offset).
+      x: sim.craft.pos.x + ax * h * 0.5 + px * off,
+      y: sim.craft.pos.y + ay * h * 0.5 + py * off,
+      // Craft velocity minus a ~2 m/s separation-spring kick down the axis.
+      vx: sim.craft.vel.x - ax * 2.0 + px * side,
+      vy: sim.craft.vel.y - ay * 2.0 + py * side,
+      angle: a, spin: (Math.random() - 0.5) * 0.8 + lateral * 0.5,
+      t0: t, lastT: t, grounded: null,
+    });
+  };
+
+  spawnOne(dropped.parts.filter((i) => !i.side), 0);
+  spawnOne(dropped.parts.filter((i) => i.side < 0), -1);
+  spawnOne(dropped.parts.filter((i) => i.side > 0), 1);
 }
 
 function updateStageDebris(sim, t) {
@@ -2905,6 +2968,34 @@ function makePartObject(def, h, r) {
         clamp.position.set(r * 0.99, fy * h, 0.12);
         grp.add(clamp);
       }
+      return grp;
+    }
+    case "booster": {
+      // A solid strap-on: small fixed bell, long propellant casing with segment
+      // bands (the real SRBs are stacked segments), pointed nose cone. The casing
+      // IS the tank — solid fuel is packed inside, which is why it needs none.
+      const grp = new THREE.Group();
+      const bellH = 0.14, noseH = 0.2; // fractions of h
+      const bell = lathe([
+        [r * 0.3, 0], [r * 0.62, 0.02], [r * 0.34, bellH * 0.6], [r * 0.3, bellH],
+      ].reverse(), h, bellMat());
+      grp.add(bell);
+      const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(r, r, h * (1 - bellH - noseH), 20),
+        partMat("booster-case", (ctx, W, H) => {
+          ctx.fillStyle = "#e8e6e0"; ctx.fillRect(0, 0, W, H); // SRB white
+          brushNoise(ctx, W, H, 0.04);
+          ctx.fillStyle = "#b8b4aa"; // segment joint bands
+          for (const fy of [0.25, 0.5, 0.75]) ctx.fillRect(0, H * fy - 2, W, 4);
+          rivetRow(ctx, W, H * 0.25 + 6); rivetRow(ctx, W, H * 0.75 - 6);
+        })
+      );
+      body.position.y = h * bellH + h * (1 - bellH - noseH) / 2 - h / 2;
+      grp.add(body);
+      const nose = lathe([
+        [r * 0.98, 1 - noseH], [r * 0.7, 1 - noseH * 0.45], [r * 0.3, 1 - noseH * 0.12], [0.001, 1],
+      ], h, podMat());
+      grp.add(nose);
       return grp;
     }
     case "nozzle": {

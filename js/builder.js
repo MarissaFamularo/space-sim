@@ -506,6 +506,13 @@ function applyImportedCraft(v) {
   for (const def of v.newParts) Mods.addCustom(def);
   _craft.parts.length = 0; // in place — main.js holds the reference
   for (const id of v.stack) _craft.parts.push(makeInstance(id, 0));
+  if (Array.isArray(v.sides) && v.sides.length === 2) {
+    for (let k = 0; k < 2; k++) {
+      const inst = makeInstance(v.sides[k], 0);
+      inst.side = k === 0 ? -1 : 1;
+      _craft.parts.push(inst);
+    }
+  }
   _craft.name = v.name;
   reflowStages();
   renderPalette();
@@ -526,13 +533,58 @@ function loadPelicanCraft() {
 // Mutations (all mutate _craft.parts IN PLACE, then call _onChange)
 // ----------------------------------------------------------------------------
 
+// ⬅➡ SIDE BOOSTERS. Side-mounted instances carry side:-1|+1 and live at the END of
+// the parts array, so "array order = bottom→top" stays true for the center stack.
+// They come only as a matched PAIR (two pushes that balance — that's why real
+// strap-ons come in pairs), auto-staged 0 (they light first and fall away first;
+// their latches are built in, no decoupler needed).
+const isSideInst = (p) => !!p.side;
+function centerCount() {
+  let n = 0;
+  for (const p of _craft.parts) if (!p.side) n++;
+  return n;
+}
+function sidePairInsts() { return _craft.parts.filter(isSideInst); }
+
+function addSidePair(partId) {
+  const def = findPart(_catalog, partId);
+  if (!def || def.type !== "engine") {
+    showHint("Side slots take engines — strap-on boosters are pure push.");
+    return;
+  }
+  removeSidePairQuiet(); // one pair at a time (v1); swapping replaces it
+  for (const sd of [-1, 1]) {
+    const inst = makeInstance(partId, 0);
+    inst.side = sd;
+    _craft.parts.push(inst);
+  }
+  reflowStages();
+  maybeAutoName();
+  clearHint();
+  commit();
+}
+
+function removeSidePairQuiet() {
+  for (let i = _craft.parts.length - 1; i >= 0; i--) {
+    if (_craft.parts[i].side) _craft.parts.splice(i, 1);
+  }
+}
+
+function removeSidePair() {
+  removeSidePairQuiet();
+  reflowStages();
+  clearHint();
+  commit();
+}
+
 // Add a part to the TOP of the stack (end of the bottom->top array).
 function addPart(partId) {
   const def = findPart(_catalog, partId);
   if (!def) return;
 
-  // Gentle attach-rule guidance. The current top part is the last element.
-  const topInst = _craft.parts[_craft.parts.length - 1];
+  // Gentle attach-rule guidance. The current top part is the last CENTER element
+  // (side boosters live past the end of the stack and never take stack attachments).
+  const topInst = centerCount() > 0 ? _craft.parts[centerCount() - 1] : null;
   const topDef = topInst ? findPart(_catalog, topInst.partId) : null;
 
   // Rule 1: you can't stack onto something that refuses a top attachment
@@ -553,7 +605,7 @@ function addPart(partId) {
   // Rule 2: an engine is the base of a stage. It can go at the very bottom of the rocket,
   // on top of a Decoupler (the base of a new stage), or on top of ANOTHER engine (cluster
   // engines for more thrust in the same stage). It can't go directly on a tank/pod/fin.
-  if (def.attachBottom === false && _craft.parts.length > 0 &&
+  if (def.attachBottom === false && centerCount() > 0 &&
       !(topDef && (topDef.type === "decoupler" || topDef.type === "engine"))) {
     showHint(
       `The ${def.name} is an engine. Put it at the very bottom, on a Decoupler to start a new stage, or on another engine to add more thrust.`
@@ -564,7 +616,7 @@ function addPart(partId) {
   // Stage is recomputed for ALL parts after the mutation, so the value we pass to
   // makeInstance is just a placeholder; reflowStages() fixes it.
   const inst = makeInstance(partId, 0);
-  _craft.parts.push(inst);
+  _craft.parts.splice(centerCount(), 0, inst); // before any side entries: they stay last
 
   reflowStages();
   maybeAutoName();
@@ -573,9 +625,11 @@ function addPart(partId) {
 }
 
 // Remove a specific instance (by instanceId) from anywhere in the stack.
+// A side booster never leaves alone — its twin goes with it (pairs stay pairs).
 function removePart(instanceId) {
   const idx = _craft.parts.findIndex((p) => p.instanceId === instanceId);
   if (idx === -1) return;
+  if (_craft.parts[idx].side) { removeSidePair(); return; }
   _craft.parts.splice(idx, 1);
   reflowStages();
   clearHint();
@@ -586,9 +640,9 @@ function removePart(instanceId) {
 // dir -1 = toward the bottom. Lets you add parts out of order and shuffle them into place.
 function movePart(instanceId, dir) {
   const i = _craft.parts.findIndex((p) => p.instanceId === instanceId);
-  if (i === -1) return;
+  if (i === -1 || _craft.parts[i].side) return; // side boosters have no stack position
   const j = i + dir;
-  if (j < 0 || j >= _craft.parts.length) return;
+  if (j < 0 || j >= centerCount()) return;
   const t = _craft.parts[i];
   _craft.parts[i] = _craft.parts[j];
   _craft.parts[j] = t;
@@ -614,8 +668,12 @@ function clearStack() {
 function reflowStages() {
   let stage = 0;
   let bottomCargo = true; // still walking the leading rover-cargo section?
+  // A strap-on pair is ALWAYS stage 0 — boosters light first and fall away first —
+  // so when one is aboard, the center stack's stages all start one higher.
+  const base = _craft.parts.some(isSideInst) ? 1 : 0;
   for (const inst of _craft.parts) {
-    inst.stage = stage;
+    if (inst.side) { inst.stage = 0; continue; }
+    inst.stage = stage + base;
     const def = findPart(_catalog, inst.partId);
     if (!def) continue;
     if (def.type === "decoupler") {
@@ -654,15 +712,80 @@ function renderStack() {
     empty.style.color = "#7f8bb0";
     empty.style.padding = "4px 2px";
     _stackListEl.appendChild(empty);
+    _stackListEl.appendChild(makeSideSection()); // strap-ons can come first — kid's choice
     return;
   }
 
   // Show top->bottom visually (matches the rocket: top of the list = top of the rocket).
+  // Side boosters aren't stack rows — they get their own section below the stack.
   for (let i = _craft.parts.length - 1; i >= 0; i--) {
     const inst = _craft.parts[i];
+    if (inst.side) continue;
     const def = findPart(_catalog, inst.partId);
     _stackListEl.appendChild(makeStackRow(inst, def, i));
   }
+  _stackListEl.appendChild(makeSideSection());
+}
+
+// The ⬅➡ Side Boosters section: shows the strapped-on pair (with remove), or the
+// picker to strap one on. Lives at the bottom of the stack list — where the
+// boosters ride on the rocket.
+function makeSideSection() {
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "margin-top:6px;padding:5px 6px;border-radius:5px;background:#0d1226;" +
+    "border:1px dashed #2c3a66;font-size:12px;";
+  const head = document.createElement("div");
+  head.textContent = "⬅➡ Side boosters";
+  head.style.cssText = "font-size:10px;color:#9fb3da;margin-bottom:4px;letter-spacing:0.4px;";
+  wrap.appendChild(head);
+
+  const pair = sidePairInsts();
+  if (pair.length) {
+    const def = findPart(_catalog, pair[0].partId);
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:6px;";
+    const label = document.createElement("span");
+    label.textContent = "2 × " + (def ? def.name : pair[0].partId);
+    label.title = "A matched strap-on pair — stage 0, they light with the core and fall away first";
+    row.appendChild(label);
+    const right = document.createElement("span");
+    right.style.cssText = "display:flex;align-items:center;gap:6px;flex-shrink:0;";
+    const stageTag = document.createElement("span");
+    stageTag.textContent = "S0";
+    stageTag.style.cssText = "font-size:10px;color:#9fb3da;opacity:0.85;";
+    right.appendChild(stageTag);
+    const removeBtn = document.createElement("button");
+    removeBtn.textContent = "×";
+    removeBtn.title = "Unstrap the pair";
+    removeBtn.style.cssText = "padding:0 7px;line-height:1.6;font-size:14px;";
+    removeBtn.addEventListener("click", () => removeSidePair());
+    right.appendChild(removeBtn);
+    row.appendChild(right);
+    wrap.appendChild(row);
+  } else {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:6px;";
+    const sel = document.createElement("select");
+    sel.style.cssText = "flex:1;min-width:0;font-size:11px;background:#0a1020;color:#dfe6f8;" +
+      "border:1px solid #1c2949;border-radius:4px;padding:2px;";
+    for (const def of _catalog) {
+      if (def.type !== "engine") continue; // strap-ons are pure push
+      const opt = document.createElement("option");
+      opt.value = def.id;
+      opt.textContent = def.name;
+      if (def.id === "booster_thumper") opt.selected = true; // the Artemis look, by default
+      sel.appendChild(opt);
+    }
+    row.appendChild(sel);
+    const btn = document.createElement("button");
+    btn.textContent = "➕ pair";
+    btn.title = "Strap a matched pair onto the sides — they light with the core engine and fall away first, like Artemis";
+    btn.style.cssText = "flex-shrink:0;font-size:11px;padding:2px 8px;";
+    btn.addEventListener("click", () => addSidePair(sel.value));
+    row.appendChild(btn);
+    wrap.appendChild(row);
+  }
+  return wrap;
 }
 
 function makeStackRow(inst, def, index) {
@@ -708,7 +831,7 @@ function makeStackRow(inst, def, index) {
     else b.addEventListener("click", () => movePart(inst.instanceId, dir));
     return b;
   };
-  right.appendChild(mkMove("▲", "Move up", +1, index === _craft.parts.length - 1));
+  right.appendChild(mkMove("▲", "Move up", +1, index === centerCount() - 1));
   right.appendChild(mkMove("▼", "Move down", -1, index === 0));
 
   const removeBtn = document.createElement("button");

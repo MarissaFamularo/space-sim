@@ -25,8 +25,10 @@ window.__setView = (v) => Render.setFlightView(v); // "follow" | "map"
 window.__loadRocket = (parts) => {
   craft.parts.length = 0;
   let n = 0;
-  for (const [partId, stage] of parts) {
-    craft.parts.push({ instanceId: "hook" + (++n), partId, stage: stage || 0 });
+  for (const [partId, stage, side] of parts) {
+    const inst = { instanceId: "hook" + (++n), partId, stage: stage || 0 };
+    if (side) inst.side = side; // strap-on boosters: [partId, stage, -1|+1]
+    craft.parts.push(inst);
   }
   Render.buildCraftMesh(craft);
   return craft.parts.length;

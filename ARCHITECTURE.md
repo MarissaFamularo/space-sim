@@ -87,11 +87,23 @@ two extra display-only flags: `modified: true` (stock part with an override) and
 
 ### PartInstance (one placed part, lives in Craft.parts)
 ```js
-{ instanceId: "p3", partId: "tank_small", stage: 1 }
+{ instanceId: "p3", partId: "tank_small", stage: 1, side: -1 /* optional */ }
 ```
-Phase 1 builder is a **single vertical stack**, so order in `parts` array = bottom→top
-position; explicit coordinates are not needed in Phase 1 (render derives them by stacking).
+The builder is a **single vertical stack**, so order in `parts` array = bottom→top
+position; explicit coordinates are not needed (render derives them by stacking).
 `stage` = which stage number this part is jettisoned/activated in (0 fires first).
+
+**Side boosters (2026-08-19 revision).** `side: -1|+1` marks a strap-on booster
+riding the rocket's left/right side. Conventions (builder enforces them; the field is
+optional, so every pre-existing save/share-code reads unchanged):
+- Side instances live at the **end** of `parts`, so array order = stack order still
+  holds for the center stack.
+- They come only as a **matched pair** (one −1, one +1, same partId, engine-type),
+  and are always **stage 0**; `reflowStages` shifts the center stack's stages up one.
+- **Parallel staging**: a stage made entirely of side parts lights the next center
+  stage's engines with it — `Physics.burningEngines` owns that rule (below).
+- Share-codes stay `v: 1`: the pair travels in an optional `sides: [partId, partId]`
+  next to `stack`; old game versions ignore it and load the center stack alone.
 
 ### Craft (the shared document the builder mutates and flight flies)
 ```js
@@ -249,6 +261,10 @@ Physics.step(sim, dtSeconds)        // advance sim.craft by dt under SUPERPOSED 
                                     //   sink/melt on gas giants and the Sun.
 Physics.maxStableStep(sim)          // -> the substep bound step() will use (dynamics/tunneling/thrust).
 Physics.computeOrbit(sim)           // -> orbit about the DOMINANT body (see SimState.orbit shape).
+Physics.burningEngines(parts, findDef, stageNum) // -> [PartDef] engines LIT at that stage.
+                                    // Parallel-staging rule: an all-side stage (strap-on
+                                    // pair) also lights the next center stage's engines.
+                                    // main.js stage loading + applyStage both use it.
 Physics.applyStage(sim, craft)      // drop spent stage parts, recompute dry mass/fuel for new stage.
 Physics.transferWindow(sim, key?)   // -> TransferWindow | null (see shape above). Pure, node-testable.
 Physics.courseCorrection(sim, key?) // -> CourseCheck | null (see shape above). Pure, node-testable.
@@ -357,6 +373,7 @@ Render.isInside()                   // now true for station interiors AND EVA (t
 Render.enterStation(info, cb)       // info gains .spin — centrifuge interior: gravity mode
                                     //   (walk/jump on the floor instead of zero-g drift)
 Render.spawnStageDebris(sim, {parts}) // staging: the jettisoned stage's mesh falls away,
+                                      // a strap-on pair splits into two bodies kicked outward,
                                     //   coasting under the dominant body's gravity. Cosmetic
                                     //   only — sim physics never tracks it; probe-core stages
                                     //   that deploy as satellites skip it. main.doStage calls it.

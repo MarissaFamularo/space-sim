@@ -101,11 +101,13 @@ function activeStage(craft, stageNum) {
   // engines are different machines sharing one tank.
   const modes = { lift: { thrust: 0, veSum: 0, n: 0 }, cruise: { thrust: 0, veSum: 0, n: 0 },
                   always: { thrust: 0, veSum: 0, n: 0 } };
+  let sideBoosters = 0;
   for (const inst of craft.parts) {
     const def = findPart(PARTS, inst.partId);
     if (!def) continue;
     if (inst.stage >= stageNum) {
       remainingMass += (def.dryMass || 0) + (def.fuelMass || 0);
+      if (inst.side) sideBoosters++;
       if (def.type === "chute") chutes++;
       if (def.type === "dock") docks++;
       if (def.type === "legs") legs++;
@@ -117,19 +119,22 @@ function activeStage(craft, stageNum) {
       if (def.type === "shield") shields++;
     }
     if (inst.stage === stageNum) {
-      if (def.type === "engine") {
-        thrust += def.thrust || 0; veSum += def.exhaustVelocity || 0; engines++;
-        const grp = (def.engineMode === "lift" || def.engineMode === "cruise") ? def.engineMode : "always";
-        modes[grp].thrust += def.thrust || 0;
-        modes[grp].veSum += def.exhaustVelocity || 0;
-        modes[grp].n++;
-      }
       stageFuel += def.fuelMass || 0;
     }
   }
+  // Engines burning at this stage under the PARALLEL STAGING rule (a stage that is
+  // all strap-on boosters lights the next center stage's engines with it — the
+  // SLS/Artemis liftoff). Physics owns the rule; the modes fold stays ours.
+  for (const def of Physics.burningEngines(craft.parts, (id) => findPart(PARTS, id), stageNum)) {
+    thrust += def.thrust || 0; veSum += def.exhaustVelocity || 0; engines++;
+    const grp = (def.engineMode === "lift" || def.engineMode === "cruise") ? def.engineMode : "always";
+    modes[grp].thrust += def.thrust || 0;
+    modes[grp].veSum += def.exhaustVelocity || 0;
+    modes[grp].n++;
+  }
   return { thrust, exhaustVelocity: engines ? veSum / engines : 0, stageFuel, remainingMass,
            chutes, legs, solar, rovers, docks, wings, stationParts, centrifuges, shields,
-           modes, hasModes: modes.lift.n > 0 || modes.cruise.n > 0 };
+           sideBoosters, modes, hasModes: modes.lift.n > 0 || modes.cruise.n > 0 };
 }
 function maxStage(craft) {
   return craft.parts.reduce((m, i) => Math.max(m, i.stage || 0), 0);
@@ -151,6 +156,7 @@ function loadStage(stageNum) {
   sim.craft.stationCount = s.stationParts;   // a Station Hub aboard = deployable station
   sim.craft.centrifugeCount = s.centrifuges; // spin gravity for the deployed station
   sim.craft.shieldCount = s.shields; // physics: a heat shield soaks ~70% of reentry heating
+  sim.craft.sideBoosterCount = s.sideBoosters; // ⬅➡ strap-ons still attached (Navigator flag)
   sim.stageWeightKN = s.remainingMass * BODIES.earth.g0;
   sim.cantLiftOff = s.thrust <= sim.stageWeightKN;
   // 📁 Engine groups: keep the pilot's chosen mode across a staging event if the new

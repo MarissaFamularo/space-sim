@@ -52,6 +52,20 @@ export const PARTS = [
     attachTop: true, attachBottom: false,
   },
   {
+    // A SOLID rocket booster, like the twin white sticks on Artemis's SLS or the
+    // Shuttle: the casing IS the tank (the fuel is rubbery solid propellant packed
+    // inside), so it needs no fuel tank — and it belongs strapped on in a PAIR so
+    // the two pushes balance. Huge cheap thrust, but solids burn "dirty": exhaust
+    // ~2,450 m/s vs the Hawk's 3,000 — muscle, not economy. Real ones can't be
+    // throttled or shut off once lit.
+    id: "booster_thumper",
+    type: "engine",
+    name: "Thumper Solid Booster",
+    dryMass: 1.4, fuelMass: 8.0, thrust: 500, exhaustVelocity: 2450, // ~Isp 250s
+    height: 3.4, radius: 0.45, shape: "booster",
+    attachTop: true, attachBottom: false,
+  },
+  {
     id: "engine_hawk",
     type: "engine",
     name: "Hawk Heavy Engine",

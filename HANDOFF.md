@@ -9,6 +9,64 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-08-19 latest): 🚀🚀🚀 SIDE BOOSTERS — the Artemis build (his ask)
+
+His ask (via Mom): add things to the SIDE of rockets — "re-create Artemis' side
+booster situation." Built as strap-on booster PAIRS with real parallel staging:
+
+- **Data:** `PartInstance` gains optional `side: -1|+1` (ARCHITECTURE.md updated).
+  Side instances live at the END of `craft.parts` so "array order = bottom→top"
+  still holds for the center stack. Pairs only — two pushes that balance (that's
+  why real strap-ons come in pairs; one alone would shove the rocket sideways,
+  which this 2D physics can't show, so singles aren't offered). Always stage 0;
+  `reflowStages` shifts center stages up one. No decoupler needed — the latches
+  are part of the mount, like real separation motors.
+- **Parallel staging (the honest core):** new pure `Physics.burningEngines` — a
+  stage that is ALL side parts lights the next center stage's engines WITH it.
+  Boosters + core burn together off the pad, pair falls away first, core burns on:
+  SLS/Artemis, Shuttle, Falcon Heavy. Both main.js stage loading and
+  Physics.applyStage use the one rule.
+- **New stock part:** `booster_thumper` — Thumper Solid Booster (500 kN, ve 2450
+  ≈ Isp 250 s, 8 t solid fuel inside, 1.4 t dry). An engine WITH fuel — the casing
+  IS the tank, like a real SRB (sky-crane precedent). White segmented casing +
+  nose cone ("booster" shape). Also stacks as a center solid first stage. Stock
+  tuning of the existing 18+4 parts untouched (additive part; mission suites green).
+- **Builder:** new "⬅➡ Side boosters" section at the bottom of the stack list —
+  pick an engine (Thumper preselected), "➕ pair" straps them on, × unstraps both.
+  Center-stack add/move/remove logic is side-aware (side entries stay last).
+- **Share-codes:** still `v: 1` — the pair rides in an optional `sides` list; old
+  game versions ignore it (rocket loads without the pair), old codes import
+  unchanged, unknown side ids fail friendly. Rule 2 safe.
+- **Render:** pair hangs at ±x off the core with struts, bases on the pad; each
+  booster gets its own plume (three-column liftoff!). On sep the pair splits into
+  TWO debris bodies kicked outward — the Shuttle-video butterfly.
+- **Navigator:** knowledge extended (parallel staging, why pairs, solids = muscle
+  not economy, real solids can't throttle/shut off — honest note); snapshot gains
+  `flight.sideBoostersAttached`. Safety block untouched.
+
+**Evidence (rung 2+3):** new `tests/boosters_test.mjs` 19/19 (parallel thrust
+1600 = 500+500+600 predicted then measured; applyStage drops exactly the pair;
+share-code round trip; serial rockets untouched); all 20 node suites green. New
+scripted `boosters-check.mjs` 13/13 GREEN in the real browser: builder section
+present, liftoff at 1600 kN with the pair's 16 t pool, burnout at the predicted
+~26 s, Space-key sep → core alone at 600 kN, `Render.debug().stageDebris === 2`,
+zero page errors. Screenshots: three plumes off the pad, core alone at 14 km
+under the (new) black sky. Boot smoke 9/9, flight check 14/14, atmo check 9/9.
+
+**Drift found (recorded, deliberately not fixed here):** `Physics.applyStage`
+loads the new stage's fuel as ALL remaining `fuelMass` (whole stack), while the
+real staging path (`main.js loadStage`) loads only the CURRENT stage's tanks.
+The game flies loadStage's model; applyStage's is only reachable via the API/
+tests. Pre-existing disagreement — worth one focused reconciliation pass.
+
+**Flagged / rung 4:** THE play-test: VAB → strap on the Thumper pair → mega tank
+core → watch all three light, boosters peel off at burnout. If the pair feels
+too strong/weak the dials are in `booster_thumper` (parts.js). v1 scope: one
+pair max, engines only in side slots — "two pairs" or side tanks are Wish Book
+material if he asks.
+
+---
+
 ## Status (2026-08-19 later): 🌤 THE SKY — launches finally start under a blue sky
 
 The game had no sky. Standing on the pad you looked straight at the Milky Way — the

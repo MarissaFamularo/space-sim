@@ -261,8 +261,13 @@ export function exportCraft(craft, catalog) {
       myParts.push(c);
     }
   }
-  return JSON.stringify({ v: 1, name: craft.name || "My Rocket",
-    stack: craft.parts.map((i) => i.partId), myParts });
+  const payload = { v: 1, name: craft.name || "My Rocket",
+    stack: craft.parts.filter((i) => !i.side).map((i) => i.partId), myParts };
+  // Strap-on side boosters ride in their own list (old game versions simply ignore
+  // it — the shared rocket still loads, just without the pair). Order: left, right.
+  const sides = craft.parts.filter((i) => i.side).map((i) => i.partId);
+  if (sides.length) payload.sides = sides;
+  return JSON.stringify(payload);
 }
 
 // -> { ok:true, name, stack:[partId], newParts:[defs to addCustom first] } | { ok:false, error }
@@ -288,8 +293,16 @@ export function importCraft(text, catalog) {
     if (typeof id !== "string" || !known.has(id))
       return no(`This rocket uses a part I don't know: ${JSON.stringify(id)}. The code may be from a newer game or missing its myParts section.`);
   }
+  const sides = [];
+  if (Array.isArray(data.sides)) {
+    for (const id of data.sides) {
+      if (typeof id !== "string" || !known.has(id))
+        return no(`This rocket's side boosters use a part I don't know: ${JSON.stringify(id)}.`);
+      sides.push(id);
+    }
+  }
   const name = (typeof data.name === "string" && data.name.trim()) ? data.name.trim().slice(0, 60) : "Shared Rocket";
-  return { ok: true, name, stack: data.stack.slice(), newParts };
+  return { ok: true, name, stack: data.stack.slice(), sides, newParts };
 }
 
 // Short summary for the Navigator's snapshot: which parts he changed/made + key numbers,

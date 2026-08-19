@@ -688,6 +688,40 @@ export const Physics = {
     };
   },
 
+  // Which engines are LIT while `stageNum` is the current stage — the PARALLEL
+  // STAGING rule. Normally a stage burns only its own engines. But a stage made
+  // entirely of SIDE-mounted parts (a strap-on booster pair, PartInstance.side)
+  // is a booster stage: the next center stage's engines light WITH it — core and
+  // boosters burning together off the pad, then the empty pair falls away and the
+  // core burns on. That is exactly how SLS/Artemis, the Shuttle, and Falcon Heavy
+  // fly. Pure; shared by main.js (stage loading) and applyStage below.
+  burningEngines(parts, findDef, stageNum) {
+    const out = [];
+    let anyHere = false, allSide = true;
+    for (const inst of parts) {
+      if ((inst.stage || 0) !== stageNum) continue;
+      anyHere = true;
+      if (!inst.side) allSide = false;
+      const def = findDef(inst.partId);
+      if (def && def.type === "engine") out.push(def);
+    }
+    if (anyHere && allSide) {
+      let coreStage = Infinity;
+      for (const inst of parts) {
+        if (!inst.side && (inst.stage || 0) > stageNum)
+          coreStage = Math.min(coreStage, inst.stage || 0);
+      }
+      if (isFinite(coreStage)) {
+        for (const inst of parts) {
+          if (inst.side || (inst.stage || 0) !== coreStage) continue;
+          const def = findDef(inst.partId);
+          if (def && def.type === "engine") out.push(def);
+        }
+      }
+    }
+    return out;
+  },
+
   // Staging: drop the spent lowest stage's parts, recompute thrust/fuel/mass for the
   // new current stage, and advance sim.craft.currentStage. (Unchanged from Phase 1.)
   applyStage(sim, craft) {
@@ -720,11 +754,11 @@ export const Physics = {
       if (!def) continue;
       dryMass += def.dryMass || 0;
       fuelMass += def.fuelMass || 0;
-      if (def.type === "engine" && (inst.stage || 0) === newStage) {
-        thrust += def.thrust || 0;
-        veSum += def.exhaustVelocity || 0;
-        engineCount++;
-      }
+    }
+    for (const def of Physics.burningEngines(remaining, findDef, newStage)) {
+      thrust += def.thrust || 0;
+      veSum += def.exhaustVelocity || 0;
+      engineCount++;
     }
 
     const ve = engineCount ? veSum / engineCount : 0;
