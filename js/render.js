@@ -211,6 +211,8 @@ function materialForPart(def) {
     case "legs": return MAT.legs;
     case "solar": return MAT.solar;
     case "rover": return MAT.rover;
+    case "science": return MAT.probe;
+    case "colony": return MAT.tank;
     default: return MAT.generic;
   }
 }
@@ -3014,6 +3016,88 @@ function makePartObject(def, h, r) {
       }
       wheel.userData.spin = 0.5; // rad/s — buildCraftMesh tags it; updateFlight spins it
       grp.add(wheel);
+      return grp;
+    }
+    case "scanner": {
+      // A compact orbital geology package: radar dish, rotating sensor bar, and
+      // three colored spectrometer eyes. It reads as an instrument, not a fuel tank.
+      const grp = new THREE.Group();
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.65, r * 0.65, h * 0.75, 18), foilMat());
+      grp.add(hub);
+      const dish = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.62, r * 0.12, h * 0.22, 24, 1, true),
+        MAT ? MAT.tank : mat);
+      dish.rotation.x = Math.PI / 2;
+      dish.position.z = r * 0.72;
+      grp.add(dish);
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(r * 2.2, 0.08, 0.1), MAT ? MAT.legs : mat);
+      bar.position.y = h * 0.35;
+      grp.add(bar);
+      const colors = [0x58d8ff, 0x8bff9a, 0xffd45a];
+      for (let i = 0; i < 3; i++) {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(colors[i]) }));
+        eye.position.set((i - 1) * r * 0.55, h * 0.35, 0.08);
+        grp.add(eye);
+      }
+      return grp;
+    }
+    case "gauntlet": {
+      // Patrick's laser sampler: four violet focusing coils around a bright central
+      // aperture. The science pulse itself is fired from the Exploration Mode board.
+      const grp = new THREE.Group();
+      grp.add(new THREE.Mesh(new THREE.CylinderGeometry(r * 0.7, r * 0.82, h * 0.7, 20),
+        MAT ? MAT.engine : mat));
+      const violet = new THREE.MeshStandardMaterial({ color: 0x8461d8, metalness: 0.65,
+        roughness: 0.28, emissive: 0x5d2bc9, emissiveIntensity: 0.65 });
+      for (let i = 0; i < 4; i++) {
+        const hoop = new THREE.Mesh(new THREE.TorusGeometry(r * (0.44 + i * 0.09), 0.045, 8, 22), violet);
+        hoop.rotation.x = Math.PI / 2;
+        hoop.position.y = -h * 0.12 + i * h * 0.1;
+        grp.add(hoop);
+      }
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.22, r * 0.3, h * 0.28, 18),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(1.45, 1.1, 2.0) }));
+      lens.position.y = -h * 0.42;
+      grp.add(lens);
+      return grp;
+    }
+    case "colony": {
+      // Pressurized habitat with an inflatable white shell, blue windows and landing
+      // feet. Once delivered it remains part of the founding ship's visible stack.
+      const grp = new THREE.Group();
+      const shell = lathe([[0.001,0],[r*.78,.04],[r,.16],[r,.84],[r*.78,.96],[0.001,1]], h, tankMat());
+      grp.add(shell);
+      for (const fy of [-0.28, 0, 0.28]) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.01, 0.035, 7, 28), MAT ? MAT.decoupler : mat);
+        ring.rotation.x = Math.PI / 2; ring.position.y = fy * h; grp.add(ring);
+      }
+      for (let i = 0; i < 6; i++) {
+        const a = i / 6 * Math.PI * 2;
+        const win = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.035),
+          new THREE.MeshBasicMaterial({ color: 0x78c9ff }));
+        win.position.set(Math.cos(a) * r * 1.01, h * 0.08, Math.sin(a) * r * 1.01);
+        win.rotation.y = -a + Math.PI / 2; grp.add(win);
+      }
+      return grp;
+    }
+    case "greenhouse": {
+      // A transparent-looking greenhouse drum: dark pressure core, bright growth
+      // windows, and unmistakable rows of living green plants.
+      const grp = new THREE.Group();
+      grp.add(new THREE.Mesh(new THREE.CylinderGeometry(r * 0.86, r * 0.86, h, 24),
+        new THREE.MeshStandardMaterial({ color: 0x284a46, metalness: 0.15, roughness: 0.35,
+          emissive: 0x18352b, emissiveIntensity: 0.35 })));
+      for (let i = 0; i < 8; i++) {
+        const a = i / 8 * Math.PI * 2;
+        const pane = new THREE.Mesh(new THREE.BoxGeometry(r * 0.56, h * 0.68, 0.045),
+          new THREE.MeshStandardMaterial({ color: 0x6fd69b, metalness: 0.05, roughness: 0.2,
+            emissive: 0x235c36, emissiveIntensity: 0.75 }));
+        pane.position.set(Math.cos(a) * r * 0.87, 0, Math.sin(a) * r * 0.87);
+        pane.rotation.y = -a + Math.PI / 2; grp.add(pane);
+      }
+      const cap = new THREE.Mesh(new THREE.TorusGeometry(r * 0.88, 0.055, 8, 28), MAT ? MAT.decoupler : mat);
+      cap.rotation.x = Math.PI / 2; cap.position.y = h * 0.42; grp.add(cap);
+      const cap2 = cap.clone(); cap2.position.y = -h * 0.42; grp.add(cap2);
       return grp;
     }
     default: {

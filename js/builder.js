@@ -37,6 +37,7 @@ let _paletteEl = null;     // the #palette panel (show/hide target)
 let _paletteWrap = null;   // <div> holding the palette part rows (rebuilt after mods change)
 let _stackListEl = null;   // <div> holding the live stack rows
 let _hintEl = null;        // tiny inline hint line
+let _science = 0;          // lifetime science; gates Exploration Mode tech parts
 
 // Part-code editor (Phase 3 "open the hood") — created lazily, one panel reused.
 let _editorEl = null;
@@ -135,6 +136,13 @@ export const Builder = {
     renderPalette();
   },
 
+  // Exploration tech is threshold-based: science is never spent, and a newly
+  // collected part appears in both palettes as soon as the score crosses its mark.
+  setScience(n) {
+    _science = Math.max(0, Number(n) || 0);
+    renderPalette();
+  },
+
   hide() {
     if (_paletteEl) _paletteEl.style.display = "none";
     closeEditor(); // don't leave part code floating over the flight view
@@ -176,6 +184,10 @@ function keyStatLabel(def) {
       return "power for satellites ☀";
     case "rover":
       return "land it, stage it, it drives 🚗";
+    case "science":
+      return def.shape === "gauntlet" ? "laser rock sampler ⚡" : "maps resources 🔭";
+    case "colony":
+      return def.shape === "greenhouse" ? "food + oxygen 🌱" : "home for Connies 🏠";
     default:
       return def.dryMass + " t";
   }
@@ -189,7 +201,8 @@ function keyStatLabel(def) {
 // parts with no facility tag (and all custom parts) show in both.
 let _facility = "vab";
 function facilityAllows(def) {
-  return !def.facility || def.custom || def.facility === _facility;
+  const inBuilding = !def.facility || def.custom || def.facility === _facility;
+  return inBuilding && (!def.unlockScience || _science >= def.unlockScience);
 }
 
 function renderPalette() {

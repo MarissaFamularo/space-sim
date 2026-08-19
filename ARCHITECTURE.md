@@ -1,5 +1,29 @@
 # Space Sim — Phase 1 Architecture & Contracts
 
+## CONTRACT REVISION 2026-08-19 — 🔭 Exploration Mode
+
+- New `js/exploration.js` owns the Exploration Lab overlay and the new isolated storage
+  key `spacesim.exploration.v1`: `{v:1, scans, probes, laserSamples, colonies}`, with
+  world keys namespaced as `systemId:bodyKey`. Every completion is one-time; parsing is
+  garbage-tolerant. Pure exports `resourceProfile`, `isSmallWorld`, `scienceYield`,
+  `isTechUnlocked`, and `parseExplorationSave` are node-testable.
+- Resource scans are deterministic game data keyed by system + body, quality 1–5. A
+  powered deployed satellite enables a basic scan; optional satellite field
+  `hasScanner:true` adds the dedicated instrument bonus. Optional `system` scopes new
+  satellites; old records without it are treated as Sol records.
+- New PartDef display/gating field `unlockScience` is a lifetime threshold, never a
+  debit. `Builder.setScience(n)` refreshes the palette. New types `science` and `colony`
+  are valid mod types; stock parts and shapes are: `orbital_scanner/scanner` (20),
+  `laser_gauntlet/gauntlet` (45), `colony_habitat/colony` (80), and
+  `colony_greenhouse/greenhouse` (120).
+- Exploration action gates: scan = powered satellite; probe report = scanned world +
+  landed uncrewed Probe Core craft; laser = scanned small solid world + live ship there
+  carrying the gauntlet; colony = scan + probe + crewed landing + both colony parts.
+  Rewards write through the existing lifetime `spacesim.science.v1` ledger.
+- `Menu.init` and `UI.init` gain optional `onExploration`; `Exploration.init` takes
+  `{getContext, awardScience, onExit, onBuild}`. The mode reads a compact copied snapshot,
+  never mutable sim objects.
+
 Phase 1 goal: build a rocket in a constrained 3D builder, launch it, and reach a stable
 orbit around Earth, with live readouts and a (stubbed) AI copilot. Browser only, vanilla
 JS ES modules + Three.js. See `space-game-design.md` for the full vision.

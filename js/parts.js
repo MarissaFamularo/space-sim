@@ -177,6 +177,48 @@ export const PARTS = [
     attachTop: true, attachBottom: true,
   },
   {
+    // Exploration Mode tech. Any powered satellite can make a basic resource scan;
+    // this dedicated multispectral/radar package makes the survey sharper and pays
+    // bonus science. It unlocks automatically when lifetime science reaches 20.
+    id: "orbital_scanner",
+    type: "science",
+    name: "Orbital Survey Scanner",
+    unlockScience: 20,
+    dryMass: 0.18,
+    height: 0.55, radius: 0.55, shape: "scanner",
+    attachTop: true, attachBottom: true,
+  },
+  {
+    // Patrick's part: a compact sampling laser. It is deliberately a SCIENCE tool,
+    // not a weapon — from orbit or the surface it vaporizes a pinprick of rock and
+    // reads the glowing spectrum, like the ChemCam laser on NASA's Curiosity rover.
+    id: "laser_gauntlet",
+    type: "science",
+    name: "Laser Gauntlet",
+    unlockScience: 45,
+    dryMass: 0.35,
+    height: 0.75, radius: 0.65, shape: "gauntlet",
+    attachTop: true, attachBottom: true,
+  },
+  {
+    id: "colony_habitat",
+    type: "colony",
+    name: "Colony Habitat",
+    unlockScience: 80,
+    dryMass: 2.2,
+    height: 2.1, radius: 1.05, shape: "colony",
+    attachTop: true, attachBottom: true,
+  },
+  {
+    id: "colony_greenhouse",
+    type: "colony",
+    name: "Colony Greenhouse",
+    unlockScience: 120,
+    dryMass: 1.4,
+    height: 1.6, radius: 1.0, shape: "greenhouse",
+    attachTop: true, attachBottom: true,
+  },
+  {
     // Cargo: land it somewhere solid, hit Stage, and it drives off to explore.
     id: "rover",
     type: "rover",

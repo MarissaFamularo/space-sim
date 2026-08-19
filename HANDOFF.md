@@ -9,6 +9,39 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-08-19): 🔭 EXPLORATION MODE — scan, probe, laser, colonize (Patrick's spec)
+
+Patrick's loop is playable from a new **Exploration Lab** at the Space Center and a
+**🔭 Exploration Mode** button in the ordinary Mode panel. It uses the real persistent
+fleet: put a powered probe satellite in orbit, open the survey board, reveal that
+world's deterministic 1–5 resource quality, then decide whether it is worth landing a
+robot probe. Better resources pay more one-time science.
+
+Science is a lifetime unlock threshold (never spent, so Astronaut Complex recruits do
+not re-lock). Four new stock parts appear automatically in both builders: Orbital Survey
+Scanner at 20 🔬, Patrick's **Laser Gauntlet** at 45, Colony Habitat at 80, and Colony
+Greenhouse at 120. Scanner-equipped satellites earn a sharper-scan bonus. The gauntlet
+only samples small solid worlds and needs the ship physically there; its animated
+violet pulse pays a quality-scaled science result once per world. Founding a persistent
+survey-board colony requires: scan complete, robot probe report complete, crewed landing,
+and both colony parts aboard.
+
+Persistence is isolated in new key `spacesim.exploration.v1`; satellites gain optional
+`hasScanner` and `system` fields without invalidating old records. Resource profiles,
+small-world rules, science yields, tech gates, and corrupt-save handling are pure in
+`js/exploration.js` and covered by `tests/exploration_test.mjs` (38 checks). All 19 node
+suites pass; browser pass verified title → Space Center lab → full mission board →
+exploration-builder handoff, zero console errors, and science-0 tech remains hidden from
+the palette. The initial mission board was visually inspected at desktop size.
+
+**Play-test flag:** the numbers are intentionally a first tuning: 20/45/80/120 science
+and rewards from 5–50 based on task + world quality. Let Patrick run the satellite →
+probe loop once. If the Laser Gauntlet arrives too slowly or colonies too quickly, tune
+only `EXPLORATION_TECH` and `scienceYield()` in `exploration.js`; the mission records and
+parts do not need to change.
+
+---
+
 ## Status (2026-08-08): 🧨 STAGING — the dropped stage now FALLS AWAY (his ask)
 
 His ask (via Mom): when you decouple, the piece "just gets deleted" — he wants to see

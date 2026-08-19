@@ -5,7 +5,7 @@
 // of the running 3D scene; owns no game state (crew picks live in connies.js's key).
 //
 // API (used by main.js):
-//   Menu.init({ onVAB, onHangar, onTracking, onSchool, onSettingsChange, getScience })
+//   Menu.init({ onVAB, onHangar, onTracking, onSchool, onExploration, onSettingsChange, getScience })
 //   Menu.showTitle() / Menu.showCenter() / Menu.hideAll()
 //   Menu.getSettings() -> { graphics: "fancy"|"fast" }
 
@@ -333,20 +333,25 @@ function showCenter() {
       <text x="1055" y="416" text-anchor="middle" font-size="12" fill="#9fb3da">pick your crew — science recruits more</text>
     </g>
 
-    <!-- launchpad + rocket, flag, water tower (decoration) -->
-    <g>
-      <rect x="1165" y="330" width="120" height="15" fill="#33404f"/>
-      <rect x="1180" y="205" width="10" height="125" fill="#5b6a7d"/>
-      <line x1="1190" y1="215" x2="1222" y2="230" stroke="#5b6a7d" stroke-width="4"/>
-      <rect x="1216" y="230" width="16" height="88" rx="7" fill="#e8eefc"/>
-      <path d="M1216 236 L1224 214 L1232 236 Z" fill="#e0443f"/>
-      <path d="M1216 318 L1208 334 L1216 330 Z" fill="#c3ccdb"/>
-      <path d="M1232 318 L1240 334 L1232 330 Z" fill="#c3ccdb"/>
-      <rect x="1128" y="252" width="4" height="93" fill="#5b6a7d"/>
-      <rect x="1132" y="252" width="26" height="16" fill="#e0443f"/>
-      <circle cx="1145" cy="260" r="5" fill="#fff"/>
-      <ellipse cx="668" cy="255" rx="24" ry="18" fill="#6e7c8f"/>
-      <rect x="664" y="270" width="8" height="75" fill="#5b6a7d"/>
+    <!-- EXPLORATION LAB — Patrick's scan / probe / colony mode -->
+    <g class="ksp-bld" data-go="exploration">
+      <g class="ksp-glow">
+        <rect x="1140" y="260" width="145" height="85" rx="7" fill="#232c4c" stroke="#654db1" stroke-width="2"/>
+        <path d="M1152 260 Q1212 208 1273 260 Z" fill="#3b3265" stroke="#8065d0" stroke-width="2"/>
+        <!-- hologram planet + scanning beam -->
+        <circle cx="1212" cy="241" r="19" fill="#4d75ae" stroke="#8dc8ff" stroke-width="2"/>
+        <ellipse cx="1212" cy="241" rx="29" ry="8" fill="none" stroke="#bd9cff" stroke-width="2"/>
+        <path d="M1160 285 L1200 298" stroke="#c7a7ff" stroke-width="4" opacity=".9"/>
+        <circle cx="1204" cy="300" r="6" fill="#fff"/>
+        <rect x="1160" y="314" width="26" height="31" fill="#10172b"/>
+        <rect x="1198" y="275" width="70" height="34" rx="3" fill="#0b1429"/>
+        <rect x="1205" y="282" width="8" height="20" fill="#4bd9ff"/>
+        <rect x="1218" y="288" width="8" height="14" fill="#65e39d"/>
+        <rect x="1231" y="278" width="8" height="24" fill="#ffd56a"/>
+        <rect x="1244" y="285" width="8" height="17" fill="#9c79ff"/>
+      </g>
+      <text x="1212" y="395" text-anchor="middle" font-size="17" font-weight="800" fill="#d9ccff">🔭 EXPLORATION LAB</text>
+      <text x="1212" y="416" text-anchor="middle" font-size="12" fill="#aa9bcf">scan · probe · laser · colonize</text>
     </g>
   </svg>`;
   centerEl.appendChild(svgWrap);
@@ -359,6 +364,7 @@ function showCenter() {
       if (go === "hangar" && handlers.onHangar) handlers.onHangar();
       if (go === "tracking" && handlers.onTracking) handlers.onTracking();
       if (go === "school" && handlers.onSchool) handlers.onSchool();
+      if (go === "exploration" && handlers.onExploration) handlers.onExploration();
       if (go === "complex") showComplex(); // menu-owned screen, like Settings
     });
   });

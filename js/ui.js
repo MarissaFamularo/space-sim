@@ -110,6 +110,11 @@ export const UI = {
     kscBtn.style.cssText = "width:100%;margin-bottom:6px;";
     kscBtn.onclick = () => this.handlers.onSpaceCenter && this.handlers.onSpaceCenter();
     c.appendChild(kscBtn);
+    const exploreBtn = document.createElement("button");
+    exploreBtn.textContent = "🔭 Exploration Mode";
+    exploreBtn.style.cssText = "width:100%;margin-bottom:6px;background:#34265f;border-color:#7157b5;font-weight:800;";
+    exploreBtn.onclick = () => this.handlers.onExploration && this.handlers.onExploration();
+    c.appendChild(exploreBtn);
     mk("Build", () => this.handlers.onModeChange && this.handlers.onModeChange("build"));
     mk("🚀 Launch", () => this.handlers.onLaunch && this.handlers.onLaunch());
     mk("Reset", () => this.handlers.onReset && this.handlers.onReset());

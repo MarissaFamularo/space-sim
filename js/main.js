@@ -16,6 +16,7 @@ import { Menu } from "./menu.js";
 import { Tracking } from "./tracking.js";
 import { School } from "./school.js";
 import { openForgePanel, loadPelican, savePelican } from "./contest.js";
+import { Exploration } from "./exploration.js";
 
 const canvas = document.getElementById("scene");
 let craft = newCraft();
@@ -298,18 +299,21 @@ function loadSats() {
 function saveSats() { try { localStorage.setItem(LS_SATS, JSON.stringify(SATELLITES)); } catch {} }
 const SATELLITES = loadSats();
 
-function deploySatellite(hasPower) {
+function deploySatellite(hasPower, hasScanner = false) {
   const rec = Physics.makeSatellite(sim);
   if (!rec) return false;
   rec.name = "Sat " + (SATELLITES.length + 1);
   rec.hasPower = !!hasPower;
+  rec.hasScanner = !!hasScanner;
+  rec.system = systemKeyNow();
   SATELLITES.push(rec);
   if (SATELLITES.length > 24) SATELLITES.splice(0, SATELLITES.length - 24); // keep the sky tidy
   saveSats();
   const b = BODIES[rec.bodyKey];
   copilotSay("🛰️ <b>Satellite deployed around " + (b ? b.name : "?") + "!</b> It'll keep circling all on its own — orbits are free, forever. Check the map to see it. " +
     (hasPower
-      ? "Its solar panels keep it awake for years — just like the real satellites doing GPS, weather, and phone calls over Earth right now."
+      ? "Its solar panels keep it awake for years — just like the real satellites doing GPS, weather, and phone calls over Earth right now." +
+        (hasScanner ? " Its <b>Orbital Survey Scanner</b> is already sweeping the ground — open 🔭 Exploration Mode to read the resource map." : " Open 🔭 Exploration Mode to use it for a basic surface scan.")
       : "Heads up: it has no solar panels, so its battery will run down — real satellites always carry power. Next one, tuck Solar Panels into the same stage!"));
   return true;
 }
@@ -414,8 +418,9 @@ function doStage() {
   const droppedDefs = droppedInsts.map((i) => findPart(PARTS, i.partId)).filter(Boolean);
   const dropsProbe = droppedDefs.some((d) => d.type === "command" && d.uncrewed);
   const dropsSolar = droppedDefs.some((d) => d.type === "solar");
+  const dropsScanner = droppedDefs.some((d) => d.id === "orbital_scanner");
   const becameSat = dropsProbe && sim.orbit && sim.orbit.isOrbit && sim.status !== "landed"
-    && deploySatellite(dropsSolar);
+    && deploySatellite(dropsSolar, dropsScanner);
   if (!becameSat) Render.spawnStageDebris(sim, { parts: droppedInsts });
   loadStage(next);
   const remaining = { name: craft.name, parts: craft.parts.filter((i) => (i.stage || 0) >= next) };
@@ -752,6 +757,36 @@ function arriveInSystem() {
 // Debug handle for automated tests (agents drive the game headless with this).
 if (typeof window !== "undefined") window.__simRef = () => sim;
 
+// Exploration Mode reads a compact snapshot; it never reaches into live sim objects.
+// The "current body" is the deepest SOI containing the ship, except an exact landing
+// always wins. Only still-attached stages count as equipment carried on the mission.
+function getExplorationContext() {
+  let currentBodyKey = sim.landed && sim.landed.body;
+  if (!currentBodyKey && sim.mode === "flight" && sim.craft && sim.craft.pos) {
+    const dom = dominantBody(sim.craft.pos, sim.time || 0);
+    currentBodyKey = dom.body && dom.body.key;
+  }
+  const minStage = sim.mode === "flight" ? (sim.craft.currentStage || 0) : 0;
+  const partIds = craft.parts.filter((p) => (p.stage || 0) >= minStage).map((p) => p.partId);
+  const sys = systemKeyNow();
+  return {
+    science: SCIENCE,
+    systemId: sys,
+    systemName: SYSTEM.name,
+    homeRadius: BODIES.earth.radius,
+    bodies: Object.values(BODIES).map((b) => ({ key: b.key, name: b.name, radius: b.radius,
+      solid: !!b.solid, atmosphere: b.atmosphere, tinyMoon: !!b.tinyMoon })),
+    satellites: SATELLITES.filter((s) => (s.system || "sol") === sys).map((s) => ({
+      bodyKey: s.bodyKey, hasPower: !!s.hasPower, hasScanner: !!s.hasScanner,
+    })),
+    currentBodyKey,
+    status: sim.status,
+    partIds,
+    hasCrew: !!sim.crew,
+    isProbe: sim.mode === "flight" && !sim.crew && partIds.includes("probe_core"),
+  };
+}
+
 // ---- boot ----
 Render.init(canvas);
 Builder.init({ craft, partsCatalog: PARTS, onChange: onCraftChange });
@@ -766,6 +801,7 @@ UI.init({
   onStarmapHome: () => travelHome(),
   getVisitedSystems: () => loadVisited(),
   onSpaceCenter: () => Menu.showCenter(),
+  onExploration: () => { Menu.hideAll(); Exploration.show(); },
 });
 wireCopilot();
 Copilot.initSettings();
@@ -791,8 +827,20 @@ Menu.init({
   },
   onTracking: () => Tracking.show(),
   onSchool: () => School.show(),
+  onExploration: () => Exploration.show(),
   onSettingsChange: (s) => Render.setQuality(s.graphics),
   getScience: () => SCIENCE, // the 🧑‍🚀 Astronaut Complex shows the balance + unlocks live
+});
+
+Exploration.init({
+  getContext: getExplorationContext,
+  awardScience: (kind, points, body, quality) => awardScience(kind, points, body, quality),
+  onExit: () => Menu.showCenter(),
+  onBuild: () => {
+    Builder.setFacility("hangar");
+    enterBuild();
+    copilotSay("🔭 <b>Exploration ship on the floor.</b> Start with a Probe Core + Solar Panels for a satellite. Science unlocks the Survey Scanner, Laser Gauntlet, Habitat, and Greenhouse in this palette.");
+  },
 });
 
 // 🎒 Space School (the little-sibling classroom): school.js owns the lesson overlays
@@ -849,7 +897,7 @@ function wireCopilot() {
 const keys = {};
 window.addEventListener("keydown", (e) => {
   if (e.target && e.target.tagName === "INPUT") return;
-  if (Menu.isOpen() || Tracking.isOpen() || School.isOpen()) return; // menus own the keys while open
+  if (Menu.isOpen() || Tracking.isOpen() || School.isOpen() || Exploration.isOpen()) return; // menus own the keys while open
   // School FLIGHTS deliberately leave the keyboard LIVE (Mom's call): the flight keys
   // are the on-ramp to the real game — discovering that Space fires the decoupler is
   // a feature, not an accident. The school's nets (assist-stage, auto-chute, friendly
@@ -1186,6 +1234,7 @@ let courseTimer = 0;
 const SCIENCE_KEY = "spacesim.science.v1";
 let SCIENCE = 0;
 try { SCIENCE = parseInt(localStorage.getItem(SCIENCE_KEY)) || 0; } catch {}
+Builder.setScience(SCIENCE);
 const SCIENCE_FACTS = {
   bio: ["🌱 Plant lab checked! In zero-g, roots grow every which way — plants use LIGHT to find 'up' instead of gravity. Astronauts on the ISS have eaten space-grown lettuce.",
         "🧫 Bio experiment logged! Your bones get lazy in zero-g — real astronauts exercise 2 hours a day just so their skeletons don't quit."],
@@ -1200,16 +1249,22 @@ const SCIENCE_FACTS = {
         "👽📐 It draws you a right triangle and hums three notes: 3, 4, 5. Pythagoras works in every star system — that's WHY scientists think math is how we'd talk to aliens first."],
   monument: ["🗼📖 The story screen wakes for you. In pictures: a golden star… the star swelling, angry… a thousand ships rising together, all lights on… and one tower left glowing behind, pointed at the sky. They SAW their supernova coming and sailed away in time — and here's the real science hiding in it: stars announce a supernova ages ahead (astronomers watch Betelgeuse for exactly this), and the blast leaves a spinning lighthouse behind. Their beacon still shines. So does the star's.",],
   forgewin: ["🔨🏆 <b>FORGE CHAMPION!</b> You beat the ring's builders at their own game with the same equation Tsiolkovsky wrote in 1903: Δv = exhaust speed × ln(full mass ÷ empty mass). That one line is why rockets are mostly fuel — and why staging, light parts, and efficient engines win. The builders hand over their prize: the <b>📁 PELICAN</b>, their vehicle-carrier, is now in your VAB!",],
+  scan: ["🛰🔭 The orbital scan is in! Radar and reflected light can map minerals without touching the ground — real planetary missions choose landing sites this way.",],
+  probe: ["🤖🪨 Probe report received! Robots taste the dust, photograph the layers, and measure radiation before anyone risks a crewed landing.",],
+  laser: ["⚡🔬 Laser spectrum captured! The flash splits into a chemical fingerprint — Curiosity's ChemCam really fires tiny laser pulses at Mars rocks to learn what they are made of.",],
+  colony: ["🏕🌱 Colony founded! The habitat holds pressure; the greenhouse recycles carbon dioxide into oxygen and food. A real colony survives by closing loops, not by packing infinite supplies.",],
 };
 const SCIENCE_VALUE = { bio: 10, materials: 10, astro: 10, salvage: 15, basewreck: 15, alien: 25, vault: 50, monument: 25, forgewin: 50 };
 let factRotor = 0;
-function awardScience(kind) {
-  const pts = SCIENCE_VALUE[kind] || 10;
+function awardScience(kind, pointsOverride = null, body = null, quality = null) {
+  const pts = Number.isFinite(pointsOverride) && pointsOverride > 0 ? Math.round(pointsOverride) : (SCIENCE_VALUE[kind] || 10);
   SCIENCE += pts;
   try { localStorage.setItem(SCIENCE_KEY, String(SCIENCE)); } catch {}
+  Builder.setScience(SCIENCE);
   const facts = SCIENCE_FACTS[kind] || [];
   const fact = facts.length ? facts[(factRotor++) % facts.length] : "";
-  copilotSay(fact + " <b>+" + pts + " Science</b> (total " + SCIENCE + ").");
+  const result = body && quality ? " <b>" + body.name + " rated " + ["", "SPARSE", "MODEST", "USEFUL", "RICH", "EXTRAORDINARY"][quality] + ".</b>" : "";
+  copilotSay(fact + result + " <b>+" + pts + " Science</b> (total " + SCIENCE + ").");
 }
 
 // ---- EVA anywhere (his ask): E in space or on the ground sends the Connie OUT ----

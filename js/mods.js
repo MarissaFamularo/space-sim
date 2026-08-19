@@ -26,7 +26,7 @@ import { PARTS as STOCK } from "./parts.js";
 
 const LS_MODS = "spacesim_mods_v1";
 const TYPES = ["command", "tank", "engine", "decoupler", "fin", "chute", "legs", "solar", "rover", "dock",
-               "wing", "station", "centrifuge", "shield"];
+               "wing", "station", "centrifuge", "shield", "science", "colony"];
 
 // =====================================================================
 // PURE: validation. Returns { ok:true, def } (a cleaned shallow copy) or
