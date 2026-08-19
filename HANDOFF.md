@@ -9,6 +9,53 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-08-19 later): 🌤 THE SKY — launches finally start under a blue sky
+
+The game had no sky. Standing on the pad you looked straight at the Milky Way — the
+air's effect on the view was drawn from orbit (the old flat halo shell) but never from
+the ground, on every launch he has ever flown. Built the atmosphere both ways, render.js
+only (cosmetic class; physics, saves, API surfaces untouched):
+
+- **Sky dome (inside view):** a camera-riding dome whose opacity is the air density
+  around the craft on the SAME exponential curve physics.js flies (ρ/ρ₀ = e^(−alt/H),
+  H = height/5). The blue drains out on ascent because the air really is running out —
+  by the scaled 7 km atmo top the sky has gone black on its own. Day/night/twilight come
+  from the true sun geometry. Per-world palettes carry real facts: Earth blue with
+  red-orange sunsets, **Mars butterscotch by day and BLUE around a setting sun** (dust
+  scatters red away — Earth's exact opposite, rover-photographed), Venus permanent
+  sulfur-orange, Titan's midday dimmer than our twilight, gas-giant cloud-deck colors.
+  Generated worlds derive a palette from their halo/face tint (green air ⇒ green sky).
+- **Fresnel limb shell (outside view):** replaced the flat 12%-opacity halo ball — which
+  glowed as hard on the night side as the day side, the one thing real air never does —
+  with a shader shell: bright thin arc where the sight line grazes the most air (the
+  "blue line" astronauts photograph), soft fade just PAST the terminator (twilight, the
+  same phenomenon the dome paints from below), forward-scatter flare on crescents.
+
+**Evidence (rung 3):** new scripted `atmo-check.mjs` 9/9 GREEN with predicted numbers —
+canvas pixel readback at deterministic placements: Earth noon 300 m bright + BLUE>RED
+(b=0.85 vs r=0.73); Mars noon RED>BLUE (r=0.83 vs b=0.60) — the channel FLIP is the
+strongest check, no rendering accident produces opposite dominance on the two worlds;
+Earth 20 km mean 0.000 (drained above atmo top); Earth midnight 0.004; Moon noon 0.000
+(airless); zero page errors. Boot smoke 9/9 + flight check 14/14 green on the new code;
+all 19 node suites green. Screenshots: butterscotch Mars sky over rust ground, pale-blue
+Earth pad sky, day-side-only limb arc in map view.
+
+**Gotcha paid for (fixed in the same change):** the BackSide limb shell has no idea the
+camera has flown INSIDE it — at 20 km (above the air, inside the 4×height shell) its far
+wall washed the whole sky pale blue. The shell now fades to zero over the last 15% of
+approach (`updateAtmosphere`); the dome owns the inside view, the shell the outside.
+Side effect: the old "stars visible through atmosphere halos from inside" known-benign
+artifact is gone — don't re-add it to the browser-verification skill's expectations.
+
+**Flagged / rung 4:** worth THE play-test — this is a first-60-seconds-of-every-flight
+change. Have him launch the school rocket and just watch the sky drain to black through
+ascent, then teleport to Mars and fly low at dusk for the blue sunset. Tuning knobs if
+he wants it: `SKY_TINT` palettes + the alpha curve in `SKY_FRAG` (render.js), shell
+strength 0.6 in `makeAtmoShellMaterial`/`updateAtmosphere`. Not modeled (deliberate):
+horizon haze on distant terrain, sun angular-size change per system, clouds from below.
+
+---
+
 ## Status (2026-08-19): 🔭 EXPLORATION MODE — scan, probe, laser, colonize (Patrick's spec)
 
 Patrick's loop is playable from a new **Exploration Lab** at the Space Center and a

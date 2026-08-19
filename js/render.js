@@ -73,6 +73,8 @@ let streakClock = 0;       // real-ish seconds, for the streak flow (visual only
 let cometTails = [];       // [{key, group, len}] tails aimed away from the star per frame
 let pulsarBeams = [];      // [{group, rate}] lighthouse beams on neutron stars (wall-clock sweep)
 let lockedShells = [];     // [{key, mesh}] molten hemispheres aimed AT the star (tidal lock)
+let atmoShells = [];       // [{key, mesh}] fresnel limb-glow shells (uniforms aimed per frame)
+let skyDome = null;        // 🌤 the sky seen from INSIDE an atmosphere (rides the camera)
 
 // Galaxy layer: OTHER star systems drawn on the map when zoomed way out. Positions
 // come from main (relative to the ACTIVE system); clicking one travels there.
@@ -117,6 +119,44 @@ const BODY_STYLE = {
   uranus:  { color: 0x9ad4d6, halo: 0x9ad4d6 },
   neptune: { color: 0x3f66d4, halo: 0x5f86e4 },
 };
+
+// 🌤 SKY TINTS — what the sky looks like FROM THE GROUND, per world. These are
+// real observations, not decoration (the Navigator can back every one):
+//   earth — blue overhead (air scatters short/blue wavelengths most), red-orange at
+//           sunset (a low sun shines through much more air, and only the reds survive);
+//   mars  — butterscotch by day (suspended DUST colors it, not the thin air) and
+//           famously BLUE around the sun at sunset — Earth's exact opposite, because
+//           dust scatters red light away and lets blue through near the sun. The
+//           rovers have photographed it.
+//   venus — dim sulfur-orange under permanent cloud; you never see the Sun or a star.
+//   titan — orange haze so thick that noon is dimmer than Earth's deep twilight.
+//   gas giants — their own cloud-deck color, seen from inside the cloud tops.
+// zenith = straight up, horizon = the band at eye level, sunset = the low-sun glow.
+const SKY_TINT = {
+  venus:   { zenith: 0xa9691c, horizon: 0xd9a44e, sunset: 0xdba055 },
+  earth:   { zenith: 0x2a67c8, horizon: 0xb7d6f2, sunset: 0xff8a3c },
+  mars:    { zenith: 0xa8794a, horizon: 0xd8b389, sunset: 0x6f9ad8 },
+  jupiter: { zenith: 0xa8845a, horizon: 0xe3c79c, sunset: 0xd08a4c },
+  saturn:  { zenith: 0xb59c68, horizon: 0xebd9ac, sunset: 0xd8a758 },
+  titan:   { zenith: 0xa8631c, horizon: 0xdb9c4c, sunset: 0xc47c30 },
+  uranus:  { zenith: 0x4e9ea6, horizon: 0xa8dcdd, sunset: 0x7fc4c8 },
+  neptune: { zenith: 0x2a4bad, horizon: 0x7d9ce8, sunset: 0x5f7fd8 },
+};
+
+// Sky colors for a world with no hand-tuned entry (every generated system): derive
+// them from the halo/face tint the body already carries, so a green-aired world gets
+// a green sky for free. Horizon = paler (you look through more air sideways),
+// zenith = the deep saturated version, sunset = the hue pushed warm.
+function skyPaletteFor(key, style) {
+  if (SKY_TINT[key] && !BODIES[key].gen) return SKY_TINT[key];
+  const base = new THREE.Color(style.halo || style.color || 0x88aaff);
+  const hsl = { h: 0, s: 0, l: 0 };
+  base.getHSL(hsl);
+  const zenith = new THREE.Color().setHSL(hsl.h, Math.min(1, hsl.s * 1.15), Math.max(0.16, hsl.l * 0.55));
+  const horizon = new THREE.Color().setHSL(hsl.h, hsl.s * 0.55, Math.min(0.86, hsl.l * 1.35 + 0.28));
+  const sunset = new THREE.Color().setHSL((hsl.h + 0.94) % 1, Math.min(1, hsl.s * 1.25 + 0.2), 0.58);
+  return { zenith: zenith.getHex(), horizon: horizon.getHex(), sunset: sunset.getHex() };
+}
 
 // Style lookup: generated bodies carry their own style (from stargen); Sol bodies
 // use the hand-tuned BODY_STYLE table above; anything else gets a gray fallback.
@@ -663,6 +703,10 @@ function init(canvasEl) {
   // (the craft), so the stars are always around you no matter where you fly.
   scene.add(makeStarfield());
 
+  // 🌤 The sky dome — invisible until you are actually inside somebody's air.
+  skyDome = makeSkyDome();
+  scene.add(skyDome);
+
   // Milky Way skysphere behind the point stars: a real night-sky panorama as the scene
   // background (renders at infinity, no geometry, floating-origin-proof by construction).
   new THREE.TextureLoader().load("./vendor/textures/milkyway.jpg", (tex) => {
@@ -794,7 +838,7 @@ function buildWorldObjects() {
   ALL_KEYS = ["sun", ...PLANET_KEYS];
   bhDisk = null; // re-created by makeBodyGroup if this system has one
   protoDisc = null; youngSwarm = null; formingDiscs = []; cometTails = []; lockedShells = [];
-  ringShells = []; pulsarBeams = [];
+  ringShells = []; pulsarBeams = []; atmoShells = []; // shells die with their body groups
   // Black hole systems are lit by the accretion disk: dimmer, colder key light.
   // Brown-dwarf systems (style.ember on the primary) live in permanent warm dusk:
   // dimmer light, sunset color — a brown dwarf really is thousands of times fainter.
@@ -1088,14 +1132,9 @@ function makeBodyGroup(key) {
 
   if (style.halo && b.atmosphere) {
     const atmoR = b.radius + b.atmosphere.height * 4; // exaggerated a touch so it reads
-    const halo = new THREE.Mesh(
-      new THREE.SphereGeometry(atmoR, 48, 32),
-      new THREE.MeshBasicMaterial({
-        color: style.halo, transparent: true, opacity: 0.12,
-        side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false,
-      })
-    );
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(atmoR, 64, 40), makeAtmoShellMaterial(style));
     g.add(halo);
+    atmoShells.push({ key, mesh: halo, atmoR });
   }
 
   if (style.rings) {
@@ -1750,6 +1789,242 @@ function makeStarfield() {
   const pts = new THREE.Points(geo, mat);
   pts.frustumCulled = false;
   return pts;
+}
+
+// =====================================================================
+// 🌤 THE ATMOSPHERE, SEEN HONESTLY FROM BOTH SIDES.
+//
+// From INSIDE (the sky dome): before this, standing on the pad you saw the Milky
+// Way — the game drew the air's effect from orbit but never from the ground. The
+// dome rides the camera and its opacity is the AIR DENSITY AROUND YOU on the same
+// exponential curve physics.js flies through (rho/rho0 = e^(-alt/H), H = height/5).
+// Nothing is faked: the blue drains out of the sky on ascent because the air really
+// is running out, and by the time drag stops mattering the sky has gone black on
+// its own. That is the whole reason space is black — and he can watch it happen on
+// every single launch.
+//
+// From OUTSIDE (the limb shell): the old halo was a flat 12%-opacity ball that
+// glowed as hard on the night side as the day side — the one thing real air never
+// does. The fresnel shell below shows air where you look through the MOST of it
+// (a thin bright arc at the limb — the "blue line" astronauts photograph), fades
+// softly just PAST the terminator (high air is still sunlit after the ground goes
+// dark — the same twilight the dome paints from below, one phenomenon from two
+// viewpoints), and flares when you look at a crescent world with the star behind
+// it (air scatters light forward far more than back).
+//
+// Both are cosmetic: no physics reads them, and build mode hides them (the studio
+// is deliberately framed against the stars).
+// GOTCHA (HANDOFF, the log-depth fix): every custom ShaderMaterial MUST include
+// three's logdepthbuf chunks or its depth won't match the rest of the scene.
+// =====================================================================
+const SKY_VERT = /* glsl */ `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+  varying vec3 vDir;
+  void main() {
+    // The dome is translated and scaled but never rotated, so the object-space
+    // direction IS the world direction.
+    vDir = normalize(position);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    #include <logdepthbuf_vertex>
+  }
+`;
+
+const SKY_FRAG = /* glsl */ `
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+  uniform vec3 uUp;        // local up: radial from the body's center
+  uniform vec3 uSun;       // direction from here toward the star
+  uniform vec3 uZenith;
+  uniform vec3 uHorizon;
+  uniform vec3 uSunset;
+  uniform float uDensity;  // air remaining around the camera, 0..1 of sea level
+  varying vec3 vDir;
+
+  void main() {
+    vec3 dir = normalize(vDir);
+    float h = dot(dir, uUp);        // 1 = straight up, 0 = the horizon
+    float sunEl = dot(uSun, uUp);   // how high the star is
+    float toSun = dot(dir, uSun);   // are we looking toward it?
+
+    // Twilight is real and it is long: the sky stays lit after the star sets,
+    // because the air far overhead is still in sunlight.
+    float day = smoothstep(-0.22, 0.10, sunEl);
+    float dusk = 1.0 - smoothstep(0.0, 0.30, abs(sunEl)); // peaks AT rise/set
+
+    float t = clamp(h, 0.0, 1.0);
+    vec3 col = mix(uHorizon, uZenith, pow(t, 0.55));
+
+    // A low star shines through the most air, so its color piles up around it and
+    // along the horizon. On Earth that glow is red; on Mars it is BLUE.
+    float glow = pow(max(toSun, 0.0), 3.0) * (1.0 - t * 0.75);
+    col = mix(col, uSunset, clamp(dusk * (0.30 + glow), 0.0, 0.92));
+
+    // The star's own halo, pushed past white so the bloom pass flares it.
+    col += uSunset * pow(max(toSun, 0.0), 40.0) * day * 1.6;
+
+    // Night: the air is still there, it just isn't lit.
+    col = mix(uZenith * 0.05, col, max(day, dusk * 0.75));
+
+    float a = uDensity * mix(0.18, 1.0, max(day, dusk * 0.8));
+    a *= mix(1.18, 1.0, t);                  // a little thicker toward the horizon
+    a *= smoothstep(-0.10, 0.02, h);         // fade out below the horizon line
+    gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
+    #include <logdepthbuf_fragment>
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+  }
+`;
+
+const SKY_DOME_R = 9000; // m — beyond every follow-cam pull-back, inside the ground patch
+function makeSkyDome() {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uUp: { value: new THREE.Vector3(0, 1, 0) },
+      uSun: { value: new THREE.Vector3(1, 0, 0) },
+      uZenith: { value: new THREE.Color(0x2a67c8) },
+      uHorizon: { value: new THREE.Color(0xb7d6f2) },
+      uSunset: { value: new THREE.Color(0xff8a3c) },
+      uDensity: { value: 0 },
+    },
+    vertexShader: SKY_VERT,
+    fragmentShader: SKY_FRAG,
+    side: THREE.BackSide,
+    transparent: true,
+    // depthWrite off + depthTest ON is the whole trick: the dome blends over the
+    // stars and the galaxy background (far beyond it) while everything nearer —
+    // the rocket, the ground patch, the pad — still draws crisply in front. And a
+    // distant planet limb near the horizon sits BEHIND the dome, so it fades into
+    // the haze, which is what distance through air really does.
+    depthWrite: false,
+    depthTest: true,
+  });
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(SKY_DOME_R, 32, 24), mat);
+  dome.frustumCulled = false;
+  dome.renderOrder = -1; // first among transparents: plume/halos/labels blend OVER the sky
+  dome.visible = false;
+  return dome;
+}
+
+const ATMO_VERT = /* glsl */ `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+  varying vec3 vNw;   // outward normal, world space (directions are precision-safe)
+  varying vec3 vNv;   // the same normal in view space
+  varying vec3 vVp;   // fragment position relative to the camera (view space)
+  void main() {
+    vNw = normalize(mat3(modelMatrix) * position);
+    vNv = normalize(normalMatrix * position);
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vVp = mv.xyz;
+    gl_Position = projectionMatrix * mv;
+    #include <logdepthbuf_vertex>
+  }
+`;
+
+const ATMO_FRAG = /* glsl */ `
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+  uniform vec3 uColor;
+  uniform vec3 uSun;      // world direction from the body toward the star
+  uniform vec3 uView;     // world direction from the body toward the camera
+  uniform float uStrength;
+  varying vec3 vNw;
+  varying vec3 vNv;
+  varying vec3 vVp;
+
+  void main() {
+    // Fresnel: strongest where the sight line grazes the shell (the limb), zero
+    // looking straight through the middle of the disc.
+    float ndv = abs(dot(normalize(vNv), normalize(vVp)));
+    float rim = pow(1.0 - ndv, 2.6);
+
+    // Lit by the star, with a soft reach just past the terminator (twilight band).
+    float lit = smoothstep(-0.30, 0.28, dot(normalize(vNw), uSun));
+
+    // Looking back toward the star through the air (a crescent) flares the rim.
+    float fwd = 1.0 + 1.5 * clamp(-dot(uSun, uView), 0.0, 1.0);
+
+    float a = clamp(rim * lit * fwd * uStrength, 0.0, 1.0);
+    gl_FragColor = vec4(uColor, a);
+    #include <logdepthbuf_fragment>
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+  }
+`;
+
+function makeAtmoShellMaterial(style) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(style.halo) },
+      uSun: { value: new THREE.Vector3(1, 0, 0) },
+      uView: { value: new THREE.Vector3(0, 0, 1) },
+      uStrength: { value: 0.6 },
+    },
+    vertexShader: ATMO_VERT,
+    fragmentShader: ATMO_FRAG,
+    side: THREE.BackSide,          // draw the far wall so the glow RINGS the disc
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+}
+
+// Per-frame: aim every limb shell's sun/view uniforms, and drive the sky dome from
+// the air density around the craft. Called at the end of update() so the camera —
+// follow, map, or EVA — is already in its final spot this frame.
+function updateAtmosphere(sim) {
+  const t = (sim && sim.time) || 0;
+  const sunPos = bodyStateAt("sun", t).pos;
+  const camX = camera.position.x + ORIGIN.x, camY = camera.position.y + ORIGIN.y;
+  for (const e of atmoShells) {
+    const bs = bodyStateAt(e.key, t);
+    const u = e.mesh.material.uniforms;
+    let dx = sunPos.x - bs.pos.x, dy = sunPos.y - bs.pos.y;
+    let d = Math.hypot(dx, dy) || 1;
+    u.uSun.value.set(dx / d, dy / d, 0);
+    dx = camX - bs.pos.x; dy = camY - bs.pos.y;
+    const dz = camera.position.z;
+    d = Math.hypot(dx, dy, dz) || 1;
+    u.uView.value.set(dx / d, dy / d, dz / d);
+    // From INSIDE the shell its far wall would wash the whole sky (BackSide
+    // geometry has no idea you've flown into it). The dome owns the view from
+    // inside the air, so the shell fades out over the last 15% of approach and
+    // is gone by the time you cross its surface.
+    u.uStrength.value = 0.6 * Math.min(1, Math.max(0, (d - e.atmoR) / (0.15 * e.atmoR)));
+  }
+
+  if (!skyDome) return;
+  if (mode !== "flight" || !sim || !sim.craft || flightView === "map") {
+    skyDome.visible = false;
+    return;
+  }
+  const dom = dominantBody(sim.craft.pos, t);
+  const atmo = dom.body.atmosphere;
+  const rl = Math.hypot(dom.rel.x, dom.rel.y);
+  const alt = rl - dom.body.radius;
+  // The same curve physics.js airDensity flies: 0 at/above the top, e^(-alt/H) below.
+  const density = (atmo && alt < atmo.height)
+    ? Math.exp(-Math.max(0, alt) / (atmo.height / 5)) : 0;
+  if (density < 0.004) {
+    skyDome.visible = false;
+    return;
+  }
+  const u = skyDome.material.uniforms;
+  if (rl > 0.5) u.uUp.value.set(dom.rel.x / rl, dom.rel.y / rl, 0);
+  const sx = sunPos.x - sim.craft.pos.x, sy = sunPos.y - sim.craft.pos.y;
+  const sd = Math.hypot(sx, sy) || 1;
+  u.uSun.value.set(sx / sd, sy / sd, 0);
+  if (skyDome.userData.paletteKey !== dom.body.key) {
+    skyDome.userData.paletteKey = dom.body.key;
+    const pal = skyPaletteFor(dom.body.key, styleFor(dom.body.key));
+    u.uZenith.value.set(pal.zenith);
+    u.uHorizon.value.set(pal.horizon);
+    u.uSunset.value.set(pal.sunset);
+  }
+  u.uDensity.value = density;
+  skyDome.position.copy(camera.position);
+  skyDome.visible = true;
 }
 
 // =====================================================================
@@ -3151,6 +3426,7 @@ function setMode(m) {
     if (reticle) reticle.visible = false;
     if (warpStreaks) { warpStreaks.obj.visible = false; warpStreaks.obj.material.opacity = 0; }
     clearStageDebris(); // last flight's dropped stages don't belong in the studio
+    if (skyDome) skyDome.visible = false; // the studio is framed against the stars
     if (groundPatch) groundPatch.visible = false;
     if (surfaceRover) surfaceRover.visible = false;
     if (roverTrackL) roverTrackL.visible = false;
@@ -3210,6 +3486,9 @@ function update(sim) {
   updateBurnMarker(sim);
 
   if (eva) updateEva(); // the Connie outside, moving through the frozen scene
+
+  // Atmosphere last: the follow/map/EVA camera for this frame is final by now.
+  updateAtmosphere(sim);
 
   if (composer && fancyGraphics) composer.render();
   else renderer.render(scene, camera);
