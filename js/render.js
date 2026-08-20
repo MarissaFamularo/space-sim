@@ -30,6 +30,15 @@ let _renderPass = null;   // kept so the station-interior scene can borrow the c
 // HDR philosophy: bloom threshold sits at 1.0, so ONLY things pushed past white glow —
 // the Sun, engine plumes, reentry plasma, city lights. Normal surfaces never bloom.
 const BLOOM = { strength: 0.55, radius: 0.4, threshold: 1.0 };
+// Sun shadows: the light keeps its true direction but parks a short STANDOFF from the
+// floating origin (a DirectionalLight only lights by direction, so this changes nothing
+// visually) — which lets its little ortho shadow camera wrap the craft + pad. SPAN is the
+// half-width of the shadowed box around the craft; casters beyond it simply stop shadowing.
+const SHADOWS = { standoff: 400, span: 90, mapSize: 2048, bias: -2e-4, normalBias: 0.3 };
+// Bump relief: planet scale is bumpScale ≈ radius × planet (≈6 km on scaled Earth — a
+// few times real relief, deliberately, so the terminator catches craters and coasts);
+// ground is meters of pebble relief under the landing legs. Taste knobs.
+const BUMP = { planet: 0.01, ground: 0.35 };
 let fancyGraphics = true;  // Settings "Fast" mode skips the composer (bloom + post) per frame
 
 let ALL_KEYS = ["sun", ...PLANET_KEYS]; // recomputed by buildWorldObjects on system swap
@@ -181,6 +190,18 @@ let _ptrDown = null; // pointerdown position, to tell clicks from drags
 
 // ---- Reusable scratch objects (avoid per-frame allocation) ----
 const _v1 = new THREE.Vector3();
+
+// Flag every OPAQUE mesh in a subtree as a shadow caster/receiver. Transparent
+// materials are skipped on purpose: plumes, glows, and halos are additive light,
+// and the depth pass would cast them as solid black cutouts.
+function enableShadows(obj) {
+  obj.traverse((o) => {
+    if (o.isMesh && o.material && !o.material.transparent) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+    }
+  });
+}
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
 const _s3 = new THREE.Vector3();
@@ -610,9 +631,7 @@ function refinePlanetCanvas(cv, key) {
   ctx.drawImage(cv, 0, 0, W, H);
 
   // Gas/cloud worlds get a whisper of mottling; rocky worlds get real texture.
-  const gassy = ["jupiter", "saturn", "uranus", "neptune", "venus", "titan"].includes(key) ||
-    !!(BODIES[key] && BODIES[key].face && /gas/.test(BODIES[key].face.kind));
-  const amp = gassy ? 0.07 : 0.16;
+  const amp = isGasFaced(key) ? 0.07 : 0.16;
 
   const rng = mulberry32(hashStr(key + "-detail"));
   // Two lattices of random values; x wraps so there's no seam at the date line.
@@ -651,6 +670,13 @@ function refinePlanetCanvas(cv, key) {
   return out;
 }
 
+// Cloud-top worlds: smooth by nature — they get gentler mottling and NO bump relief
+// (there are no mountains on Jupiter; the terminator there fades like fog, not rock).
+function isGasFaced(key) {
+  return ["jupiter", "saturn", "uranus", "neptune", "venus", "titan"].includes(key) ||
+    !!(BODIES[key] && BODIES[key].face && /gas/.test(BODIES[key].face.kind));
+}
+
 const _texCache = {};
 function planetTexture(key) {
   if (key in _texCache) return _texCache[key];
@@ -665,6 +691,40 @@ function planetTexture(key) {
   return tex;
 }
 
+// Grayscale height-from-luminance copy of a painted canvas, for bump mapping.
+// The painters already encode relief as brightness — craters darker than the plains,
+// ice caps and mountain blobs lighter — so luminance IS a usable height field:
+// dark craters read as dents, bright caps as rises, exactly right at the terminator.
+function bumpCanvasFrom(src, W, H) {
+  const cv = document.createElement("canvas");
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext("2d");
+  ctx.drawImage(src, 0, 0, W, H);
+  const img = ctx.getImageData(0, 0, W, H);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const lum = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+    d[i] = d[i + 1] = d[i + 2] = lum;
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv;
+}
+
+const _bumpTexCache = {};
+function planetBumpTexture(key) {
+  if (key in _bumpTexCache) return _bumpTexCache[key];
+  let tex = null;
+  const base = isGasFaced(key) ? null : planetTexture(key);
+  if (base && base.image) {
+    // Half the color map's resolution: bump reads derivatives, so texel-level
+    // sharpness only adds shimmer. 512x256 keeps the relief calm.
+    tex = new THREE.CanvasTexture(bumpCanvasFrom(base.image, 512, 256));
+    tex.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 1;
+  }
+  _bumpTexCache[key] = tex;
+  return tex;
+}
+
 // =====================================================================
 // Render.init — scene, camera, lights, starfield, the whole solar system.
 // =====================================================================
@@ -676,6 +736,8 @@ function init(canvasEl) {
   // precision at every distance, which a solar-system-in-one-scene renderer needs.
   renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true, logarithmicDepthBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.setClearColor(0x05070f, 1);
   // Filmic tone mapping: sunlit tanks roll off gently instead of clipping to flat white.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -695,6 +757,16 @@ function init(canvasEl) {
   // (Intensities re-tuned for ACES: filmic curve eats ~1 stop in the mids.)
   sunLight = new THREE.DirectionalLight(0xffffff, 2.0);
   sunLight.target.position.set(0, 0, 0); // the craft rides the scene origin in flight
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.set(SHADOWS.mapSize, SHADOWS.mapSize);
+  sunLight.shadow.camera.left = -SHADOWS.span;
+  sunLight.shadow.camera.right = SHADOWS.span;
+  sunLight.shadow.camera.top = SHADOWS.span;
+  sunLight.shadow.camera.bottom = -SHADOWS.span;
+  sunLight.shadow.camera.near = 1;
+  sunLight.shadow.camera.far = SHADOWS.standoff * 2;
+  sunLight.shadow.bias = SHADOWS.bias;             // acne vs peter-panning trade
+  sunLight.shadow.normalBias = SHADOWS.normalBias; // curved hulls need the normal push
   scene.add(sunLight);
   scene.add(sunLight.target);
   scene.add(new THREE.AmbientLight(0x404a66, 0.5));
@@ -737,6 +809,7 @@ function init(canvasEl) {
   // The Connie — waits beside the pad in build mode, EVAs beside the craft after a landing.
   connieMesh = makeConnie();
   connieMesh.visible = false;
+  enableShadows(connieMesh);
   scene.add(connieMesh);
 
   // Reentry plasma glow: additive orange shell around the craft, driven by sim.heat.
@@ -767,6 +840,8 @@ function init(canvasEl) {
   rockField.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   rockField.frustumCulled = false;
   rockField.visible = false;
+  rockField.castShadow = true;    // boulders anchor to the ground by their shadows
+  rockField.receiveShadow = true;
   scene.add(rockField);
 
   // Landing reticle: a ring on the ground under the ship — green means "this descent
@@ -783,6 +858,7 @@ function init(canvasEl) {
   // The deployed rover + its wheel tracks (visible after he stages a Rover while landed).
   surfaceRover = makeRoverMesh(1);
   surfaceRover.visible = false;
+  enableShadows(surfaceRover);
   scene.add(surfaceRover);
   const mkTrack = () => {
     const geo = new THREE.BufferGeometry();
@@ -805,6 +881,7 @@ function init(canvasEl) {
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = 0;
   ground.visible = false;
+  ground.receiveShadow = true; // the studio floor catches the craft's shadow
   scene.add(ground);
 
   // Map-view marker for the craft.
@@ -907,9 +984,12 @@ function rebuildWorld() {
     disposeWorldObject(mapDots[key].label);
   }
   bodyGroups = {}; orbitRings = {}; mapDots = {};
-  // Face/ground textures are per-system ("earth" is a different world out there).
+  // Face/ground textures are per-system ("earth" is a different world out there) —
+  // and so are the bump maps derived from them (stale relief is the same stale face).
   for (const k of Object.keys(_texCache)) delete _texCache[k];
   for (const k of Object.keys(_groundTexCache)) delete _groundTexCache[k];
+  for (const k of Object.keys(_bumpTexCache)) delete _bumpTexCache[k];
+  for (const k of Object.keys(_groundBumpCache)) delete _groundBumpCache[k];
   if (groundPatch) {
     scene.remove(groundPatch);
     groundPatch.geometry.dispose();
@@ -1011,10 +1091,13 @@ function makeBodyGroup(key) {
     });
   } else if (tex) {
     // Painted face; emissiveMap = same texture so the night side shows it dimly
-    // (flat-color emissive would wash the detail out).
+    // (flat-color emissive would wash the detail out). Rocky faces also get bump
+    // relief from their own luminance — craters catch light at the terminator.
+    const bump = planetBumpTexture(key);
     mat = new THREE.MeshStandardMaterial({
       map: tex, roughness: 0.95, metalness: 0,
       emissive: 0xffffff, emissiveIntensity: 0.1, emissiveMap: tex,
+      ...(bump ? { bumpMap: bump, bumpScale: b.radius * BUMP.planet } : {}),
     });
   } else {
     mat = new THREE.MeshStandardMaterial({
@@ -2421,6 +2504,7 @@ function makeLaunchpad() {
   flag.position.set(-2.58, 2.1, 2.6);
   g.add(flag);
 
+  enableShadows(g); // the VAB and tower throw real morning shadows across the pad
   return g;
 }
 
@@ -2624,6 +2708,7 @@ function buildCraftMesh(craft) {
   craftGroup = group;
   craftSpinners.length = 0; // centrifuge wheels etc — spun each frame in update()
   group.traverse((o) => { if (o.userData && o.userData.spin) craftSpinners.push(o); });
+  enableShadows(group); // the rocket shadows the pad (and its own boosters)
   scene.add(group);
 
   if (snapGhost) snapGhost.visible = false;
@@ -2677,6 +2762,7 @@ function spawnStageDebris(sim, dropped) {
       group.add(partObj);
       cursor += ph;
     }
+    enableShadows(group); // a falling booster drags its shadow across the pad
     scene.add(group);
     // Where this piece was drawn: side boosters sit a little off-axis.
     const off = lateral * ((defs[0].radius || 0.5) + 0.8);
@@ -3487,7 +3573,8 @@ function setMode(m) {
     // Build happens near the scene origin against the stars (world hidden): the framing is
     // robust regardless of where Earth is. ORIGIN resets to (0,0).
     ORIGIN.x = 0; ORIGIN.y = 0;
-    if (sunLight) sunLight.position.set(3e3, 2e3, 4e3); // pleasant studio angle
+    // Same pleasant studio angle as always, from the shadow stand-off distance.
+    if (sunLight) sunLight.position.set(3, 2, 4).normalize().multiplyScalar(SHADOWS.standoff);
     if (launchpad) { launchpad.visible = true; launchpad.position.set(0, 0, 0); }
     if (ground) ground.visible = true;
     if (connieMesh) {
@@ -3687,7 +3774,12 @@ function updateFlight(sim) {
     const parent = states[BODIES[key].parent];
     orbitRings[key].position.set(parent.pos.x - ORIGIN.x, parent.pos.y - ORIGIN.y, 0);
   }
-  sunLight.position.copy(bodyGroups.sun.position);
+  // Direction only: a DirectionalLight lights by (position − target), so parking it a
+  // few hundred meters out along the TRUE sun line is visually identical to parking it
+  // at the sun — but its ortho shadow camera can actually wrap the craft from here.
+  // (At the real sun's scene position, 1.5e10 m away, no usable shadow frustum exists.)
+  _v1.copy(bodyGroups.sun.position);
+  if (_v1.lengthSq() > 1) sunLight.position.copy(_v1.normalize().multiplyScalar(SHADOWS.standoff));
 
   // The physics point is the craft's BASE (that's what touches the ground), so the
   // mesh — which is built centered — shifts half a length up its own axis. Centered
@@ -3937,6 +4029,17 @@ function groundTexture(key) {
   return tex;
 }
 
+const _groundBumpCache = {};
+function groundBumpTexture(key) {
+  if (_groundBumpCache[key]) return _groundBumpCache[key];
+  const base = groundTexture(key); // ensures the painted tile exists
+  const tex = new THREE.CanvasTexture(bumpCanvasFrom(base.image, 256, 256));
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.copy(base.repeat); // bump uses its own uv transform — keep the tiles aligned
+  _groundBumpCache[key] = tex;
+  return tex;
+}
+
 function ensureGroundPatch(body) {
   if (groundPatchKey === body.key) return;
   if (groundPatch) {
@@ -3953,11 +4056,13 @@ function ensureGroundPatch(body) {
     new THREE.MeshStandardMaterial({
       map: tex, roughness: 1, metalness: 0,
       emissive: 0xffffff, emissiveIntensity: 0.12, emissiveMap: tex,
+      bumpMap: groundBumpTexture(body.key), bumpScale: BUMP.ground, // pebbly dirt up close
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
     })
   );
   groundPatch.frustumCulled = false;
   groundPatch.visible = false;
+  groundPatch.receiveShadow = true; // the rocket's shadow rises to meet it on landing
   scene.add(groundPatch);
   groundPatchKey = body.key;
 }
@@ -6401,7 +6506,12 @@ function debug() {
 
 // Settings toggle (menu.js "Graphics"): "fast" renders without the composer —
 // no bloom/post — for school laptops. Contract extension recorded in ARCHITECTURE.md.
-function setQuality(q) { fancyGraphics = q !== "fast"; }
+function setQuality(q) {
+  fancyGraphics = q !== "fast";
+  // Fast mode sheds the shadow pass with the composer (three recompiles materials
+  // automatically when a light stops/starts casting).
+  if (sunLight) sunLight.castShadow = fancyGraphics;
+}
 
 // =====================================================================
 // Frozen public API — exactly the methods in ARCHITECTURE.md.

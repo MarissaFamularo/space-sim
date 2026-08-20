@@ -9,7 +9,61 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
-## Status (2026-08-19 latest): 🚀🚀🚀 SIDE BOOSTERS — the Artemis build (his ask)
+## Status (2026-08-20 latest): 🌑⛰ SHADOWS + TERRAIN RELIEF — a graphics pass
+
+Mom asked for better graphics for the resident graphics snob. Two changes, both
+render.js only (cosmetic class: physics, saves, parts, API surfaces, Navigator all
+untouched; no storage changes):
+
+- **Real sun shadows (PCFSoft, 2048 map):** the rocket finally casts a shadow on the
+  pad, and so do the VAB, the water tower, the Connie, dropped boosters, the rover,
+  and the near-ground boulders; the ground patch, build-mode disc, and pad receive.
+  The mechanism worth knowing: a DirectionalLight lights by DIRECTION only, so the
+  sun light now parks 400 m from the floating origin along the TRUE sun line
+  (visually identical to parking at the sun, 1.5e10 m out) — which lets its ±90 m
+  ortho shadow camera actually wrap the craft. Transparent materials (plumes, glows,
+  halos) are skipped as casters on purpose — the depth pass would cast them as solid
+  black cutouts. Settings "Fast" mode sheds the shadow pass with the composer.
+- **Bump relief on rocky worlds + the landing ground:** height-from-luminance of the
+  existing painted faces (craters painted dark read as dents, ice caps as rises —
+  the painters already encoded relief as brightness), bumpScale = radius × 0.01;
+  gas/cloud worlds excluded via `isGasFaced` (no mountains on Jupiter); the
+  close-up ground patch gets 0.35 m of pebble relief from its own tile. Bump caches
+  are cleared alongside the face caches on system swap (stale relief is the same
+  bug class as a stale face).
+
+**Evidence (rung 3):** new scripted `shadow-bump-check.mjs` 10/10 GREEN (added to the
+browser-verification skill's scripts) — A/B pixel-diff against a measured noise
+floor: build-studio shadows darken 876 px with 0 brightened and 0 noise; flight-mode
+rocket shadow on the Earth ground patch 26 px darkened, 0 noise (craft placed 5 m up,
+40° off noon — see gotcha below); Moon bump relief flips 627 px of the lit face seen
+from parking orbit; Jupiter asserted bump-free; zero page errors. Boot smoke 9/9,
+flight check 14/14, atmo check 9/9 all green on the new code; all 20 node suites
+green. Screenshots: studio pad with capsule/tank/flag/Connie shadows and the VAB's
+long streak, a hovering rocket over its own shadow, cratered Moon limb from orbit.
+
+**Gotchas paid (recorded so nobody re-pays):**
+- A DirectionalLight positioned AT the sun's scene position can never shadow — its
+  ortho shadow camera sits at the light, 1.5e10 m from every caster. Normalize the
+  position to a short stand-off; the lighting is bit-identical, the frustum usable.
+- Pixel-diff assertions in flight mode must measure the noise floor first: the
+  burning plume flickers ~44 px between two "identical" renders. Throttle 0 (and the
+  atmo-check placement trick) before sampling; the real pad launch also happens at
+  dawn, where the honest shadow is long, faint, and a bad test subject.
+
+**Flagged / rung 4:** worth THE play-test — the pad shadow at launch and the Moon's
+crater relief at the terminator are his acceptance test. Taste knobs if he wants it
+stronger/softer: `SHADOWS` (render.js:37 — span, mapSize, bias) and `BUMP`
+(render.js:41 — planet 0.01 is deliberately a few × real relief for terminator
+drama; drop toward 0.005 if the Moon reads gravelly up close). Deliberately NOT
+done: bump self-occlusion (relief shades but can't hide the far crater wall),
+shadows in map view (the 90 m span is craft-scale by design), and procedural cloud
+shells for non-Sol worlds — that's the next graphics candidate from the 2026-08-20
+ideas list.
+
+---
+
+## Status (2026-08-19): 🚀🚀🚀 SIDE BOOSTERS — the Artemis build (his ask)
 
 His ask (via Mom): add things to the SIDE of rockets — "re-create Artemis' side
 booster situation." Built as strap-on booster PAIRS with real parallel staging:

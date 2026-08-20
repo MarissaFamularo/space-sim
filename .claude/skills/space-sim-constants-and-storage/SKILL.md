@@ -123,6 +123,8 @@ dials — `space-sim-architecture-contract` owns the rationale. Do not tune them
 | `GALAXY_ZOOM` | render.js:64 | `4.5e11` | Map frame beyond which visited star systems fade in (just past Pluto's scaled orbit). |
 | `ROCK_COUNT` / `ROCK_ARC` | render.js:137-138 | `240` / `130` | Surface rocks that fade in near the ground (landing depth cue). |
 | `PLUME_PARTICLES` | render.js:1150 | `150` | Engine exhaust particle count. |
+| `SHADOWS` | render.js:37 (2026-08-20) | `{ standoff: 400, span: 90, mapSize: 2048, bias: -2e-4, normalBias: 0.3 }` | Sun shadow maps (PCFSoft). The sun light keeps its TRUE direction but parks `standoff` m from the floating origin so its ortho shadow camera (±`span` m) can wrap the craft + pad — a DirectionalLight lights by direction only, so this changes nothing visually. Casters: craft, debris, launchpad, Connie, rover, rocks; receivers: ground patch, build disc, pad. Transparent materials (plumes/glows) never cast. "Fast" quality drops shadows via `setQuality`. |
+| `BUMP` | render.js:41 (2026-08-20) | `{ planet: 0.01, ground: 0.35 }` | Bump-map relief. Planet bumpScale = radius × `planet` (height-from-luminance of the painted face; gas worlds excluded via `isGasFaced`); `ground` is meters of pebble relief on the landing ground patch. Taste knobs — raise/lower for more/less terminator drama. |
 
 ### A.7 Navigator (copilot) — `js/copilot.js`
 
