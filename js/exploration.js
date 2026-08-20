@@ -252,7 +252,11 @@ function show() {
 
   const foot = document.createElement("div");
   foot.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:2;display:flex;justify-content:center;gap:10px;padding:12px;background:rgba(4,7,15,.94);border-top:1px solid #263b64;";
-  const back = document.createElement("button"); back.textContent = "⬅ Space Center"; back.style.padding = "10px 18px";
+  // Mid-flight the board is a quick look at the survey clipboard — the way out goes
+  // back to the ship, and the label says so. From the ground it still reads Space Center.
+  const back = document.createElement("button");
+  back.textContent = ctx.mode === "flight" ? "⬅ Back to your ship" : "⬅ Space Center";
+  back.style.padding = "10px 18px";
   back.onclick = () => { hide(); if (handlers.onExit) handlers.onExit(); };
   const build = document.createElement("button"); build.textContent = "🔧 Build an exploration ship"; build.style.cssText = "padding:10px 18px;background:#245d49;border-color:#3f9f77;font-weight:900;";
   build.onclick = () => { hide(); if (handlers.onBuild) handlers.onBuild(); };

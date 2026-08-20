@@ -777,6 +777,7 @@ function getExplorationContext() {
   const sys = systemKeyNow();
   return {
     science: SCIENCE,
+    mode: sim.mode, // the board's exit button tells the truth: flight → back to the ship
     systemId: sys,
     systemName: SYSTEM.name,
     homeRadius: BODIES.earth.radius,
@@ -841,7 +842,15 @@ Menu.init({
 Exploration.init({
   getContext: getExplorationContext,
   awardScience: (kind, points, body, quality) => awardScience(kind, points, body, quality),
-  onExit: () => Menu.showCenter(),
+  // Closing the board must return to a LIVE flight, not the Space Center. The old
+  // unconditional showCenter() stranded a flying ship behind the center overlay —
+  // every door there calls enterBuild() and wipes the flight (his report: doing the
+  // science quests made his ship disappear). The satellite callout actively invites
+  // opening the board mid-flight, so this path is the NORMAL one, not an edge.
+  onExit: () => {
+    if (sim.mode === "flight") { Menu.hideAll(); return; }
+    Menu.showCenter();
+  },
   onBuild: () => {
     Builder.setFacility("hangar");
     enterBuild();

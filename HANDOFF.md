@@ -9,7 +9,51 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
-## Status (2026-08-20 latest): 🌑⛰ SHADOWS + TERRAIN RELIEF — a graphics pass
+## Status (2026-08-20 later): 🔭🛸 FIXED — the Exploration board ate his ship (his report)
+
+His report (via Mom): doing the new science quests makes his ship disappear. Reproduced
+headlessly on the first try, and the mechanism explains everything:
+
+- **Root cause (main.js wiring, exploration.js label):** the 🔭 board's exit was an
+  unconditional `Menu.showCenter()`. Opened MID-FLIGHT — which the game itself invites
+  ("open 🔭 Exploration Mode to read the resource map," said right after a mid-flight
+  satellite deploy) — pressing "⬅ Space Center" stranded the still-running flight
+  behind the opaque center overlay. The sim kept flying back there (mode=flight,
+  altitude ticking), but every door out of the center (VAB/Hangar) calls `enterBuild()`,
+  which wipes the flight to prelaunch. From his seat: ship gone. The 2026-08-19
+  browser pass missed it because it only walked the FROM-CENTER path, never mid-flight.
+- **Fix (one focused change):** `Exploration.init.onExit` is context-aware — a live
+  flight gets `Menu.hideAll()` and you're back on your ship; from the ground it still
+  goes to the Space Center. The exit button now tells the truth too: mid-flight it
+  reads "⬅ Back to your ship" (context gains a `mode` field; additive, not a
+  contract shape). Board quest actions, science awards, and the build button are
+  untouched.
+
+**Evidence (rung 3):** new scripted `exploration-flight-check.mjs` 12/12 GREEN (added
+to the browser-verification skill's scripts) — drives the real Mode-panel button:
+mid-flight board → "⬅ Back to your ship" → board closed, NO center overlay, mode/
+status/altitude/fuel continuous (1391 m before and after), scene still drawing
+(litFraction 1.000); build-mode board still exits to the Space Center; zero page
+errors. Repro script confirmed the broken behavior first on the pre-fix code (center
+overlay up over a live flight, VAB door wipes it). Boot smoke 9/9 + flight check
+14/14 green; all 20 node suites green.
+
+**Flagged (adjacent, deliberately NOT changed — one change at a time):**
+- The Mode panel's 🏛 Space Center button mid-flight is the same one-way funnel
+  (pre-2026-08-19 behavior). Same fix shape would work if he trips on it.
+- The board's "🔧 Build an exploration ship" mid-flight still ends the flight — kept,
+  because the Mode panel's own Build button has always done exactly that (explicit
+  choice, consistent precedent).
+- While the board is open the sim KEEPS RUNNING (keys blocked, physics not paused) —
+  reading quests at high warp could fly you into a moon. Worth a design thought if he
+  reports "crashed while reading."
+
+**Rung 4:** have him fly a scanner mission, open 🔭 mid-orbit, read the survey board,
+press "⬅ Back to your ship" — the ship should be exactly where he left it.
+
+---
+
+## Status (2026-08-20): 🌑⛰ SHADOWS + TERRAIN RELIEF — a graphics pass
 
 Mom asked for better graphics for the resident graphics snob. Two changes, both
 render.js only (cosmetic class: physics, saves, parts, API surfaces, Navigator all
