@@ -107,6 +107,40 @@ ideas list.
 
 ---
 
+## Status (2026-08-20 earlier): 🐛 FIXED — "no side placing": the MODE panel was eating the palette's bottom (his report)
+
+**Outstanding first:** his second report — "textures broke, whole craft black" in the
+Exploration-Mode builder — did NOT reproduce on current code (build mode lights the
+craft with a fixed studio key light; full exploration craft + Thumper pair renders lit,
+zero page errors, screenshots clean). Most likely on his machine: a stale/mixed
+ES-module cache (three deploys landed on 2026-08-19 — the documented ghost mode) or a
+WebGL context loss on the laptop. **Ask him to hard-reload (Cmd-Shift-R) first**; if
+black persists after that, get a screenshot + the browser console — that's a new bug
+and we want it.
+
+The bug that DID reproduce: `#palette` (left column) may grow to
+`calc(100vh - 190px)`, but the MODE panel (`#controls`, also left-anchored) is ~370px
+tall and paints later — so once Exploration Mode added four tech rows to the palette
+and its own button to the MODE panel, the palette's bottom (the stack tail and the
+whole ⬅➡ Side boosters section) slid UNDER the MODE panel, which swallowed every
+click. Proven with numbers: pair-button center at y=702, `elementFromPoint` returned
+the MODE panel's `<select>`; 190px of palette buried at 1400×900 — worse on smaller
+screens. Exactly "there is no side placing."
+
+**Fix (builder.js, cosmetic class):** new private `syncPaletteHeight()` clamps the
+palette's max-height to end 10px above the MODE panel's live top (floor 180px), run on
+init, on `Builder.show()` (+ one rAF later, since main.js updates the MODE panel right
+after), and on window resize. No API/shape/save changes; ARCHITECTURE untouched.
+
+**Evidence (rung 3):** scripted exploration-path run (START → Exploration Lab → Build,
+science=200 seeded, all four tech parts + Thumper pair): before the fix a REAL pointer
+click on "➕ pair" times out (intercepted by `#controls select`); after, palette bottom
+522 vs MODE top 532, hit-test returns the button, real click lands, pair strapped —
+at 1400×900 AND 1280×720. Boot smoke 9/9; all 20 node suites green. Rung 4 requested:
+have him open Exploration Mode → Build and strap a Thumper pair on his own screen.
+
+---
+
 ## Status (2026-08-19): 🚀🚀🚀 SIDE BOOSTERS — the Artemis build (his ask)
 
 His ask (via Mom): add things to the SIDE of rockets — "re-create Artemis' side

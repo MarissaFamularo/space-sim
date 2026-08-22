@@ -123,10 +123,17 @@ export const Builder = {
 
     // Render whatever the craft already has (supports a pre-populated craft).
     renderStack();
+
+    syncPaletteHeight();
+    window.addEventListener("resize", syncPaletteHeight);
   },
 
   show() {
     if (_paletteEl) _paletteEl.style.display = "";
+    syncPaletteHeight();
+    // main.js updates the MODE panel (UI.setMode) right after showing us, which can
+    // change its height — measure again once that layout has settled.
+    requestAnimationFrame(syncPaletteHeight);
   },
 
   // Which building's palette to show ("vab" | "hangar"). Contract extension —
@@ -158,6 +165,19 @@ export const Builder = {
 };
 
 Object.freeze(Builder);
+
+// The palette and the MODE panel share the screen's left edge, and the palette's CSS
+// max-height only knows the viewport — so once the parts list grew (Exploration tech
+// rows), its bottom slid UNDER the MODE panel, which paints later and eats every
+// click: the stack tail and the ⬅➡ Side boosters section looked "gone". Clamp the
+// palette to end above whatever the MODE panel's height is right now.
+function syncPaletteHeight() {
+  if (!_paletteEl) return;
+  const controls = document.getElementById("controls");
+  if (!controls || !controls.offsetParent) return; // panel hidden: CSS default is fine
+  const room = controls.getBoundingClientRect().top - _paletteEl.getBoundingClientRect().top - 10;
+  _paletteEl.style.maxHeight = Math.max(180, Math.floor(room)) + "px"; // floor keeps it usable on tiny screens
+}
 
 // ----------------------------------------------------------------------------
 // Palette rows
