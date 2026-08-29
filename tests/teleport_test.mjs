@@ -123,5 +123,37 @@ for (const key of PLANET_KEYS) {
   returnToSol();
 }
 
+// --- Kcalbeloh (2026-08-29): ringed Anetta parks clear; the waltzing twins park sanely ---
+{
+  const sys = famousSystem("Kcalbeloh");
+  setSystem(sys.bodies, sys.planetKeys, { key: sys.seed, name: sys.name, seed: sys.seed });
+  const an = Physics.parkingOrbit("anetta", 0);
+  check("Anetta teleport parks outside its ring band",
+    an.radius > BODIES.anetta.radius * RING_BAND.outer,
+    `r=${(an.radius / BODIES.anetta.radius).toFixed(2)} R vs ring outer ${RING_BAND.outer} R`);
+  // A twin of the waltzing pair: parking orbit must be circular around the twin
+  // itself and sit far inside its 0.38·d SOI (the sibling perturbs it later — the
+  // honest Io-tide wobble — but the ENTRY state is a clean circle).
+  const dz = Physics.parkingOrbit("dizi", 0);
+  const ds = bodyStateAt("dizi", 0);
+  const vrel = Math.hypot(dz.vel.x - ds.vel.x, dz.vel.y - ds.vel.y);
+  check("Dizi teleport enters a circular orbit around the twin",
+    Math.abs(vrel - Math.sqrt(BODIES.dizi.mu / dz.radius)) < 1,
+    `v=${vrel.toFixed(0)} m/s at r=${(dz.radius / BODIES.dizi.radius).toFixed(2)} R`);
+  check("…well inside the twin's own SOI (sibling can't immediately steal you)",
+    dz.radius < BODIES.dizi.soiRadius * 0.25,
+    `r=${(dz.radius / 1000).toFixed(0)} km vs SOI ${(BODIES.dizi.soiRadius / 1000).toFixed(0)} km`);
+  // Kang hugs the hole so tightly that its TRUE sphere of influence is barely bigger
+  // than the planet itself (the hole steals any orbit you'd park there) — the same
+  // real physics that makes Phobos unorbitable. So Kang is honestly a tinyMoon:
+  // teleport flies FORMATION alongside, and you land by nudging over.
+  check("Kang can't be orbited — the hole's pull wins (tinyMoon, real Hill-sphere physics)",
+    BODIES.kang.tinyMoon === true, `soi=${(BODIES.kang.soiRadius / 1000).toFixed(0)} km vs r=${(BODIES.kang.radius / 1000).toFixed(0)} km`);
+  const kg = Physics.parkingOrbit("kang", 0);
+  check("Kang teleport flies formation, co-moving with the planet",
+    kg.coOrbit === true && kg.radius === BODIES.kang.radius * 5, "");
+  returnToSol();
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

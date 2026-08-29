@@ -492,10 +492,211 @@ function owiusSystem() {
   };
 }
 
+// ---------- THE KCALBELOH SYSTEM (his design, 2026-08-29) — a BLACK HOLE with a family of stars ----------
+// His spec: a black hole called Kcalbeloh (read it backwards!) with planets right up to
+// the event horizon — lava-and-uranium Kang, ocean world Kishi — plus STARS in orbit:
+// brown dwarf Malgrow with two comets, red dwarf Sonsarck (Cera + captured Yang + TWIN
+// gas giants waltzing around an empty point), and the Alec A + Alec B binary with ringed
+// Anetta and its habitable moon Ethyl. No home planet — this is an EXPEDITION system.
+// The science is gloriously real: stars truly orbit black holes (astronomers watched S2
+// whip around Sagittarius A* — the 2020 Nobel Prize), and circumbinary "Tatooine" worlds
+// are real too (Kepler-16b, 2011). Black-hole math per stargen: radius = Schwarzschild
+// (2.95 km per solar mass), g0 = M·mu_sun/rs² — gravity only cares about mass.
+function kcalbelohSystem() {
+  const MU_SUN_REAL = 274 * 6.957e8 * 6.957e8; // ≈1.326e20, same math as stargen
+  const BH_MASS = 12;                          // solar masses — a real stellar black hole
+  const RS = BH_MASS * 2950;                   // 35,400 m event horizon
+  const defs = {
+    sun: { name: "Kcalbeloh", radius: RS, g0: (BH_MASS * MU_SUN_REAL) / (RS * RS),
+           parent: null, a: 0, solid: false, atmo: null, phase0: 0, gen: true,
+           blackHole: true,
+           style: { color: 0xb08aff, blackHole: true, glow: "170,195,255" } },
+    // KANG — hugging the hole (0.03 AU: 13x closer than Mercury dares hug our Sun).
+    // The disk-facing side is molten (the accretion disk is the only "sun" here); the
+    // far side is uranium-rich crust glowing from its OWN radioactive decay heat —
+    // that part is real physics: radioactive decay is what keeps Earth's insides hot.
+    // His spec: craters with no lava — they stay dark and empty. Honest consequence
+    // of hugging a 12-solar-mass hole: Kang's true SOI is barely wider than Kang
+    // (buildCatalog clamps it → tinyMoon), so NOTHING can orbit Kang — the hole
+    // steals it. Teleport flies formation, Phobos-style; land by nudging over.
+    kang: { name: "Kang", radius: 2.9e6, g0: 5.4, parent: "sun", a: 0.03 * AU,
+            solid: true, atmo: null, phase0: 0.9, gen: true,
+            style: { color: 0xb05a2a, lockedLava: true },
+            face: { kind: "uranium", base: "#1c2416", accent: "#5aff6a", accent2: "#8aff9a" } },
+    // KISHI — nothing but water, pole to pole. It sits where the accretion disk's glow
+    // keeps things mild (a black hole emits nothing; the DISK is the lamp). Landing is
+    // a real splashdown — there is no ground to stand on anywhere.
+    kishi: { name: "Kishi", radius: 5.2e6, g0: 8.2, parent: "sun", a: 0.85 * AU,
+             solid: true, atmo: { height: 6.5e4, seaLevelDensity: 1.15 }, phase0: 2.1, gen: true,
+             style: { color: 0x1e5c9e, halo: 0x5a9ae0 },
+             face: { kind: "ocean", base: "#123a6e", accent: "#1e5c9e", accent2: "#e8f4ff" } },
+    // MALGROW — a brown dwarf ORBITING the black hole (~25 Jupiter masses, Jupiter-sized,
+    // ember-glow like Luhman 16). Two comets ride stretched rails around it.
+    malgrow: { name: "Malgrow", radius: 7.0e7, g0: 646, parent: "sun", a: 2.3 * AU,
+               solid: false, atmo: null, phase0: 4.0, gen: true,
+               style: { color: 0xc05a3a, star: true, ember: true, glow: "220,110,70" } },
+    malcomet1: { name: "Malgrow Comet I", radius: 3.2e4, g0: 0.004, parent: "malgrow", a: 3.2e9,
+                 solid: true, atmo: null, phase0: 1.1, gen: true, ecc: 0.55, periAngle: 0.7,
+                 style: { color: 0xbfe8f2, comet: true },
+                 face: { kind: "ice", base: "#cfe4ea", accent: "#9ab4c0", accent2: "#f0fbff" } },
+    malcomet2: { name: "Malgrow Comet II", radius: 2.6e4, g0: 0.003, parent: "malgrow", a: 5.8e9,
+                 solid: true, atmo: null, phase0: 4.8, gen: true, ecc: 0.62, periAngle: 3.9,
+                 style: { color: 0xd2ecf6, comet: true },
+                 face: { kind: "ice", base: "#d8ecf2", accent: "#a4bec8", accent2: "#f4fdff" } },
+    // SONSARCK — a red dwarf (a real STAR, just the smallest kind) on its own rail
+    // around the hole. Its little family: Cera, Yang, and the waltzing twins below.
+    sonsarck: { name: "Sonsarck", radius: 2.435e8, g0: 783, parent: "sun", a: 5.5 * AU,
+                solid: false, atmo: null, phase0: 0.6, gen: true,
+                style: { color: 0xff6a4a, star: true, glow: "255,106,74" } },
+    // CERA — the expedition's BASE CAMP, not a home: a cold, dusty rock with thin-but-
+    // chuteable air. The pad here is poured concrete and stubbornness. (The engine
+    // needs an "earth"-role world for the pad, TWR reference, and crash-rebuild —
+    // keying Cera keeps "your rocket explodes → you respawn in THIS system" true.)
+    earth: { name: "Cera", radius: 4.6e6, g0: 7.4, parent: "sonsarck", a: 0.35 * AU,
+             solid: true, atmo: { height: 5.0e4, seaLevelDensity: 0.95 }, phase0: 0, gen: true,
+             style: { color: 0x8a7a6e, halo: 0xa89a88 },
+             face: { kind: "rocky", base: "#7e7268", accent: "#54483e", accent2: "#b8a890" } },
+    // YANG — Cera's CAPTURED moon, so it rides a stretched rail (loose eccentric moons
+    // are usually captured wanderers — same story as Cylan V). Honest confession lives
+    // in the Navigator: real captured moons often orbit BACKWARD (Neptune's Triton
+    // does); our rails only run counter-clockwise, so Yang keeps it forward.
+    moon: { name: "Yang", radius: 7.5e5, g0: 1.05, parent: "earth", a: 1.55e8,
+            solid: true, atmo: null, phase0: 3.7, gen: true, ecc: 0.38, periAngle: 1.3,
+            style: { color: 0x5e5a66 },
+            face: { kind: "rocky", base: "#5e5a66", accent: "#3e3a46", accent2: "#8e8a98" } },
+    // THE TWINS' WALTZ — two equal gas giants orbiting a shared EMPTY POINT (their
+    // barycenter), which itself rides a rail around Sonsarck. t_bary is a pseudo-body:
+    // a rail anchor with (essentially) no mass, no mesh you could ever see, excluded
+    // from planetKeys so it's never a target, never dominant, never labeled. The
+    // twins' true two-body motion is set after buildCatalog (see below).
+    t_bary: { name: "Waltz Point", radius: 1000, g0: 1e-6, parent: "sonsarck", a: 1.0 * AU,
+              solid: false, atmo: null, phase0: 5.2, gen: true },
+    dizi: { name: "Dizi", radius: 6.6e7, g0: 22, parent: "t_bary", a: 0.025 * AU,
+            solid: false, atmo: { height: 9.0e5, seaLevelDensity: 0.3 }, phase0: 0.9, gen: true, gas: true,
+            style: { color: 0xc08a4a, halo: 0xe0aa6a },
+            face: { kind: "gas", bands: ["#c08a4a", "#a06a34", "#e0aa6a", "#8a5a2e"], spot: true } },
+    zidi: { name: "Zidi", radius: 6.6e7, g0: 22, parent: "t_bary", a: 0.025 * AU,
+            solid: false, atmo: { height: 9.0e5, seaLevelDensity: 0.3 }, phase0: 0.9 + Math.PI, gen: true, gas: true,
+            style: { color: 0x4a9a8a, halo: 0x6ab8a8 },
+            face: { kind: "gas", bands: ["#4a9a8a", "#347a6e", "#6ab8a8", "#2a6a5e"], spot: true } },
+    // Captured strays circling the PAIR from outside — real "Tatooine" orbits
+    // (circumbinary), stable only beyond ~2.2x the twins' separation. Kepler-16b
+    // (2011) proved worlds really do orbit two suns at once.
+    stray1: { name: "Stray I", radius: 5.2e5, g0: 0.6, parent: "t_bary", a: 0.12 * AU,
+              solid: true, atmo: null, phase0: 2.6, gen: true,
+              style: { color: 0x9a8e7e }, face: { kind: "rocky", base: "#9a8e7e", accent: "#6a5e50", accent2: "#c8bcaa" } },
+    stray2: { name: "Stray II", radius: 3.8e5, g0: 0.42, parent: "t_bary", a: 0.15 * AU,
+              solid: true, atmo: null, phase0: 5.5, gen: true,
+              style: { color: 0xbcd4de }, face: { kind: "ice", base: "#bcd4de", accent: "#8aa8b6", accent2: "#e8f6fc" } },
+    // A comet on borrowed time: its dive takes it INSIDE the stable zone. Real
+    // circumbinary orbits that close get flung out eventually — honest drama.
+    straycomet: { name: "Stray Comet", radius: 2.8e4, g0: 0.0035, parent: "t_bary", a: 0.10 * AU,
+                  solid: true, atmo: null, phase0: 0.3, gen: true, ecc: 0.45, periAngle: 2.2,
+                  style: { color: 0xcfe8f0, comet: true },
+                  face: { kind: "ice", base: "#d4eaf0", accent: "#a0bcc6", accent2: "#f2fcff" } },
+    // ALEC A — an orange dwarf star far out, waltzing with its own tiny partner...
+    alec_a: { name: "Alec A", radius: 4.731e8, g0: 367, parent: "sun", a: 13 * AU,
+              solid: false, atmo: null, phase0: 3.1, gen: true,
+              style: { color: 0xffb060, star: true, glow: "255,176,96" } },
+    // ...ALEC B: a very small red dwarf, no planets of its own (his spec).
+    alec_b: { name: "Alec B", radius: 9.74e7, g0: 1538, parent: "alec_a", a: 1.1 * AU,
+              solid: false, atmo: null, phase0: 1.9, gen: true,
+              style: { color: 0xff5a4a, star: true, glow: "255,90,74" } },
+    // ANETTA — Alec A's one gas giant, far out (his spec), wearing a ring. It orbits
+    // OUTSIDE Alec B's rail, so it circles BOTH suns at once — a true circumbinary
+    // planet, like Kepler-16b.
+    anetta: { name: "Anetta", radius: 5.9e7, g0: 12.5, parent: "alec_a", a: 3.1 * AU,
+              solid: false, atmo: { height: 9.5e5, seaLevelDensity: 0.35 }, phase0: 4.9, gen: true, gas: true,
+              style: { color: 0xc8a06a, halo: 0xe0c090, rings: true },
+              face: { kind: "gas", bands: ["#c8a06a", "#a8804e", "#e0c090", "#8a6a3e"], spot: false } },
+    // ETHYL — Anetta's habitable moon (like Pandora, but hers: violet seas, amber
+    // forests). Two dim suns can't warm it this far out — TIDAL HEATING does: Anetta
+    // kneads it like dough, the same real engine that melts Io and keeps Europa's
+    // ocean liquid. (The Navigator confesses real tidal heat is rarely THIS cozy.)
+    ethyl: { name: "Ethyl", radius: 4.9e6, g0: 8.9, parent: "anetta", a: 8.2e8,
+             solid: true, atmo: { height: 7.2e4, seaLevelDensity: 1.35 }, phase0: 1.4, gen: true,
+             style: { color: 0xb0804a, halo: 0xd8b080 },
+             face: { kind: "terra", base: "#4a3a6a", accent: "#c8863a", accent2: "#f0e0c0" } },
+  };
+  const order = ["sun", "kang", "kishi", "malgrow", "malcomet1", "malcomet2",
+                 "sonsarck", "earth", "moon", "t_bary", "dizi", "zidi",
+                 "stray1", "stray2", "straycomet", "alec_a", "alec_b", "anetta", "ethyl"];
+  const bodies = buildCatalog(defs, order);
+  // --- Post-build physics fixes (all derived, all node-tested) ---
+  // 1. The twins: buildCatalog gave them omega/SOI against the (massless) waltz point.
+  //    Real two-body motion: both orbit the barycenter at d/2 with ω² = (mu1+mu2)/d³,
+  //    exactly opposite phases. SOI: the gravity-balance midpoint is d/2; use 0.38·d
+  //    so the two spheres can never overlap (0.38 + 0.38 < 1).
+  const muPair = bodies.dizi.mu + bodies.zidi.mu;
+  const dSep = bodies.dizi.orbitRadius + bodies.zidi.orbitRadius; // = d (each at d/2)
+  for (const k of ["dizi", "zidi"]) {
+    bodies[k].omega = Math.sqrt(muPair / (dSep ** 3));
+    bodies[k].soiRadius = 0.38 * dSep;
+  }
+  // 2. Circumbinary children (strays + comet): they orbit the PAIR's combined mass.
+  //    Same Laplace SOI + tiny-moon clamp rule buildCatalog uses, against muPair.
+  for (const k of ["stray1", "stray2", "straycomet"]) {
+    const b = bodies[k];
+    b.omega = Math.sqrt(muPair / (b.orbitRadius ** 3));
+    b.soiRadius = b.orbitRadius * Math.pow(b.mu / muPair, 0.4);
+    if (b.soiRadius < b.radius * 2) { b.soiRadius = b.radius * 2; b.tinyMoon = true; }
+  }
+  // 3. Companion-star SOI at the gravity-balance point (Alpha Centauri B precedent —
+  //    Laplace assumes a tiny mass ratio; Alec B is 0.18x its partner).
+  {
+    const q = Math.sqrt(bodies.alec_b.mu / bodies.alec_a.mu);
+    bodies.alec_b.soiRadius = bodies.alec_b.orbitRadius * (q / (1 + q));
+  }
+  // planetKeys: everything except the star AND the invisible waltz point.
+  const planetKeys = order.slice(1).filter((k) => k !== "t_bary");
+  return {
+    key: "gen:kcalbeloh",
+    name: "The Kcalbeloh System",
+    seed: "Kcalbeloh",
+    blackHole: true,
+    starClass: "BH",
+    starLabel: "black hole with a family of orbiting stars",
+    homeName: "Cera",
+    moonName: "Yang",
+    planetCount: 2, // planets of the hole itself; the rest belong to its stars
+    frostAU: 2.4,   // warmth comes from the accretion disk, not the hole
+    bodies,
+    planetKeys,
+    stations: [], // no home station — nobody LIVES here (his spec: no home planet)
+    // 🌀 The way home: twin of Pluto's Kcalbeloh Gate, parked over Base Camp Cera.
+    wormholes: [
+      { id: "wh_sol_kcalbeloh", name: "The Sol Gate", body: "earth", altR: 3.1, phase0: 1.8,
+        dest: { seed: "@sol", twin: "wh_kcalbeloh" }, color: 0xffd75e },
+    ],
+    famous: "kcalbeloh",
+    blurb: "⚫ <b>Welcome to the KCALBELOH SYSTEM — a BLACK HOLE, designed by " +
+      "you-know-who!</b> (Read the name backwards. Slowly. 😄) Kcalbeloh weighs 12 Suns " +
+      "squeezed into a ball 7 km across here (about 70 km in the real universe — your " +
+      "practice universe is 10x smaller, as always) — the hole makes NO light at all; everything " +
+      "you see is its glowing <b>accretion disk</b>. And stars really do orbit black " +
+      "holes: astronomers watched the star S2 whip around the giant one in our galaxy's " +
+      "heart, and that discovery won the 2020 Nobel Prize. <b>Kang</b> hugs the hole " +
+      "closest — one face melted by the disk, the other glowing with radioactive " +
+      "uranium (decay heat is real — it's what keeps Earth's insides hot!). It hugs " +
+      "so tight the hole steals any orbit around it: fly formation, then drop in. <b>Kishi</b> " +
+      "is water pole to pole: landing there is a splashdown, because there is no ground " +
+      "anywhere. Then come the orbiting STARS: ember-dim <b>Malgrow</b> (a brown dwarf " +
+      "with two comets), red <b>Sonsarck</b> with the twins <b>Dizi</b> and <b>Zidi</b> " +
+      "— two gas giants waltzing around an empty point, with captured strays circling " +
+      "BOTH at once (real astronomy: Kepler-16b orbits two suns), plus <b>Cera</b> and " +
+      "her captured moon <b>Yang</b> — and far out, <b>Alec A</b> and little <b>Alec " +
+      "B</b>, whose ringed giant <b>Anetta</b> keeps the amber-forest moon <b>Ethyl</b> " +
+      "warm by kneading it with tides, like Jupiter does to Io. One thing this system " +
+      "does NOT have: a home. Nobody lives here — you're an EXPEDITION. Base Camp Cera " +
+      "has a pad and thin air, the Sol Gate hangs overhead for the trip home, and if " +
+      "your rocket goes 💥, the camp rebuilds it right here. Fly brave! 🚀",
+  };
+}
+
 // ---------- Registry ----------
 // Aliases are normalized (lowercase, letters+digits only) so "The Kerbal System",
 // "kerbin", "KSP", "avatar", "Alpha Centauri"… all land on the same canonical system.
-const BUILDERS = { kerbol: kerbolSystem, pandora: pandoraSystem, youngcow: youngcowSystem, luhman: luhmanSystem, owius: owiusSystem };
+const BUILDERS = { kerbol: kerbolSystem, pandora: pandoraSystem, youngcow: youngcowSystem, luhman: luhmanSystem, owius: owiusSystem, kcalbeloh: kcalbelohSystem };
 const ALIASES = {
   kerbol: "kerbol", kerbin: "kerbol", kerbal: "kerbol", ksp: "kerbol",
   kerbalsystem: "kerbol", kerbolsystem: "kerbol", thekerbolsystem: "kerbol",
@@ -515,6 +716,12 @@ const ALIASES = {
   pulsar: "owius", thepulsar: "owius", pulsarsystem: "owius", thepulsarsystem: "owius",
   donk: "owius", monk: "owius", sera: "owius", menia: "owius", ka: "owius",
   silentspire: "owius", thesilentspire: "owius",
+  // NOTE: no "blackhole" alias here — typing "black hole" in the Starmap keeps making
+  // stargen's surprise random black hole, as it always has. Kcalbeloh is HIS hole.
+  kcalbeloh: "kcalbeloh", kcalbelohsystem: "kcalbeloh", thekcalbelohsystem: "kcalbeloh",
+  kang: "kcalbeloh", kishi: "kcalbeloh", malgrow: "kcalbeloh", sonsarck: "kcalbeloh",
+  cera: "kcalbeloh", yang: "kcalbeloh", dizi: "kcalbeloh", zidi: "kcalbeloh",
+  aleca: "kcalbeloh", alecb: "kcalbeloh", anetta: "kcalbeloh", ethyl: "kcalbeloh",
 };
 
 // Shown in the Starmap panel and pre-lit on the galaxy map.
@@ -524,6 +731,7 @@ export const FAMOUS_LIST = [
   { seed: "Youngcow", name: "The Youngcow System", hint: "HIS design — a baby solar system: protoplanetary disc, ringed Hundun, dino-birds, a comet you can land on", color: 0xffdf6e },
   { seed: "Luhman 16", name: "The Luhman 16 System", hint: "the real closest BROWN DWARFS — two failed stars the size of Jupiter, glowing like coals", color: 0xd85a3a },
   { seed: "Owius", name: "The Owius System", hint: "HIS design — five blue worlds around a spinning pulsar lighthouse: bones on Monk, a crack-lake on Donk, the Silent Spire on ringed Sera", color: 0x9ad4ff },
+  { seed: "Kcalbeloh", name: "The Kcalbeloh System", hint: "HIS design — a BLACK HOLE with a family of orbiting stars: uranium-glow Kang, ocean world Kishi, twin giants waltzing, and no home but Base Camp Cera", color: 0xb08aff, blackHole: true },
 ];
 
 // null if the name isn't famous — the seeded generator takes over as usual.

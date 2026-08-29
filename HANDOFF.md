@@ -9,6 +9,92 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-08-29): ⚫ THE KCALBELOH SYSTEM — his black hole with a family of stars (Patrick's spec)
+
+Patrick's spec, built in full: a black hole called **Kcalbeloh** (read it backwards)
+with planets right up to the horizon — lava-and-uranium **Kang**, all-water **Kishi** —
+plus STARS in orbit: brown dwarf **Malgrow** (2 comets), red dwarf **Sonsarck** (rocky
+**Cera** + captured moon **Yang** + TWIN gas giants **Dizi & Zidi** waltzing around a
+shared empty point, with captured strays and a comet circling both), and the **Alec A +
+Alec B** binary whose ringed giant **Anetta** keeps habitable moon **Ethyl** (tidal
+heating — the Io/Europa engine). A wormhole over Cera pairs with a new violet
+**Kcalbeloh Gate at Pluto**. No home planet: no station, nobody lives here, and a
+destroyed rocket respawns IN THIS SYSTEM (his stated requirement — see the flag below).
+
+**Flagged / rung 4 (his calls to make — all one-line edits if vetoed):**
+- **"No home planet" was built as content, not contract:** the engine needs an
+  `earth`-role world for the pad, TWR reference, and crash-rebuild — keying **Cera as
+  BASE CAMP** (barren rock, thin air, no station, blurb + Navigator say EXPEDITION) is
+  what makes "explode → respawn in the system you are in" work with zero risk to the
+  live game. Same shape as the Owius/Splinter compromise. If he wants Cera even less
+  home-y (no atmosphere? uglier rock?) the knobs are its `atmo`/`face` in famous.js.
+- **Names I invented, awaiting his veto:** the twins **Dizi & Zidi** (mirror names for
+  mirror twins, matching the backwards-name theme), **Stray I/II + Stray Comet**, and
+  **Malgrow Comet I/II** (Roman-numeral placeholders — comets are named for their
+  discoverers, so the Navigator invites him to name all of them). **Alec B, Anetta,
+  Ethyl, Kang, Kishi, Malgrow, Sonsarck, Cera, Yang, Kcalbeloh are his.**
+- **The Pluto gate placement is my call** (spec said only "a wormhole connecting to the
+  Konnie home system") — Pluto felt like the right door to the dark; `SOL_WORMHOLES`
+  in state.js is the knob.
+- **Kang is honestly unorbitable** (hugging a 12-M☉ hole, its true SOI is barely wider
+  than the planet → tinyMoon, Phobos-style formation + nudge-over landing). This is
+  real Hill-sphere physics and the Navigator teaches it — but if the no-orbit surprise
+  frustrates rather than delights, moving Kang outward in famous.js is the dial.
+- **No transfer guidance to the twins/strays** (transferWindow/courseCorrection guard
+  on the target's parent being the dominant body, and the barycenter never is):
+  reaching Dizi/Zidi is ✨ Teleport or honest manual flying. Deliberate v1 — real
+  binary transfers are genuinely hard; flag if he wants the gold arrow there.
+- **The looks are his acceptance test:** Kang's green uranium night-glow + locked lava
+  shell were browser-asserted only as "draws at formation distance" — worth a real
+  close-up look; the tuning knobs are the `uranium` face palette in famous.js and the
+  0.35 emissive in render.js. Kishi's ocean face, the twins' two rings around an empty
+  point in map view, and the violet gate at Pluto all screenshot beautifully.
+- **The wormhole RIDE to/from Kcalbeloh was not re-flown** (machinery is unchanged and
+  data-driven; twin links node-proven, both mouths teleport-verified in-browser) —
+  worth one human fly-through of the Pluto gate.
+
+**Shipped (evidence per claim):**
+1. **famous.js `kcalbelohSystem()`** — 19 bodies. BH via stargen's exact recipe
+   (Schwarzschild rs = 35.4 km real → 3,540 m scaled, g0 = M·mu☉/rs²). Twins ride TRUE
+   two-body motion around barycenter pseudo-body `t_bary` (ω = √((mu1+mu2)/d³), phases
+   π apart, SOI 0.38·d each — post-buildCatalog overrides with derivations in
+   comments); circumbinary strays at ≥2.4× separation (Kepler-16 stability), comet
+   dives to 1.1d (honestly on borrowed time). Alec B gets the Alpha-Centauri-B
+   balance-point SOI. **Node-tested: famous_test 177/177** — Kang's period predicted
+   14,975 s then measured to 0.01%, live-rail separation constant to 1e-6 over 5e7 s,
+   every SOI/ring/stability clearance asserted.
+2. **New render faces** — `uranium` (green glowing veins, EMPTY craters per spec,
+   night-side emissive ×3.5: decay heat is its own light) and `ocean` (no land, no
+   caps, no bump-mountains, groundColorFor returns SEA, rock field suppressed — his
+   own 2026-08-02 "rocks on water" bug class, pre-empted). Browser-verified drawing;
+   zero page errors.
+3. **🎯 picker now RECURSIVE (ui.js buildTargets)** — pre-existing 2-level limit meant
+   Ethyl (depth 3) and the twins (behind the anchor) never appeared; new version
+   climbs through non-pickable rail anchors and descends any depth. Sol/Pandora/etc.
+   picker order proven unchanged (all 20 suites + boot smoke green).
+4. **Teleport callout de-Marsed** — the tinyMoon formation callout hardcoded "Mars";
+   now names the real parent (browser-verified: "…weaker than Kcalbeloh's pull…").
+   Pebble at Hundun silently benefits.
+5. **Wormholes** — Sol's 5th gate at Pluto ↔ Sol Gate over Cera; wormhole_test 59/59
+   including twin round-trip links; both mouths teleport-verified in-browser (gate
+   distance 593 vs 594 km predicted).
+6. **Navigator taught, safety block untouched** (navigator_check ALL GREEN) — new
+   KCALBELOH bullet (S2/Sgr A* 2020 Nobel, ISCO, decay-heat truth + green-color
+   confession, Kepler-16b, Triton capture confession, tidal heating, expedition/no-home
+   framing, formation-only Kang) + five-gates wormhole bullet + 17 new WORLD_FACTS
+   (every number verified). Galaxy map draws ⚫ for famous black holes (main.js flag
+   pass-through).
+7. **Evidence:** all 20 node suites green (famous 177, teleport 42, wormhole 59);
+   new `kcalbeloh-check.mjs` in the browser-verification skill **20/20 ALL GREEN**
+   (arrival at Cera pad, map draws, Kang formation at 5.00R with soi=Kcalbeloh, Kishi
+   parking 1777 m/s = √(mu/r) to 0.0%, Dizi orbit held under Zidi's tide for half a
+   lap with 0.02% drift, Anetta parks ring-clear at 2.64R, zero page errors) + 6
+   screenshots; boot smoke 9/9 + flight check 14/14 green. ARCHITECTURE.md CONTRACT
+   REVISION 2026-08-29 written (barycenter pseudo-body pattern, famous black holes,
+   new faces, 5th gate).
+
+---
+
 ## Status (2026-08-20 later): 🔭🛸 FIXED — the Exploration board ate his ship (his report)
 
 His report (via Mom): doing the new science quests makes his ship disappear. Reproduced

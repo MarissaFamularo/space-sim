@@ -9,18 +9,38 @@ import { makeForgeCode } from "./stargen.js";
 // their moons indented under them (capture at the planet first, then hop), home last.
 function buildTargets() {
   const targets = [], moonOf = {};
-  const planets = PLANET_KEYS.filter((k) => BODIES[k].parent === "sun")
-    .sort((a, b) => BODIES[a].orbitRadius - BODIES[b].orbitRadius);
-  const moonsOf = (p) => PLANET_KEYS.filter((k) => BODIES[k].parent === p)
-    .sort((a, b) => BODIES[a].orbitRadius - BODIES[b].orbitRadius);
-  for (const m of moonsOf("earth")) targets.push(m);
-  for (const p of planets) {
-    if (p === "earth") continue;
-    targets.push(p);
-    // Skip "earth" here: in systems where home is itself a MOON of a gas giant
-    // (Pandora!), it would otherwise show up twice — it always goes last, as home.
-    for (const m of moonsOf(p)) { if (m === "earth") continue; targets.push(m); moonOf[m] = p; }
-  }
+  // A body's PICKER parent is its nearest ancestor that is itself pickable (in
+  // PLANET_KEYS) or the star. Invisible rail anchors (Kcalbeloh's barycenter
+  // "t_bary" — the empty point the twin giants waltz around) are climbed straight
+  // through, so the twins and their strays list under Sonsarck like the family
+  // they are. Sibling order uses the rail radii summed up that same chain (a
+  // twin's own rail is tiny, but it rides the barycenter's big one).
+  const pickerParent = (k) => {
+    let p = BODIES[k].parent;
+    while (p && p !== "sun" && !PLANET_KEYS.includes(p)) p = BODIES[p].parent;
+    return p;
+  };
+  const railR = (k) => {
+    let r = BODIES[k].orbitRadius, p = BODIES[k].parent;
+    while (p && p !== "sun" && !PLANET_KEYS.includes(p)) { r += BODIES[p].orbitRadius; p = BODIES[p].parent; }
+    return r;
+  };
+  const kids = {};
+  for (const k of PLANET_KEYS) (kids[pickerParent(k)] = kids[pickerParent(k)] || []).push(k);
+  for (const key of Object.keys(kids)) kids[key].sort((a, b) => railR(a) - railR(b));
+  // Depth-first: a planet, then its whole family (moons, and moons-of-moons like
+  // Ethyl under Anetta — one indent level is enough for the eye). Skip "earth"
+  // everywhere: in systems where home is itself a MOON of a gas giant (Pandora!)
+  // it would otherwise show up twice — it always goes last, as home.
+  const addTree = (k, depth) => {
+    if (k !== "earth") {
+      targets.push(k);
+      if (depth > 0) moonOf[k] = BODIES[k].parent;
+    }
+    for (const m of kids[k] || []) if (m !== "earth") addTree(m, depth + 1);
+  };
+  for (const m of kids.earth || []) targets.push(m); // home's moons first (the tutorial)
+  for (const p of kids.sun || []) if (p !== "earth") addTree(p, 0);
   targets.push("earth");
   return { targets, moonOf };
 }

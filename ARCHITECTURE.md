@@ -759,3 +759,50 @@ vehicle carrier that lands on belly boosters, with two SHIFT-switched engine sta
   (24 checks, ALL GREEN: picker target, formation teleport, real-collision ring
   landing, tunnel chain, anvil → panel → hand-computed 7,245 win → unlock →
   reload → 📁 button → Pelican load → SHIFT lift/cruise/lift → climb).
+
+## CONTRACT REVISION 2026-08-29 — ⚫ The Kcalbeloh System (his spec: a black hole with a family of stars)
+
+- **Barycenter pseudo-bodies (new supported pattern)** — a BODIES entry may now be an
+  invisible RAIL ANCHOR: listed in the catalog (so `bodyStateAt` can recurse through
+  it) but EXCLUDED from `planetKeys`. Kcalbeloh's `t_bary` is the first: the twin gas
+  giants Dizi/Zidi orbit it at d/2 with true two-body motion (ω = √((mu1+mu2)/d³),
+  phases π apart — famous.js overrides omega/SOI after buildCatalog), and circumbinary
+  strays ride ω = √(muPair/a³). The anchor's own mu is negligible (~0.01 scaled) so
+  the superposed-gravity integrator ignores it physically. Because it is not in
+  planetKeys it is never a target, never dominant, never labeled, never meshed.
+  Accommodations shipped with the pattern: render.js's orbit-ring placement falls back
+  to `bodyStateAt(parent)` when a parent has no cached state, and ui.js
+  `buildTargets()` is now RECURSIVE — it climbs through non-pickable anchors (twins
+  list under Sonsarck) and descends to any depth (Ethyl, a moon of a moon of a star's
+  planet, finally reaches the 🎯 picker). Everything else (tracking, teleport,
+  dominantBody) already resolved parents through BODIES and needed nothing.
+- **Famous systems may be black holes** — `FAMOUS_LIST` entries and famous metas can
+  carry `blackHole: true`; main.js `buildGalaxyList` now forwards the flag so the
+  galaxy map draws ⚫ instead of ⭐. The BH body math is stargen's exact recipe
+  (Schwarzschild radius, g0 = M·mu☉/rs²).
+- **No-home famous system, by content not contract** — Kcalbeloh keeps the frozen
+  `sun`/`earth`/`moon` role keys (Cera/Yang) so the pad, TWR reference, crash-rebuild
+  and every mechanic work unchanged and a destroyed rocket respawns IN-SYSTEM (his
+  spec); the "no home planet" lives in the fiction (Base Camp Cera, `stations: []`,
+  blurb/Navigator say EXPEDITION). Deliberately NOT a homeless-system contract change.
+- **New face kinds** — render.js painters `"uranium"` (dark crust, glowing green
+  veins, empty craters, night-side emissive 0.35 — decay heat is its own light) and
+  `"ocean"` (water pole to pole: swell lines, foam glints, no land, no caps; joins
+  `isGasFaced` so no bump-relief wave mountains; `groundColorFor` honestly returns
+  SEA — a Kishi landing is a splashdown — and the rock field never spawns on ocean
+  worlds).
+- **Sol gains a 5th wormhole gate** — `wh_kcalbeloh` at Pluto (violet) twinned with
+  `wh_sol_kcalbeloh` over Cera; same WORMHOLES shape, wormhole_test now asserts 5.
+- **Teleport callout fix (role-key doctrine)** — the tinyMoon formation callout
+  hardcoded "Mars" (written for Phobos/Deimos); it now names the actual parent
+  (`BODIES[b.parent].name`) — Kang, which hugs the hole so hard its clamped SOI makes
+  it honestly unorbitable, was the first non-Sol tinyMoon of a STAR to expose it.
+- **Navigator** — SYSTEM prompt gains THE KCALBELOH SYSTEM bullet (S2/Sgr A* + 2020
+  Nobel, ISCO, decay heat + the green-color confession, circumbinary Kepler-16b,
+  captured moons/Triton, tidal heating, the no-home expedition framing) and the
+  wormhole bullet counts five gates. Safety block untouched — navigator_check green.
+- **Verification**: famous_test grew to 177 checks (BH math, Kang period predicted
+  14,975 s then measured, twins' two-body rate + constant separation on live rails,
+  circumbinary stability zone, Alec B balance-point SOI, ring/SOI clearances);
+  teleport_test 42; wormhole_test 59; kcalbeloh-check.mjs added to the
+  browser-verification skill (20 checks ALL GREEN + 6 screenshots).

@@ -85,6 +85,23 @@ const WORLD_FACTS = {
   Cylan: "Cylan is this game's PLANET NINE — a real scientific mystery! In 2016 astronomers noticed distant icy orbits clustering as if a hidden ~5-Earth-mass planet is shepherding them. No telescope has found it yet — you just did what the real hunt is still trying to do. (The REAL one, if it's out there, sits 5–10× farther than Pluto — we parked ours closer so the trip is flyable.)",
   "Cylan I": "New moons get Roman-numeral names first and proper names later — that's real astronomy practice. These five are waiting for a discoverer to name them… that's YOU.",
   "Cylan V": "A far-out moon on a stretched orbit is usually a CAPTURED wanderer — a passerby that flew too close and got kept. Watch it sprint at the close pass and crawl at the far end: Kepler's second law, live.",
+  // The Kcalbeloh System (HIS design, 2026-08-29) — a black hole with a family of stars.
+  Kcalbeloh: "Kcalbeloh makes no light at all — everything you see is its glowing accretion disk. And stars really do orbit black holes: astronomers watched the star S2 whip around the giant one in our galaxy's heart at 7,700 km/s, and that work won the 2020 Nobel Prize.",
+  Kang: "Kang's dark side glows with its own radioactive decay heat — and THAT part is real: decay heat is what keeps Earth's insides hot. (The green is our cartoon color. Real uranium metal is silvery, and its danger is invisible.)",
+  Kishi: "Kishi is water pole to pole — landing here is a SPLASHDOWN, because there is no ground anywhere. Astronomers have found real planets that may be ocean all the way around, and every ocean is a place worth checking for life.",
+  Malgrow: "A brown dwarf can keep comets and moons like any star — gravity doesn't care that its fusion fire never lit. And whole star families really do circle black holes in the crowded hearts of galaxies.",
+  "Malgrow Comet I": "Comets wear their stretched orbits like a signature. These two have no proper names yet — comets are named for their discoverers, and you just found them.",
+  Sonsarck: "Sonsarck is a red dwarf — the smallest kind of true star, and the most common star in the entire universe. Most of the galaxy's stars are little red ones like this.",
+  Cera: "Cera is nobody's home — it's BASE CAMP: a pad, thin air, and the Sol Gate overhead. Real expeditions work this way too: Antarctica's research stations have crews and supplies, but no citizens.",
+  Yang: "Yang rides a stretched rail because it was CAPTURED — a wanderer that flew too close and got kept. Real captured moons often orbit BACKWARD, like Neptune's Triton; our rails all run one way, so Yang keeps it forward.",
+  Dizi: "Dizi and Zidi waltz around an EMPTY POINT — their shared center of mass. Every orbiting pair really does this: even our Sun wobbles around its balance point with Jupiter.",
+  Zidi: "Zidi and Dizi are equal twins, so their waltz is even. Unequal partners waltz lopsided — and measuring that wobble is exactly how astronomers WEIGH planets they can't even see.",
+  "Stray I": "Circling BOTH twins at once is a real kind of orbit — circumbinary. Get too close in and the twins' tug-of-war flings you out; the safe zone starts about twice their separation.",
+  "Stray Comet": "This comet dives INSIDE the twins' danger zone every lap. Real orbits like this don't last — one day the twins will fling it out of the system. It's flying on borrowed time.",
+  "Alec A": "Stars love company: about half of all Sun-like stars have at least one partner. Our lonely single Sun is the quieter kind of neighborhood.",
+  "Alec B": "Small stars live longest — a red dwarf like Alec B will keep shining for TRILLIONS of years, thousands of times longer than our Sun. The smallest fires burn slowest.",
+  Anetta: "Anetta circles OUTSIDE Alec B's rail, so it orbits both suns at once — a true Tatooine world. That's real: Kepler-16b, found in 2011, was the first planet confirmed to orbit two stars.",
+  Ethyl: "Two dim suns can't warm Ethyl this far out — TIDES do it: Anetta kneads the moon like dough, the same real engine that melts Io's volcanoes and keeps Europa's hidden ocean liquid. (Real tidal heat is rarely this cozy — Ethyl got lucky.)",
 };
 
 // Any star in the active system: the sun role, plus star-styled companions
@@ -597,8 +614,12 @@ function teleport(key) {
   const crew = sim.crew ? sim.crew.name : "The probe";
   if (park.coOrbit) {
     const fact0 = WORLD_FACTS[b.name] ? " " + WORLD_FACTS[b.name] : "";
+    // The "bigger neighbor" is the PARENT's display name — this callout used to
+    // hardcode "Mars" (written for Phobos/Deimos), which read wrong the moment a
+    // tinyMoon lived anywhere else (Pebble at Hundun; Kang hugging Kcalbeloh).
+    const pullName = BODIES[b.parent] ? BODIES[b.parent].name : "its big neighbor";
     copilotSay("✨ <b>WHOOSH — you're flying formation with " + b.name + "!</b>" + fact0 +
-      " Here's the wild part: " + b.name + " is too small to ORBIT — its gravity is weaker than Mars's pull at this distance, so real probes do exactly what you're doing: match its orbit around Mars and fly alongside. Nudge over with tiny puffs of throttle and touch down super gently.");
+      " Here's the wild part: you can't ORBIT " + b.name + " — its gravity is weaker than " + pullName + "'s pull at this distance, so real probes do exactly what you're doing: match its orbit around " + pullName + " and fly alongside. Nudge over with tiny puffs of throttle and touch down super gently.");
   } else if (key === "earth") {
     // "earth" is a ROLE key — out there the home world has its own name (Twilight,
     // Kerbin, Hundun…); saying "Earth orbit" teaches the wrong name.
@@ -694,7 +715,7 @@ function buildGalaxyList() {
   // on the galaxy map even before the first visit. Dedup vs visited by seed.
   for (const f of FAMOUS_LIST) {
     if (!entries.some((e) => e.seed.toLowerCase() === f.seed.toLowerCase())) {
-      entries.push({ seed: f.seed, name: f.name, blackHole: false,
+      entries.push({ seed: f.seed, name: f.name, blackHole: !!f.blackHole,
                      color: f.color, pos: galaxyPos(f.seed) });
     }
   }

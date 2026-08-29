@@ -14,7 +14,7 @@ returnToSol();
 
 // --- His spec: four Sol mouths on the right planets ---
 const byId = Object.fromEntries(WORMHOLES.map((w) => [w.id, w]));
-check("Sol has exactly 4 gates", WORMHOLES.length === 4, "got " + WORMHOLES.length);
+check("Sol has exactly 5 gates", WORMHOLES.length === 5, "got " + WORMHOLES.length); // 5th: Kcalbeloh at Pluto (2026-08-29)
 check("Jupiter hosts the Owius Gate", byId.wh_owius && byId.wh_owius.body === "jupiter");
 check("Saturn hosts the Ember Gate (→ Luhman 16)", byId.wh_luhman && byId.wh_luhman.body === "saturn");
 check("Uranus hosts the Youngcow Gate", byId.wh_youngcow && byId.wh_youngcow.body === "uranus");
@@ -82,7 +82,7 @@ check("meta without wormholes leaves the list empty (generated systems)", (() =>
   return WORMHOLES.length === 0;
 })());
 returnToSol();
-check("returnToSol restores all 4 gates", WORMHOLES.length === 4);
+check("returnToSol restores all 5 gates", WORMHOLES.length === 5);
 check("STATIONS untouched by the wormhole swap dance", STATIONS.length === 3);
 
 // --- Orbit propagation math (the same circular elements as stations): predict the

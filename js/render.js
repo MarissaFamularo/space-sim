@@ -607,6 +607,41 @@ function makePlanetCanvas(key) {
           }
           break;
         }
+        case "uranium": {
+          // Kang's far side (Kcalbeloh): dark heavy-element crust threaded with
+          // glowing green veins — radioactive DECAY HEAT is real (it warms Earth's
+          // core); the cartoon-green glow is our honest artistic license. His spec:
+          // craters with NO lava — they stay dark and empty, just a pale rim.
+          fill(face.base);
+          streaks([face.accent], 26, 110, 2, 26);           // bright vein network
+          ctx.globalAlpha = 0.4;
+          streaks([face.accent2], 14, 70, 1, 30);           // fainter capillaries
+          ctx.globalAlpha = 1;
+          for (let i = 0; i < 12; i++) {                     // hot green pools
+            const x = rng() * W, y = H * (0.1 + rng() * 0.8), r = 2 + rng() * 5;
+            ctx.fillStyle = face.accent; ctx.globalAlpha = 0.75;
+            ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = 1;
+          }
+          craters(45, "#0a0e08", "#3a4034", 8);              // empty craters, no glow
+          break;
+        }
+        case "ocean": {
+          // Kishi (Kcalbeloh): water pole to pole — no land, no caps, no craters.
+          // Long wind-driven swell lines and a scatter of foam glints; deep-current
+          // shading so it reads as a living sea, not a blue billiard ball.
+          fill(face.base);
+          for (let i = 0; i < 6; i++)                        // deep-current shadows
+            blob(rng() * W, H * (0.15 + rng() * 0.7), 26, "#0c2a52", 22, 0.35);
+          streaks([face.accent, face.accent2], 46, 260, 2.5, 10); // swell lines
+          for (let i = 0; i < 90; i++) {                     // foam glints
+            const x = rng() * W, y = H * (0.06 + rng() * 0.88);
+            ctx.fillStyle = face.accent2; ctx.globalAlpha = 0.25 + rng() * 0.35;
+            ctx.fillRect(x, y, 1 + rng() * 2, 1);
+            ctx.globalAlpha = 1;
+          }
+          break;
+        }
         default: { // rocky, and anything stargen invents later
           fill(face.base);
           for (let i = 0; i < 5; i++) blob(rng() * W, H * (0.2 + rng() * 0.6), 20, face.accent, 20, 0.7);
@@ -672,9 +707,11 @@ function refinePlanetCanvas(cv, key) {
 
 // Cloud-top worlds: smooth by nature — they get gentler mottling and NO bump relief
 // (there are no mountains on Jupiter; the terminator there fades like fog, not rock).
+// Ocean worlds (Kishi) are smooth for the same honest reason: water finds its level —
+// height-from-luminance would raise 50 km foam mountains out of the wave glints.
 function isGasFaced(key) {
   return ["jupiter", "saturn", "uranus", "neptune", "venus", "titan"].includes(key) ||
-    !!(BODIES[key] && BODIES[key].face && /gas/.test(BODIES[key].face.kind));
+    !!(BODIES[key] && BODIES[key].face && /gas|ocean/.test(BODIES[key].face.kind));
 }
 
 const _texCache = {};
@@ -1094,9 +1131,12 @@ function makeBodyGroup(key) {
     // (flat-color emissive would wash the detail out). Rocky faces also get bump
     // relief from their own luminance — craters catch light at the terminator.
     const bump = planetBumpTexture(key);
+    // Uranium faces (Kang) glow brighter in the dark than the standard dim night
+    // side — the veins shine by their OWN decay heat, not reflected disk-light.
+    const nightGlow = b.face && b.face.kind === "uranium" ? 0.35 : 0.1;
     mat = new THREE.MeshStandardMaterial({
       map: tex, roughness: 0.95, metalness: 0,
-      emissive: 0xffffff, emissiveIntensity: 0.1, emissiveMap: tex,
+      emissive: 0xffffff, emissiveIntensity: nightGlow, emissiveMap: tex,
       ...(bump ? { bumpMap: bump, bumpScale: b.radius * BUMP.planet } : {}),
     });
   } else {
@@ -3771,7 +3811,10 @@ function updateFlight(sim) {
     bodyGroups[key].position.set(st.pos.x - ORIGIN.x, st.pos.y - ORIGIN.y, 0);
   }
   for (const key of PLANET_KEYS) {
-    const parent = states[BODIES[key].parent];
+    // A parent can be a rail anchor OUTSIDE PLANET_KEYS (Kcalbeloh's invisible
+    // barycenter "t_bary" — the twins' rings circle an empty point): no group, no
+    // ring of its own, so fetch its state directly instead of from `states`.
+    const parent = states[BODIES[key].parent] || bodyStateAt(BODIES[key].parent, t);
     orbitRings[key].position.set(parent.pos.x - ORIGIN.x, parent.pos.y - ORIGIN.y, 0);
   }
   // Direction only: a DirectionalLight lights by (position − target), so parking it a
@@ -3996,6 +4039,9 @@ function updateFlight(sim) {
 function groundColorFor(key) {
   const b = BODIES[key];
   const face = b && b.face;
+  // Ocean worlds (Kishi): the surface you touch down on IS the sea — a splashdown.
+  // Unlike terra worlds there's no land to prefer, so the ground honestly stays water.
+  if (face && face.kind === "ocean") return new THREE.Color(face.base);
   if (face && face.kind === "terra" && face.accent) return new THREE.Color(face.accent);
   if (key === "earth") return new THREE.Color(0x5a7a42); // Sol Earth: green-brown coast
   return new THREE.Color(styleFor(key).color); // dry worlds: the map color IS the ground
@@ -4227,8 +4273,11 @@ function updateSurfaceExtras(sim, dom) {
     groundPatch.visible = false;
   }
   // Rocks: deterministic per ground "slot" so they hold still while you descend past them.
+  // Ocean worlds get NONE — boulders floating on open water was his own bug report
+  // (2026-08-02), and on Kishi the whole world is the water.
+  const openSea = !!(dom.body.face && dom.body.face.kind === "ocean");
   if (rockField) {
-    if (near) {
+    if (near && !openSea) {
       const Rb = dom.body.radius;
       const cx = dom.center.x - ORIGIN.x, cy = dom.center.y - ORIGIN.y;
       const phi = Math.atan2(dom.rel.y, dom.rel.x);

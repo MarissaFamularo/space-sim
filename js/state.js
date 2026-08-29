@@ -179,6 +179,10 @@ const SOL_WORMHOLES = [
     dest: { seed: "Youngcow", twin: "wh_sol_youngcow" }, color: 0xffdf6e },
   { id: "wh_pandora", name: "The Pandora Gate", body: "neptune", altR: 5.2, phase0: 1.1,
     dest: { seed: "Pandora", twin: "wh_sol_pandora" }, color: 0x4a7ac8 },
+  // At PLUTO, the door to the dark: his black-hole system (2026-08-29 spec). Violet,
+  // like the accretion glow it leads to. Twin hangs over Base Camp Cera.
+  { id: "wh_kcalbeloh", name: "The Kcalbeloh Gate", body: "pluto", altR: 5.0, phase0: 3.3,
+    dest: { seed: "Kcalbeloh", twin: "wh_sol_kcalbeloh" }, color: 0xb08aff },
 ];
 export const WORMHOLES = [...SOL_WORMHOLES];
 

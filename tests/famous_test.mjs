@@ -3,6 +3,7 @@
 // Run: node tests/famous_test.mjs
 import { generateSystem } from "../js/stargen.js";
 import { famousSystem, FAMOUS_LIST } from "../js/famous.js";
+import { setSystem, returnToSol, bodyStateAt } from "../js/state.js";
 
 let pass = 0, fail = 0;
 const check = (name, ok, detail = "") => {
@@ -23,6 +24,9 @@ const approx = (a, b, tol) => Math.abs(a - b) <= tol * Math.abs(b);
     ["the brown dwarfs", "Luhman 16"], ["Twilight", "Luhman 16"],
     ["Owius", "Owius"], ["pulsar", "Owius"], ["The Pulsar System", "Owius"],
     ["Sera", "Owius"], ["donk", "Owius"], ["the silent spire", "Owius"],
+    ["Kcalbeloh", "Kcalbeloh"], ["The Kcalbeloh System", "Kcalbeloh"],
+    ["kang", "Kcalbeloh"], ["Kishi", "Kcalbeloh"], ["cera", "Kcalbeloh"],
+    ["Sonsarck", "Kcalbeloh"], ["ethyl", "Kcalbeloh"], ["Alec A", "Kcalbeloh"],
   ]) {
     const sys = generateSystem(alias);
     check(`"${alias}" → ${want}`, sys.seed === want && sys.famous, `got seed=${sys.seed}`);
@@ -40,7 +44,7 @@ const approx = (a, b, tol) => Math.abs(a - b) <= tol * Math.abs(b);
 }
 
 // --- 3. Role keys + flyability rules hold in every famous system ---
-for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16", "Owius"]) {
+for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16", "Owius", "Kcalbeloh"]) {
   const sys = generateSystem(seed);
   const B = sys.bodies;
   check(`${seed}: roles sun/earth/moon exist`, !!(B.sun && B.earth && B.moon), "");
@@ -56,7 +60,10 @@ for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16", "Owius"]) {
     sys.planetKeys.every((k) => B[k].parent && B[B[k].parent]), "");
   check(`${seed}: fresh objects per call (no shared refs)`,
     generateSystem(seed).bodies.earth !== B.earth, "");
-  check(`${seed}: has a home station`, sys.stations.some((s) => s.body === "earth"), "");
+  // Kcalbeloh deliberately has NO station: no home planet is his spec — Cera is only
+  // the expedition's base camp, and nobody lives in this system at all.
+  check(`${seed}: ${seed === "Kcalbeloh" ? "deliberately has no station" : "has a home station"}`,
+    seed === "Kcalbeloh" ? sys.stations.length === 0 : sys.stations.some((s) => s.body === "earth"), "");
 }
 
 // --- 4. Kerbol canon spot-checks (the ×10 defs must land on true KSP values) ---
@@ -258,6 +265,101 @@ for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16", "Owius"]) {
     B.menia.gas === undefined ? !B.menia.solid : !B.menia.solid, "");
   check("the blurb confesses the warm-Sera compromise",
     /confession/i.test(sys.blurb) && /gave Sera air/i.test(sys.blurb), "");
+}
+
+// --- 5f. Kcalbeloh (HIS design: a black hole with a family of stars) ---
+{
+  const sys = generateSystem("Kcalbeloh");
+  const B = sys.bodies;
+  const MU_SUN_REAL = 274 * 6.957e8 * 6.957e8, BH_MASS = 12, RS = BH_MASS * 2950;
+  check("the star is a black hole (flag + meta + starClass BH)",
+    B.sun.blackHole === true && sys.blackHole === true && sys.starClass === "BH", "");
+  check("FAMOUS_LIST carries the blackHole flag (⚫ on the galaxy map)",
+    FAMOUS_LIST.some((f) => f.seed === "Kcalbeloh" && f.blackHole === true), "");
+  check("horizon = Schwarzschild radius for 12 M☉ (2.95 km per solar mass, ×0.1 scale)",
+    approx(B.sun.radius, RS * 0.1, 1e-9), `r=${B.sun.radius} m`);
+  check("gravity = M·mu☉/rs² (stargen's exact recipe — mass is all that matters)",
+    approx(B.sun.g0, (BH_MASS * MU_SUN_REAL) / (RS * RS), 1e-9), `g0=${B.sun.g0.toExponential(3)}`);
+  // KANG — hugging the hole. Period predicted BEFORE running: mu_s = g0·(354 0m)² =
+  // 1.5914e19, a_s = 4.488e8 m → T = 2π√(a³/mu) = 14,975 s ≈ 4.2 game-hours.
+  check("Kang is the innermost world, on a locked-lava rail with a uranium face",
+    B.kang.orbitRadius < B.kishi.orbitRadius && B.kang.style.lockedLava === true &&
+    B.kang.face.kind === "uranium", "");
+  check("Kang's year ≈ 4.2 game-hours (predicted 14,975 s)",
+    approx(2 * Math.PI / B.kang.omega, 14975, 0.01),
+    `T=${Math.round(2 * Math.PI / B.kang.omega)} s`);
+  check("Kang keeps a respectful distance (outside the ISCO at 3 Schwarzschild radii)",
+    B.kang.orbitRadius > 3 * B.sun.radius, `a/rs=${Math.round(B.kang.orbitRadius / B.sun.radius)}`);
+  // KISHI — the water world.
+  check("Kishi is a solid, chuteable ocean world (splashdowns are landings)",
+    B.kishi.solid && B.kishi.face.kind === "ocean" &&
+    B.kishi.atmosphere.seaLevelDensity >= 0.9, "");
+  // MALGROW — a brown dwarf with two comets of its own.
+  check("Malgrow is an ember-styled brown dwarf orbiting the hole",
+    B.malgrow.style.star && B.malgrow.style.ember && B.malgrow.parent === "sun" && !B.malgrow.solid, "");
+  check("both comets ride stretched rails around Malgrow (e ≥ 0.55)",
+    ["malcomet1", "malcomet2"].every((k) => B[k].parent === "malgrow" && B[k].ecc >= 0.55), "");
+  check("comet periapses clear Malgrow, apoapses stay inside its SOI",
+    ["malcomet1", "malcomet2"].every((k) =>
+      B[k].orbitRadius * (1 - B[k].ecc) > B.malgrow.radius * 10 &&
+      B[k].orbitRadius * (1 + B[k].ecc) < B.malgrow.soiRadius), "");
+  // CERA + YANG — base camp and its captured moon.
+  check("Cera (earth role) orbits Sonsarck inside its SOI",
+    B.earth.parent === "sonsarck" && B.earth.orbitRadius < B.sonsarck.soiRadius, "");
+  check("Yang is captured: eccentric rail, whole ellipse inside Cera's SOI",
+    B.moon.ecc === 0.38 && B.moon.orbitRadius * (1 + B.moon.ecc) < B.earth.soiRadius &&
+    B.moon.orbitRadius * (1 - B.moon.ecc) > B.earth.radius * 3, "");
+  // THE TWINS' WALTZ — real two-body motion around an invisible barycenter.
+  const dSep = B.dizi.orbitRadius + B.zidi.orbitRadius;
+  const muPair = B.dizi.mu + B.zidi.mu;
+  check("the waltz point is invisible: not targetable, effectively massless",
+    !sys.planetKeys.includes("t_bary") && B.t_bary.mu < 1, `mu=${B.t_bary.mu}`);
+  check("equal twins: same mass, same rail radius, opposite phases",
+    B.dizi.mu === B.zidi.mu && B.dizi.orbitRadius === B.zidi.orbitRadius &&
+    approx(Math.abs(B.zidi.phase0 - B.dizi.phase0), Math.PI, 1e-9), "");
+  check("twins ride the TRUE two-body rate ω = √((mu1+mu2)/d³)",
+    ["dizi", "zidi"].every((k) => approx(B[k].omega, Math.sqrt(muPair / dSep ** 3), 1e-9)),
+    `T=${(2 * Math.PI / B.dizi.omega / 86400).toFixed(1)} game-days`);
+  check("twins' SOIs (0.38·d each) can never overlap (0.38+0.38 < 1)",
+    B.dizi.soiRadius === 0.38 * dSep && B.dizi.soiRadius + B.zidi.soiRadius < dSep, "");
+  // End-to-end on the live rails: separation constant to 1 part in 1e6 over 50M s.
+  {
+    setSystem(B, sys.planetKeys, { key: sys.key, name: sys.name, seed: sys.seed });
+    const sepAt = (t) => {
+      const a = bodyStateAt("dizi", t), b = bodyStateAt("zidi", t);
+      return Math.hypot(a.pos.x - b.pos.x, a.pos.y - b.pos.y);
+    };
+    check("live rails hold the twins' separation constant (t=0 → t=5e7 s)",
+      [0, 1e6, 5e7].every((t) => approx(sepAt(t), dSep, 1e-6)), "");
+    returnToSol();
+  }
+  // Circumbinary strays: real Kepler-16 physics — stable only beyond ~2.2x separation.
+  check("strays orbit the PAIR at the true circumbinary rate ω = √(muPair/a³)",
+    ["stray1", "stray2", "straycomet"].every((k) =>
+      approx(B[k].omega, Math.sqrt(muPair / B[k].orbitRadius ** 3), 1e-9)), "");
+  check("both stray moons sit in the stable zone (a ≥ 2.2·d)",
+    ["stray1", "stray2"].every((k) => B[k].orbitRadius >= 2.2 * dSep), "");
+  check("the Stray Comet's dive clears the twins' reach (peri > 0.5d + SOI = 0.88d)",
+    B.straycomet.orbitRadius * (1 - B.straycomet.ecc) > 0.88 * dSep, "");
+  // ALEC A + B — the far binary with the circumbinary ringed giant.
+  {
+    const soi = B.alec_b.soiRadius, a = B.alec_b.orbitRadius;
+    const gB = B.alec_b.mu / soi ** 2, gA = B.alec_a.mu / (a - soi) ** 2;
+    check("Alec B's SOI sits at the gravity-balance point (Alpha Centauri B rule)",
+      approx(gB, gA, 1e-9), "");
+  }
+  check("Anetta orbits OUTSIDE Alec B's rail — a true circumbinary planet",
+    B.anetta.orbitRadius > 2.5 * B.alec_b.orbitRadius &&
+    B.anetta.parent === "alec_a" && B.anetta.style.rings === true, "");
+  check("Ethyl orbits clear of Anetta's ring band, inside Anetta's SOI",
+    B.ethyl.orbitRadius > 2.3 * B.anetta.radius * 1.15 &&
+    B.ethyl.orbitRadius < B.anetta.soiRadius, "");
+  check("Ethyl is habitable: solid, thick chuteable air",
+    B.ethyl.solid && B.ethyl.atmosphere.seaLevelDensity >= 1.2, "");
+  check("no home here: the blurb says EXPEDITION and the system has no station",
+    /EXPEDITION/i.test(sys.blurb) && sys.stations.length === 0, "");
+  check("the blurb teaches both horizon numbers (7 km game, ~70 km real)",
+    /7 km/.test(sys.blurb) && /70 km/.test(sys.blurb), "");
 }
 
 // --- 6. FAMOUS_LIST entries resolve and match their builders ---
