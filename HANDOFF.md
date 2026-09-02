@@ -9,6 +9,38 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-09-02): 🌍 Cera is a LIVING world now (his veto: "the home planet looks like an uninhabitable moon")
+
+He vetoed Base Camp Cera's look: the first Cera was a grey cratered rock with thin air,
+and the pad world of his own system reading as a dead moon was wrong. Cera now wears a
+`terra` face (blue seas, green land, sand, snow caps, clouds), an Earth-blue halo, and
+Earth-thick air (rho 1.2, 65 km). The FICTION is unchanged: still no home, no station,
+no citizens, EXPEDITION base camp, respawn in-system — a livable world nobody lives on
+yet. Blurb + WORLD_FACTS reworded to match (Antarctica analogy kept).
+
+**Flagged / rung 4:**
+- **Worth one look from him:** the pad at arrival, then ✨ Teleport → Cera from orbit and
+  in map view. Agent screenshots show a proper blue-green marble with cloud streaks;
+  whether it reads as "home enough" is his call.
+- **If "home planet" meant he wants Cera to BE a home** (a station, "people live here"),
+  that is a second, separate edit: `stations: []` + the EXPEDITION wording in the blurb,
+  WORLD_FACTS, the FAMOUS_LIST hint, the Navigator bullet, and famous_test's
+  "deliberately has no station" check. Not done — his 2026-08-29 spec said no home
+  planet, and this report only complained about the LOOK.
+- The 2026-08-29 flag below ("if he wants Cera even LESS home-y") is superseded: the veto
+  went the other way.
+
+**Shipped (evidence):**
+- famous.js Cera def: `atmo` 5.0e4/0.95 → 6.5e4/1.2, `style` grey → 0x2f7fb8 with
+  0x6fb4ff halo, `face` rocky → terra (#1c5c9e sea, #3a8a44 land, #c8b47a sand). Blurb
+  line reworded. main.js WORLD_FACTS Cera reworded. **Node-tested:** all 20 suites green
+  (famous_test 177/177 — "home air is chuteable" and Yang-inside-SOI unchanged).
+  **Browser-verified:** kcalbeloh-check.mjs 20/20 green; scratch script parked at Cera,
+  face=terra, litFraction 0.096 from orbit, zero page errors; screenshots of pad, orbit,
+  map inspected (blue marble, green continents, sand, clouds, halo).
+- No contract change (ARCHITECTURE.md untouched); Navigator prompt untouched (it never
+  described Cera's look).
+
 ## Status (2026-08-29): ⚫ THE KCALBELOH SYSTEM — his black hole with a family of stars (Patrick's spec)
 
 Patrick's spec, built in full: a black hole called **Kcalbeloh** (read it backwards)

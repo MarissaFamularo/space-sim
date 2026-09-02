@@ -548,14 +548,17 @@ function kcalbelohSystem() {
     sonsarck: { name: "Sonsarck", radius: 2.435e8, g0: 783, parent: "sun", a: 5.5 * AU,
                 solid: false, atmo: null, phase0: 0.6, gen: true,
                 style: { color: 0xff6a4a, star: true, glow: "255,106,74" } },
-    // CERA — the expedition's BASE CAMP, not a home: a cold, dusty rock with thin-but-
-    // chuteable air. The pad here is poured concrete and stubbornness. (The engine
-    // needs an "earth"-role world for the pad, TWR reference, and crash-rebuild —
-    // keying Cera keeps "your rocket explodes → you respawn in THIS system" true.)
+    // CERA — the expedition's BASE CAMP, not a home. A LIVING world: blue seas, green
+    // hills, snow caps, real clouds and Earth-thick air — just nobody living on it yet
+    // (his 2026-09-02 veto: the first Cera was a grey cratered rock, and "the home
+    // planet looks like an uninhabitable moon" was exactly wrong). The pad is poured
+    // concrete and stubbornness. (The engine needs an "earth"-role world for the pad,
+    // TWR reference, and crash-rebuild — keying Cera keeps "your rocket explodes →
+    // you respawn in THIS system" true.)
     earth: { name: "Cera", radius: 4.6e6, g0: 7.4, parent: "sonsarck", a: 0.35 * AU,
-             solid: true, atmo: { height: 5.0e4, seaLevelDensity: 0.95 }, phase0: 0, gen: true,
-             style: { color: 0x8a7a6e, halo: 0xa89a88 },
-             face: { kind: "rocky", base: "#7e7268", accent: "#54483e", accent2: "#b8a890" } },
+             solid: true, atmo: { height: 6.5e4, seaLevelDensity: 1.2 }, phase0: 0, gen: true,
+             style: { color: 0x2f7fb8, halo: 0x6fb4ff },
+             face: { kind: "terra", base: "#1c5c9e", accent: "#3a8a44", accent2: "#c8b47a" } },
     // YANG — Cera's CAPTURED moon, so it rides a stretched rail (loose eccentric moons
     // are usually captured wanderers — same story as Cylan V). Honest confession lives
     // in the Navigator: real captured moons often orbit BACKWARD (Neptune's Triton
@@ -688,7 +691,8 @@ function kcalbelohSystem() {
       "B</b>, whose ringed giant <b>Anetta</b> keeps the amber-forest moon <b>Ethyl</b> " +
       "warm by kneading it with tides, like Jupiter does to Io. One thing this system " +
       "does NOT have: a home. Nobody lives here — you're an EXPEDITION. Base Camp Cera " +
-      "has a pad and thin air, the Sol Gate hangs overhead for the trip home, and if " +
+      "is a living world (blue seas, green hills, real air) with a pad and no citizens, " +
+      "the Sol Gate hangs overhead for the trip home, and if " +
       "your rocket goes 💥, the camp rebuilds it right here. Fly brave! 🚀",
   };
 }
