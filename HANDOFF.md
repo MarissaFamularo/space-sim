@@ -9,37 +9,52 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
-## Status (2026-09-02): 🌍 Cera is a LIVING world now (his veto: "the home planet looks like an uninhabitable moon")
+## Status (2026-09-02): 🏠 Cera is HOME — a living world with Cera Harbor, Cera Home Base, and Konnies (his call, via Mom)
 
-He vetoed Base Camp Cera's look: the first Cera was a grey cratered rock with thin air,
-and the pad world of his own system reading as a dead moon was wrong. Cera now wears a
-`terra` face (blue seas, green land, sand, snow caps, clouds), an Earth-blue halo, and
-Earth-thick air (rho 1.2, 65 km). The FICTION is unchanged: still no home, no station,
-no citizens, EXPEDITION base camp, respawn in-system — a livable world nobody lives on
-yet. Blurb + WORLD_FACTS reworded to match (Antarctica analogy kept).
+Two steps, same day. First his veto: "the home planet looks like an uninhabitable
+moon" — the 2026-08-29 Cera was a grey cratered "base camp" rock with thin air. Then
+the real ask: **make it a home, with a station and Konnies.** So his 2026-08-29
+"no home planet" spec is superseded, by content: Cera wears a `terra` face (blue seas,
+green land, sand, snow caps, clouds), an Earth-blue halo, Earth-thick air (rho 1.2,
+65 km), `home: true`, **Cera Harbor** (`st_home`, 2.4R, pinned `hub` archetype) in
+orbit, and **Cera Home Base** (`style.bases`, working, greenhouse inside, press B) a
+~2.8 km hop from the pad, same placement as Hundun Science Base. Blurb, WORLD_FACTS,
+FAMOUS_LIST hint, and the Navigator's Kcalbeloh bullet now say HOME and Konnies live
+here; every EXPEDITION / base-camp line is gone. New teaching hook in the fact + prompt:
+a home lit by a red dwarf (Sonsarck) gets dim reddish daylight, and red dwarfs being the
+most common stars makes red-star homes a good bet for where life would be.
 
 **Flagged / rung 4:**
-- **Worth one look from him:** the pad at arrival, then ✨ Teleport → Cera from orbit and
-  in map view. Agent screenshots show a proper blue-green marble with cloud streaks;
-  whether it reads as "home enough" is his call.
-- **If "home planet" meant he wants Cera to BE a home** (a station, "people live here"),
-  that is a second, separate edit: `stations: []` + the EXPEDITION wording in the blurb,
-  WORLD_FACTS, the FAMOUS_LIST hint, the Navigator bullet, and famous_test's
-  "deliberately has no station" check. Not done — his 2026-08-29 spec said no home
-  planet, and this report only complained about the LOOK.
-- The 2026-08-29 flag below ("if he wants Cera even LESS home-y") is superseded: the veto
-  went the other way.
+- **Names are mine, awaiting his veto:** "Cera Harbor" (echoes Sol's Harbor Station)
+  and "Cera Home Base". One-line edits in famous.js.
+- **"Konnies live here" is text + places, not NPCs:** the game has no resident-Connie
+  characters anywhere (station/base interiors hold only the player's Connie plus the
+  alien residents). If he wants to SEE Konnies at home, that's a new feature: NPC
+  Connies in Cera Home Base / Cera Harbor — worth asking him before building.
+- **Worth one play-test:** arrive via Starmap or the Pluto gate, read the blurb, land
+  near Cera Home Base and press B (in range only after a short hop — the pad is 2.8 km
+  off, same as Hundun), then fly/teleport to Cera Harbor with a Docking Port aboard.
+- Cera's pad scene at arrival is night-dark (phase0 = 0, unchanged from before); if the
+  first look at "home" should be daylight, the knob is Cera's `phase0`.
 
 **Shipped (evidence):**
-- famous.js Cera def: `atmo` 5.0e4/0.95 → 6.5e4/1.2, `style` grey → 0x2f7fb8 with
-  0x6fb4ff halo, `face` rocky → terra (#1c5c9e sea, #3a8a44 land, #c8b47a sand). Blurb
-  line reworded. main.js WORLD_FACTS Cera reworded. **Node-tested:** all 20 suites green
-  (famous_test 177/177 — "home air is chuteable" and Yang-inside-SOI unchanged).
-  **Browser-verified:** kcalbeloh-check.mjs 20/20 green; scratch script parked at Cera,
-  face=terra, litFraction 0.096 from orbit, zero page errors; screenshots of pad, orbit,
-  map inspected (blue marble, green continents, sand, clouds, halo).
-- No contract change (ARCHITECTURE.md untouched); Navigator prompt untouched (it never
-  described Cera's look).
+- famous.js: Cera def (face/atmo/style/halo/home/bases), `stations` (Cera Harbor),
+  blurb, FAMOUS_LIST hint, header comments. render.js: ARCH_PINNED gains
+  `gen:kcalbeloh/st_home → hub`. main.js: WORLD_FACTS Cera. copilot.js: the CERA
+  sentence in the Kcalbeloh bullet (game-knowledge only; safety block untouched,
+  navigator_check ALL CHECKS PASSED). ARCHITECTURE.md: "superseded" note under the
+  2026-08-29 no-home bullet (no contract shape moved).
+- **Node-tested:** all 20 suites green; famous_test 178/178 — the old "no station"
+  and "blurb says EXPEDITION" checks replaced by: blurb says HOME and never
+  EXPEDITION, `st_home` on the earth role, a non-wrecked ground base, and Cera Harbor
+  clearance (above 3x atmosphere height, 0.5R below the Sol Gate at 3.1R, inside half
+  of Yang's periapsis — Yang's periapsis is 20.9R, Cera's SOI 73.7R).
+- **Browser-verified:** kcalbeloh-check.mjs 20/20 green on the new copy; a scratch
+  script confirmed the blurb says HOME (no EXPEDITION / Base Camp on the page), the 🎯
+  picker lists Cera Harbor, teleport parks at 2.40R with the rendezvous callouts naming
+  Cera Harbor, zero page errors; screenshots of pad, station rendezvous, and map view
+  (blue-green marble, cyan station ring) inspected. Ground-base interior NOT walked
+  in-browser (the Hundun machinery is unchanged and data-driven) — see the play-test.
 
 ## Status (2026-08-29): ⚫ THE KCALBELOH SYSTEM — his black hole with a family of stars (Patrick's spec)
 

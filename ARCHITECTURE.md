@@ -785,6 +785,10 @@ vehicle carrier that lands on belly boosters, with two SHIFT-switched engine sta
   and every mechanic work unchanged and a destroyed rocket respawns IN-SYSTEM (his
   spec); the "no home planet" lives in the fiction (Base Camp Cera, `stations: []`,
   blurb/Navigator say EXPEDITION). Deliberately NOT a homeless-system contract change.
+  **Superseded 2026-09-02 (his call):** Cera is now HOME by content too — `home: true`,
+  a `st_home` station (Cera Harbor, 2.4R), a ground base (`style.bases`: Cera Home
+  Base), terra face, Earth-thick air. Nothing in the contract moved; the no-home
+  fiction is simply gone.
 - **New face kinds** — render.js painters `"uranium"` (dark crust, glowing green
   veins, empty craters, night-side emissive 0.35 — decay heat is its own light) and
   `"ocean"` (water pole to pole: swell lines, foam glints, no land, no caps; joins

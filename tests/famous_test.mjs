@@ -60,10 +60,8 @@ for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16", "Owius", "Kcal
     sys.planetKeys.every((k) => B[k].parent && B[B[k].parent]), "");
   check(`${seed}: fresh objects per call (no shared refs)`,
     generateSystem(seed).bodies.earth !== B.earth, "");
-  // Kcalbeloh deliberately has NO station: no home planet is his spec — Cera is only
-  // the expedition's base camp, and nobody lives in this system at all.
-  check(`${seed}: ${seed === "Kcalbeloh" ? "deliberately has no station" : "has a home station"}`,
-    seed === "Kcalbeloh" ? sys.stations.length === 0 : sys.stations.some((s) => s.body === "earth"), "");
+  // (Kcalbeloh's Cera was a station-less "base camp" 2026-08-29 → HOME 2026-09-02, his call.)
+  check(`${seed}: has a home station`, sys.stations.some((s) => s.body === "earth"), "");
 }
 
 // --- 4. Kerbol canon spot-checks (the ×10 defs must land on true KSP values) ---
@@ -356,8 +354,16 @@ for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16", "Owius", "Kcal
     B.ethyl.orbitRadius < B.anetta.soiRadius, "");
   check("Ethyl is habitable: solid, thick chuteable air",
     B.ethyl.solid && B.ethyl.atmosphere.seaLevelDensity >= 1.2, "");
-  check("no home here: the blurb says EXPEDITION and the system has no station",
-    /EXPEDITION/i.test(sys.blurb) && sys.stations.length === 0, "");
+  // Cera is HOME (his 2026-09-02 call, reversing the 2026-08-29 no-home spec): a home
+  // station in orbit, a walk-in ground base, Konnies living there — and no EXPEDITION talk.
+  check("Cera is home: blurb says HOME, no EXPEDITION, station + ground base on the earth role",
+    /HOME/.test(sys.blurb) && !/EXPEDITION/i.test(sys.blurb) &&
+    sys.stations.some((s) => s.id === "st_home" && s.body === "earth") &&
+    Array.isArray(B.earth.style.bases) && B.earth.style.bases.some((b) => !b.wrecked), "");
+  check("Cera Harbor rides clear: above the air, below the Sol Gate, far inside Yang's periapsis",
+    (() => { const st = sys.stations.find((s) => s.id === "st_home"); const gate = sys.wormholes[0];
+      return st.altR * B.earth.radius > B.earth.radius + B.earth.atmosphere.height * 3 &&
+        st.altR < gate.altR - 0.5 && st.altR * B.earth.radius < B.moon.orbitRadius * (1 - B.moon.ecc) * 0.5; })(), "");
   check("the blurb teaches both horizon numbers (7 km game, ~70 km real)",
     /7 km/.test(sys.blurb) && /70 km/.test(sys.blurb), "");
 }

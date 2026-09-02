@@ -497,7 +497,8 @@ function owiusSystem() {
 // the event horizon — lava-and-uranium Kang, ocean world Kishi — plus STARS in orbit:
 // brown dwarf Malgrow with two comets, red dwarf Sonsarck (Cera + captured Yang + TWIN
 // gas giants waltzing around an empty point), and the Alec A + Alec B binary with ringed
-// Anetta and its habitable moon Ethyl. No home planet — this is an EXPEDITION system.
+// Anetta and its habitable moon Ethyl. Cera is HOME (his 2026-09-02 call, reversing the
+// 2026-08-29 "no home planet" spec): Konnies live there, with a home station and a base.
 // The science is gloriously real: stars truly orbit black holes (astronomers watched S2
 // whip around Sagittarius A* — the 2020 Nobel Prize), and circumbinary "Tatooine" worlds
 // are real too (Kepler-16b, 2011). Black-hole math per stargen: radius = Schwarzschild
@@ -548,16 +549,19 @@ function kcalbelohSystem() {
     sonsarck: { name: "Sonsarck", radius: 2.435e8, g0: 783, parent: "sun", a: 5.5 * AU,
                 solid: false, atmo: null, phase0: 0.6, gen: true,
                 style: { color: 0xff6a4a, star: true, glow: "255,106,74" } },
-    // CERA — the expedition's BASE CAMP, not a home. A LIVING world: blue seas, green
-    // hills, snow caps, real clouds and Earth-thick air — just nobody living on it yet
-    // (his 2026-09-02 veto: the first Cera was a grey cratered rock, and "the home
-    // planet looks like an uninhabitable moon" was exactly wrong). The pad is poured
-    // concrete and stubbornness. (The engine needs an "earth"-role world for the pad,
-    // TWR reference, and crash-rebuild — keying Cera keeps "your rocket explodes →
-    // you respawn in THIS system" true.)
+    // CERA — HOME. A living world: blue seas, green hills, snow caps, real clouds and
+    // Earth-thick air, and Konnies LIVE here (his 2026-09-02 call — the first Cera was
+    // a grey "base camp" rock, and "the home planet looks like an uninhabitable moon"
+    // was exactly wrong; his 2026-08-29 "no home planet" spec is superseded). Cera
+    // Harbor hangs in orbit, and Cera Home Base sits a short hop from the pad — real
+    // gravity inside, a thriving greenhouse, press B to visit. Earth-role world: pad,
+    // TWR reference, crash-rebuild, respawn in THIS system — all unchanged.
     earth: { name: "Cera", radius: 4.6e6, g0: 7.4, parent: "sonsarck", a: 0.35 * AU,
-             solid: true, atmo: { height: 6.5e4, seaLevelDensity: 1.2 }, phase0: 0, gen: true,
-             style: { color: 0x2f7fb8, halo: 0x6fb4ff },
+             solid: true, atmo: { height: 6.5e4, seaLevelDensity: 1.2 }, phase0: 0, gen: true, home: true,
+             style: { color: 0x2f7fb8, halo: 0x6fb4ff,
+                      bases: [
+                        { id: "base_home", name: "Cera Home Base", wrecked: false, phi: Math.PI / 2 - 0.006 },
+                      ] },
              face: { kind: "terra", base: "#1c5c9e", accent: "#3a8a44", accent2: "#c8b47a" } },
     // YANG — Cera's CAPTURED moon, so it rides a stretched rail (loose eccentric moons
     // are usually captured wanderers — same story as Cylan V). Honest confession lives
@@ -665,8 +669,11 @@ function kcalbelohSystem() {
     frostAU: 2.4,   // warmth comes from the accretion disk, not the hole
     bodies,
     planetKeys,
-    stations: [], // no home station — nobody LIVES here (his spec: no home planet)
-    // 🌀 The way home: twin of Pluto's Kcalbeloh Gate, parked over Base Camp Cera.
+    // Home station over Cera (2.4R, like Sol's Harbor); the Sol Gate rides higher at 3.1R.
+    stations: [
+      { id: "st_home", name: "Cera Harbor", body: "earth", altR: 2.4, phase0: 0.8 },
+    ],
+    // 🌀 The way home to Sol: twin of Pluto's Kcalbeloh Gate, parked over Cera.
     wormholes: [
       { id: "wh_sol_kcalbeloh", name: "The Sol Gate", body: "earth", altR: 3.1, phase0: 1.8,
         dest: { seed: "@sol", twin: "wh_kcalbeloh" }, color: 0xffd75e },
@@ -689,11 +696,11 @@ function kcalbelohSystem() {
       "BOTH at once (real astronomy: Kepler-16b orbits two suns), plus <b>Cera</b> and " +
       "her captured moon <b>Yang</b> — and far out, <b>Alec A</b> and little <b>Alec " +
       "B</b>, whose ringed giant <b>Anetta</b> keeps the amber-forest moon <b>Ethyl</b> " +
-      "warm by kneading it with tides, like Jupiter does to Io. One thing this system " +
-      "does NOT have: a home. Nobody lives here — you're an EXPEDITION. Base Camp Cera " +
-      "is a living world (blue seas, green hills, real air) with a pad and no citizens, " +
-      "the Sol Gate hangs overhead for the trip home, and if " +
-      "your rocket goes 💥, the camp rebuilds it right here. Fly brave! 🚀",
+      "warm by kneading it with tides, like Jupiter does to Io. And <b>Cera</b> is HOME: " +
+      "blue seas, green hills, real air, and Konnies living here — <b>Cera Harbor</b> " +
+      "waits in orbit, <b>Cera Home Base</b> is a short hop from the pad (press B to go " +
+      "inside), and the Sol Gate hangs overhead for the trip back to Earth. If your " +
+      "rocket goes 💥, home rebuilds it right here. Fly brave! 🚀",
   };
 }
 
@@ -735,7 +742,7 @@ export const FAMOUS_LIST = [
   { seed: "Youngcow", name: "The Youngcow System", hint: "HIS design — a baby solar system: protoplanetary disc, ringed Hundun, dino-birds, a comet you can land on", color: 0xffdf6e },
   { seed: "Luhman 16", name: "The Luhman 16 System", hint: "the real closest BROWN DWARFS — two failed stars the size of Jupiter, glowing like coals", color: 0xd85a3a },
   { seed: "Owius", name: "The Owius System", hint: "HIS design — five blue worlds around a spinning pulsar lighthouse: bones on Monk, a crack-lake on Donk, the Silent Spire on ringed Sera", color: 0x9ad4ff },
-  { seed: "Kcalbeloh", name: "The Kcalbeloh System", hint: "HIS design — a BLACK HOLE with a family of orbiting stars: uranium-glow Kang, ocean world Kishi, twin giants waltzing, and no home but Base Camp Cera", color: 0xb08aff, blackHole: true },
+  { seed: "Kcalbeloh", name: "The Kcalbeloh System", hint: "HIS design — a BLACK HOLE with a family of orbiting stars: uranium-glow Kang, ocean world Kishi, twin giants waltzing, and home on green-and-blue Cera", color: 0xb08aff, blackHole: true },
 ];
 
 // null if the name isn't famous — the seeded generator takes over as usual.

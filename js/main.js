@@ -92,7 +92,7 @@ const WORLD_FACTS = {
   Malgrow: "A brown dwarf can keep comets and moons like any star — gravity doesn't care that its fusion fire never lit. And whole star families really do circle black holes in the crowded hearts of galaxies.",
   "Malgrow Comet I": "Comets wear their stretched orbits like a signature. These two have no proper names yet — comets are named for their discoverers, and you just found them.",
   Sonsarck: "Sonsarck is a red dwarf — the smallest kind of true star, and the most common star in the entire universe. Most of the galaxy's stars are little red ones like this.",
-  Cera: "Cera has seas, green hills, and air you could breathe — but it's nobody's home. It's BASE CAMP: a pad, the Sol Gate overhead, and no citizens. Real expeditions work this way too: Antarctica has research stations with crews and supplies, but nobody is FROM there.",
+  Cera: "Cera is HOME: seas, green hills, air you can breathe, and Konnies who live here — all lit by a little red star, not a Sun. Red dwarfs are the most common stars in the universe, so if life is out there, a red-star home like this is a good bet for where.",
   Yang: "Yang rides a stretched rail because it was CAPTURED — a wanderer that flew too close and got kept. Real captured moons often orbit BACKWARD, like Neptune's Triton; our rails all run one way, so Yang keeps it forward.",
   Dizi: "Dizi and Zidi waltz around an EMPTY POINT — their shared center of mass. Every orbiting pair really does this: even our Sun wobbles around its balance point with Jupiter.",
   Zidi: "Zidi and Dizi are equal twins, so their waltz is even. Unequal partners waltz lopsided — and measuring that wobble is exactly how astronomers WEIGH planets they can't even see.",

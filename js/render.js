@@ -5348,6 +5348,7 @@ function enterStation(info, cb) {
     "gen:kerbol/st_far": "lab",     // Jool Research Outpost
     "gen:pandora/st_home": "garden",   // Hell's Gate: jungle moon below, jungle inside
     "gen:youngcow/st_home": "garden",  // Cradle Station: a nursery for a baby system
+    "gen:kcalbeloh/st_home": "hub",    // Cera Harbor: the home port of a black-hole system
   };
   let rooms = info._rooms;
   if (!rooms) {
