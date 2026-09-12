@@ -1,5 +1,37 @@
 # Space Sim — Phase 1 Architecture & Contracts
 
+## CONTRACT REVISION 2026-09-11 — Planet Lab
+
+- `js/planetlab-physics.js` is a pure, independent Newtonian N-body sandbox, with
+  AU / solar mass / Julian year units and G = 4π² (solar-year approximation).
+  All masses move and attract one another. Velocity Verlet uses encounter-limited
+  substeps, a maximum step of 0.0005 years, and a bounded work budget. Budget limits
+  slow simulated time instead of skipping physics. Contact pauses the experiment;
+  bodies are not merged. Atmosphere, tides, and relativity are outside this model.
+- Exports include `preset(kind)`, `newLab(bodies, kind)`, `advanceLab(state, years)`,
+  `accelerations`, `moonOrbit`, `energy`, and `parseLabSave`. `kind` is `moon`,
+  `binary`, or `comet`. A body's independent shape is
+  `{id, name, mass, radius, x, y, vx, vy, color, parent}`; parent only names the
+  starting-motion reference frame. It does not constrain orbits or gravity.
+- `js/planetlab.js` owns a Canvas 2D modal and `planetlab.css`. Public API:
+  `PlanetLab.init({onExit})`, `.show()`, `.hide()`, `.isOpen()`.
+  `Menu.init` gains `onPlanetLab`. The main frame returns early while the lab is
+  open, freezing flight and its derived events. Opening clears held flight keys;
+  the lab captures keyboard input and restores the prior inert state on exit.
+- Lab state never mutates BODIES, craft, mission time, or existing save keys.
+  The one new key is `spacesim.planetlab.v1: {v:1, moonKeeper:boolean}`. Missing,
+  corrupt, and unsupported saves mean no badge. Unsaved experiment setups are
+  deliberately transient. The moon badge requires ten years continuously bound
+  to its planet and within the approximate instantaneous Hill radius. It does not
+  assert indefinite orbital stability. A lost binding check is latched for that run.
+- Initial-condition edits reset lab time and replay. Timeline snapshots can resume
+  from a past point, discarding the future. Histories are capped at 4,000 snapshots;
+  trails at 700 points per body, sampled in simulated time. The default moon setup
+  retains a complete ten-year replay. The two open experiments allow 2–8 bodies.
+- Source for the force law and teaching copy:
+  [NASA Glenn, Weight Equation](https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/weight-gravitational-force/).
+  Regression coverage is in `tests/planetlab_test.mjs`.
+
 ## CONTRACT REVISION 2026-08-19 — 🔭 Exploration Mode
 
 - New `js/exploration.js` owns the Exploration Lab overlay and the new isolated storage

@@ -1,0 +1,58 @@
+#planet-lab { position:absolute; inset:0; z-index:80; overflow:auto; color:#e8f1ff; background:#080e19; padding:24px clamp(16px,3vw,48px) 32px; font:14px/1.5 system-ui,-apple-system,sans-serif; color-scheme:dark; }
+#planet-lab * { box-sizing:border-box; }
+#planet-lab button, #planet-lab select { font:inherit; border:1px solid #34475d; border-radius:9px; background:#142237; color:#eaf4ff; padding:9px 12px; cursor:pointer; }
+#planet-lab button:hover { background:#233b55; border-color:#72c8c2; }
+#planet-lab button:focus-visible, #planet-lab input:focus-visible, #planet-lab select:focus-visible, #planet-lab canvas:focus-visible { outline:2px solid #9af4dd; outline-offset:4px; }
+#planet-lab button:disabled { opacity:.4; cursor:default; }
+#planet-lab h1, #planet-lab h2, #planet-lab p { margin:0; }
+#planet-lab h1 { font-size:clamp(30px,3.2vw,48px); letter-spacing:-2px; font-weight:800; line-height:1.2; margin-top:4px; }
+#planet-lab h1 em { font-style:normal; color:#8ce8d1; }
+.pl-header { max-width:1500px; margin:auto; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.pl-eyebrow { color:#99afc6; font-size:10px; font-weight:700; letter-spacing:1.5px; }
+.pl-tabs { max-width:1500px; margin:22px auto 20px; display:flex; gap:10px; }
+#planet-lab .pl-tabs button { background:transparent; border-color:#293a4e; padding:10px 18px; text-align:left; }
+.pl-tabs span { color:#91a4bc; font-size:11px; margin-right:8px; }
+#planet-lab .pl-tabs .active { background:#193631; border-color:#5dbaaa; color:#b3f5e3; }
+.pl-layout { max-width:1500px; margin:auto; display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:24px; align-items:start; }
+.pl-workspace { min-width:0; }
+.pl-mission { padding:0 0 16px; }
+.pl-mission h2 { font-size:clamp(20px,2vw,28px); font-weight:650; margin:5px 0 !important; letter-spacing:-.6px; }
+.pl-mission p { color:#b0c0d5; max-width:700px; }
+.pl-viewport { position:relative; height:clamp(320px,48vh,640px); min-height:320px; border:1px solid #2f435b; border-radius:16px; overflow:hidden; }
+#pl-canvas { display:block; width:100%; height:100%; touch-action:none; cursor:grab; }
+#pl-canvas:active { cursor:grabbing; }
+.pl-viewbar { position:absolute; top:12px; left:12px; display:flex; align-items:center; gap:6px; font-size:11px; }
+#planet-lab .pl-viewbar select, #planet-lab .pl-viewbar button { padding:5px 7px; background:#0c182bea; }
+.pl-viewbar label { color:#a1b7ce; }
+.pl-clock { position:absolute; right:17px; top:14px; display:flex; flex-direction:column; text-align:right; pointer-events:none; }
+.pl-clock span { font-size:20px; font-variant-numeric:tabular-nums; }
+.pl-clock small { font-size:8px; letter-spacing:1.5px; color:#a9bdd4; }
+.pl-legend { position:absolute; left:18px; bottom:40px; display:flex; gap:14px; flex-wrap:wrap; font-size:11px; pointer-events:none; }
+.pl-legend span:first-child { color:#66e5ce; }.pl-legend span:nth-child(2) { color:#ffc677; }
+.pl-legend small { color:#8da1bc; }
+.pl-transport { display:flex; align-items:center; flex-wrap:wrap; gap:9px; padding:14px 0; }
+#planet-lab .pl-primary { background:#96ebd4; color:#102a25; border-color:#b9fce9; font-weight:800; }
+#planet-lab .pl-primary:hover { background:#c1ffed; }
+.pl-transport label { margin-left:auto; color:#a4b6cc; font-size:12px; }
+.pl-timeline { display:flex; align-items:center; gap:15px; font-size:9px; color:#a4b6cc; letter-spacing:1px; }
+#planet-lab input[type=range] { accent-color:#85e3cc; width:100%; cursor:pointer; min-width:0; }
+.pl-timeline input { flex:1; }
+.pl-result { margin-top:12px; color:#afc9e3; min-height:44px; padding:10px 13px; background:#111f32; border-radius:8px; font-size:13px; }
+.pl-result.success { color:#b7f4d7; background:#12372f; }.pl-result.warm { color:#ffe0a5; background:#352919; }
+#pl-progress { width:100%; height:5px; display:block; margin-top:9px; accent-color:#92efd4; }#pl-progress[hidden] { display:none; }
+.pl-panel { background:#101a29; border:1px solid #293b51; border-radius:15px; padding:20px; }
+.pl-panel h2 { font-size:20px; margin:4px 0 18px !important; font-weight:650; }
+.pl-field { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:5px; margin-bottom:16px; font-size:12px; color:#c2d1e4; }
+.pl-field select { width:100%; }.pl-field output { color:#9be4d4; font-size:11px; font-variant-numeric:tabular-nums; }
+.pl-small { color:#9db0c8; font-size:11px; line-height:1.6; }
+.pl-position { margin:14px 0 8px; display:flex; align-items:center; justify-content:space-between; font-size:11px; color:#c2d1e4; }
+#planet-lab .pl-position button { padding:4px 9px; }
+.pl-add { display:flex; gap:7px; margin:13px 0; }#planet-lab .pl-add button { font-size:11px; padding:7px 9px; }
+.pl-toggles { display:flex; gap:15px; flex-wrap:wrap; color:#b6c9e1; font-size:11px; padding:14px 0; border-top:1px solid #27384d; }
+.pl-toggles input { accent-color:#8ce8d1; }
+.pl-reading { padding:13px; border-radius:9px; background:#091421; display:flex; flex-direction:column; }
+.pl-reading span { color:#a3b9d2; font-size:11px; }.pl-reading strong { font-size:25px; font-weight:600; }.pl-reading small { color:#819cb9; font-size:10px; }
+.pl-badge { color:#e1c98d; font-size:12px; margin:15px 0; }
+.pl-panel details { font-size:11px; color:#aabed5; border-top:1px solid #27384d; padding-top:12px; }.pl-panel summary { cursor:pointer; }.pl-panel details p { margin:10px 0 !important; }.pl-panel a { color:#91ddca; }
+@media (max-width:900px) { .pl-layout { grid-template-columns:minmax(0,1fr) 260px; gap:14px; }.pl-panel { padding:14px; }.pl-clock { top:55px; }.pl-header .pl-eyebrow { font-size:8px; } }
+@media (max-width:680px) { #planet-lab { padding:16px 12px 28px; }.pl-layout { grid-template-columns:1fr; }.pl-tabs { gap:5px; margin:17px 0; }#planet-lab .pl-tabs button { padding:8px; font-size:11px; flex:1; }.pl-tabs span { display:none; }.pl-viewport { height:380px; }.pl-header button { font-size:11px !important; padding:8px !important; }.pl-header .pl-eyebrow { max-width:190px; display:block; }.pl-transport label { margin-left:0; }.pl-legend small { display:none; }.pl-panel { padding:20px; } }

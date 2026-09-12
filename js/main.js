@@ -17,6 +17,7 @@ import { Tracking } from "./tracking.js";
 import { School } from "./school.js";
 import { openForgePanel, loadPelican, savePelican } from "./contest.js";
 import { Exploration } from "./exploration.js";
+import { PlanetLab } from "./planetlab.js";
 
 const canvas = document.getElementById("scene");
 let craft = newCraft();
@@ -856,9 +857,15 @@ Menu.init({
   onTracking: () => Tracking.show(),
   onSchool: () => School.show(),
   onExploration: () => Exploration.show(),
+  onPlanetLab: () => {
+    Object.keys(keys).forEach(k => { keys[k] = false; });
+    PlanetLab.show();
+  },
   onSettingsChange: (s) => Render.setQuality(s.graphics),
   getScience: () => SCIENCE, // the 🧑‍🚀 Astronaut Complex shows the balance + unlocks live
 });
+
+PlanetLab.init({ onExit: () => Menu.showCenter() });
 
 Exploration.init({
   getContext: getExplorationContext,
@@ -933,7 +940,7 @@ function wireCopilot() {
 const keys = {};
 window.addEventListener("keydown", (e) => {
   if (e.target && e.target.tagName === "INPUT") return;
-  if (Menu.isOpen() || Tracking.isOpen() || School.isOpen() || Exploration.isOpen()) return; // menus own the keys while open
+  if (Menu.isOpen() || Tracking.isOpen() || School.isOpen() || Exploration.isOpen() || PlanetLab.isOpen()) return; // menus own the keys while open
   // School FLIGHTS deliberately leave the keyboard LIVE (Mom's call): the flight keys
   // are the on-ramp to the real game — discovering that Space fires the decoupler is
   // a feature, not an accident. The school's nets (assist-stage, auto-chute, friendly
@@ -2112,6 +2119,8 @@ function endWormholeRide() {
 function frame(t) {
   const dt = last ? Math.min((t - last) / 1000, 0.05) : 0;
   last = t;
+  // The independent lab owns the screen and time; the real mission waits untouched.
+  if (PlanetLab.isOpen()) { requestAnimationFrame(frame); return; }
   sim.satellites = SATELLITES; // render + Navigator read them off the sim
   sim.science = SCIENCE;       // the 🔬 ledger, shown in the HUD
   if (Render.isInside()) {     // aboard a station: time holds its breath

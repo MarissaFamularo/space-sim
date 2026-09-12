@@ -10,7 +10,20 @@ A KSP-inspired browser space game and coding on-ramp (formerly "Space Sim"). Bui
 python3 server.py
 ```
 
-Then open http://localhost:8000. (A local server is needed because the game uses ES modules; opening `index.html` directly won't work.)
+Then open http://localhost:8011. (A local server is needed because the game uses ES modules; opening `index.html` directly won't work.)
+
+## Planet Lab
+
+The new observatory at the Space Center opens three gravity experiments: **Keep your
+moon**, **Two suns**, and **Comet slingshot**. Select a world and change its mass,
+starting speed, direction, or position. Run, pause, scrub the replay timeline, or go
+back to the start. Changes to the starting controls begin a fresh run. The two open
+experiments also support adding and removing worlds (up to eight total).
+
+The lab uses its own moving-body Newtonian simulation. The main mission pauses while
+it is open. A ten-year Moon Keeper badge saves separately from rockets, science,
+crew, and exploration. World icons are enlarged for visibility; the expandable
+physics explanation describes units, collision radii, and model limits.
 
 ## License
 

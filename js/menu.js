@@ -5,7 +5,7 @@
 // of the running 3D scene; owns no game state (crew picks live in connies.js's key).
 //
 // API (used by main.js):
-//   Menu.init({ onVAB, onHangar, onTracking, onSchool, onExploration, onSettingsChange, getScience })
+//   Menu.init({ onVAB, onHangar, onTracking, onSchool, onExploration, onPlanetLab, onSettingsChange, getScience })
 //   Menu.showTitle() / Menu.showCenter() / Menu.hideAll()
 //   Menu.getSettings() -> { graphics: "fancy"|"fast" }
 
@@ -218,6 +218,14 @@ function showCenter() {
   head.innerHTML = `<div class="ksp-title-word" style="font-size:clamp(26px,4vw,44px);">KONNIE SPACE CENTER</div>
     <div style="font-size:13px;color:#9fb3da;margin-top:6px;">Pick a building — every door goes somewhere.</div>`;
   centerEl.appendChild(head);
+
+  // A new observatory on the upper campus: native button supports keyboard discovery.
+  const lab = document.createElement("button");
+  lab.setAttribute("aria-label", "Planet Lab — gravity experiments");
+  lab.style.cssText = "position:absolute;top:108px;right:clamp(18px,6vw,110px);z-index:2;display:flex;align-items:center;gap:12px;padding:10px 17px;border:1px solid #71cbbb;border-radius:14px;background:linear-gradient(135deg,#183d3b,#102036);box-shadow:0 0 28px #57baa51a;text-align:left;";
+  lab.innerHTML = `<svg width="58" height="48" viewBox="0 0 58 48" aria-hidden="true"><path d="M8 41V28A21 21 0 0 1 50 28V41Z" fill="#315b6b" stroke="#83d5c8"/><path d="M29 7V41M8 28H50" stroke="#83d5c8" opacity=".7"/><circle cx="29" cy="23" r="8" fill="#78cce9"/><ellipse cx="29" cy="23" rx="18" ry="6" transform="rotate(-25 29 23)" fill="none" stroke="#c2ffdf"/><rect x="23" y="32" width="12" height="12" fill="#091c29"/></svg><span><span style="display:block;font-size:9px;letter-spacing:2px;color:#a5f5dc;">NEW EXPERIMENTS</span><b style="display:block;font-size:19px;color:#e4fff6;">PLANET LAB</b><span style="font-size:11px;color:#abcbd7;">Build a system. Test a theory.</span></span>`;
+  lab.onclick = () => { hideAll(); if (handlers.onPlanetLab) handlers.onPlanetLab(); };
+  centerEl.appendChild(lab);
 
   // The campus, as one big SVG: Tracking Center (dish), VAB (tall), Hangar (curved roof),
   // plus a launchpad with a rocket, the flag, and the water tower for flavor.
