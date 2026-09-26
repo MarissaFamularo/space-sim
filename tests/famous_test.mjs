@@ -44,7 +44,7 @@ const approx = (a, b, tol) => Math.abs(a - b) <= tol * Math.abs(b);
 }
 
 // --- 3. Role keys + flyability rules hold in every famous system ---
-for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16", "Owius", "Kcalbeloh"]) {
+for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16", "Owius", "Kcalbeloh", "Afra"]) {
   const sys = generateSystem(seed);
   const B = sys.bodies;
   check(`${seed}: roles sun/earth/moon exist`, !!(B.sun && B.earth && B.moon), "");
@@ -61,7 +61,9 @@ for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16", "Owius", "Kcal
   check(`${seed}: fresh objects per call (no shared refs)`,
     generateSystem(seed).bodies.earth !== B.earth, "");
   // (Kcalbeloh's Cera was a station-less "base camp" 2026-08-29 → HOME 2026-09-02, his call.)
-  check(`${seed}: has a home station`, sys.stations.some((s) => s.body === "earth"), "");
+  // Afra (2026-09-26) is a declared BASE CAMP (his spec: "no home planet") — no station.
+  if (sys.baseCamp) check(`${seed}: base camp has NO station`, sys.stations.length === 0, "");
+  else check(`${seed}: has a home station`, sys.stations.some((s) => s.body === "earth"), "");
 }
 
 // --- 4. Kerbol canon spot-checks (the ×10 defs must land on true KSP values) ---
@@ -366,6 +368,80 @@ for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16", "Owius", "Kcal
         st.altR < gate.altR - 0.5 && st.altR * B.earth.radius < B.moon.orbitRadius * (1 - B.moon.ecc) * 0.5; })(), "");
   check("the blurb teaches both horizon numbers (7 km game, ~70 km real)",
     /7 km/.test(sys.blurb) && /70 km/.test(sys.blurb), "");
+}
+
+// --- 5g. Afra (HIS design, 2026-09-26: a little red dwarf with a big family) ---
+// Numbers predicted BEFORE running (house rule):
+//   Afra g0 = 274·0.20/0.23² = 1035.9;  Tessia year: a = 1.047e9 m, mu = 2.652e17
+//   → T = 2π√(a³/mu) = 413,470 s ≈ 4.79 game-days (×√10 ≈ 15 real days: "two weeks");
+//   Drez/Phobie period ratio = (0.25/0.12)^1.5 = 3.007 (Kepler III).
+{
+  const sys = generateSystem("Afra");
+  const B = sys.bodies;
+  const AU = 1.496e11 * 0.1;
+  check("Afra is a red dwarf: g0 = 274·0.20/0.23² (0.20 M☉, 0.23 R☉)",
+    approx(B.sun.g0, 1035.9, 0.001) && sys.starClass === "M" && !sys.blackHole, `g0=${B.sun.g0}`);
+  check("Tessia's year ≈ 4.79 game-days (predicted 413,470 s)",
+    approx(2 * Math.PI / B.earth.omega, 413470, 0.01), `T=${Math.round(2 * Math.PI / B.earth.omega)} s`);
+  check("order from Afra: Esis < Verder < Tessia < Magrelle < Seretta",
+    B.esis.orbitRadius < B.verder.orbitRadius && B.verder.orbitRadius < B.earth.orbitRadius &&
+    B.earth.orbitRadius < B.magrelle.orbitRadius && B.magrelle.orbitRadius < B.seretta.orbitRadius, "");
+  // No home planet (his spec) — kept as content: Tessia is BASE CAMP.
+  check("no home planet: base camp, no station, no ground base, nobody lives here",
+    sys.baseCamp === true && sys.stations.length === 0 && !B.earth.style.bases &&
+    /BASE CAMP/.test(sys.blurb) && /Nobody lives here/.test(sys.blurb), "");
+  // ESIS
+  check("Esis is a lava-lake world on a slightly stretched (tidally heated) rail",
+    B.esis.face.kind === "lavaLake" && B.esis.ecc > 0 && B.esis.solid, "");
+  check("Esis's parking orbit sits well inside its Hill sphere (< 0.35)",
+    (() => { const hill = B.esis.orbitRadius * Math.cbrt(B.esis.mu / (3 * B.sun.mu));
+      return (1.35 * B.esis.radius) / hill < 0.35; })(), "");
+  // VERDER
+  check("Verder pulls 3x Earth's gravity",
+    approx(B.verder.g0 / 9.81, 3, 0.01), `g=${(B.verder.g0 / 9.81).toFixed(3)}`);
+  check("Verder's clouds hide the ground: cloud deck + ground-only scan, deck inside the air",
+    B.verder.style.groundScanOnly === true && B.verder.style.cloudDeck &&
+    B.verder.style.cloudDeck.alt > 0 && B.verder.style.cloudDeck.alt < 1 && !!B.verder.atmosphere, "");
+  // COMETS
+  check("both comets cross Tessia's orbit (visible from its sky)",
+    ["phobie", "drez"].every((k) => B[k].style.comet &&
+      B[k].orbitRadius * (1 - B[k].ecc) < B.earth.orbitRadius &&
+      B[k].orbitRadius * (1 + B[k].ecc) > B.earth.orbitRadius), "");
+  check("Drez runs at a different speed: period ≈ 3.0x Phobie's (Kepler III)",
+    approx(B.phobie.omega / B.drez.omega, 3.007, 0.005), `ratio=${(B.phobie.omega / B.drez.omega).toFixed(3)}`);
+  check("Phobie wears the long two-part tail (ion + dust), longer than Drez's",
+    B.phobie.style.tail.dust === true && B.phobie.radius * B.phobie.style.tail.len > 5e7 &&
+    B.phobie.radius * B.phobie.style.tail.len > B.drez.radius * B.drez.style.tail.len, "");
+  check("comet rails clear Afra and never cross Seretta's",
+    ["phobie", "drez"].every((k) => B[k].orbitRadius * (1 - B[k].ecc) > B.sun.radius * 10 &&
+      B[k].orbitRadius * (1 + B[k].ecc) < B.seretta.orbitRadius * (1 - B.seretta.ecc)), "");
+  // MAGRELLE
+  check("Magrelle is Earth-sized and SOLID (not a gas giant), ringed, cloud-roofed, alive",
+    approx(B.magrelle.radius, 6.371e5, 1e-9) && B.magrelle.solid && !B.magrelle.gas &&
+    B.magrelle.style.rings && B.magrelle.style.cloudDeck && B.magrelle.style.life === "dinobird" &&
+    B.magrelle.atmosphere.seaLevelDensity >= 0.9, "");
+  check("Magrelle's moons: Glacier, Hoth, Necla — all inside its SOI",
+    ["glacier", "hoth", "necla"].every((k) => B[k].parent === "magrelle" &&
+      B[k].orbitRadius < B.magrelle.soiRadius * 0.5), "");
+  check("Glacier orbits INSIDE the ring band",
+    (() => { const band = B.magrelle.style.ringBand, r = B.glacier.orbitRadius / B.magrelle.radius;
+      return r > band.inner && r < band.outer; })(), "");
+  check("Hoth and Necla orbit clear of the ring",
+    ["hoth", "necla"].every((k) => B[k].orbitRadius > B.magrelle.radius * B.magrelle.style.ringBand.outer * 1.5), "");
+  check("Necla is the size of Earth's Moon (1,737 km, 1.62 m/s², ×0.1 scale)",
+    approx(B.necla.radius, 1.737e5, 1e-9) && B.necla.g0 === 1.62, "");
+  // SERETTA
+  check("Seretta is a small dwarf planet, farthest out",
+    B.seretta.parent === "sun" && B.seretta.radius < B.necla.radius &&
+    sys.planetKeys.every((k) => k === "seretta" || B[k].parent !== "sun" ||
+      B[k].orbitRadius <= B.seretta.orbitRadius), "");
+  check("FAMOUS_LIST lists Afra", FAMOUS_LIST.some((f) => f.seed === "Afra"), "");
+  for (const [alias, want] of [["afra", "Afra"], ["The Afra System", "Afra"], ["Magrelle", "Afra"],
+                               ["tessia", "Afra"], ["Seretta", "Afra"]]) {
+    const r = famousSystem(alias);
+    check(`alias "${alias}" → ${want}`, !!r && r.seed === want, r ? r.seed : "null");
+  }
+  check("\"Hoth\" stays an ordinary seed (Star Wars had it first)", famousSystem("Hoth") === null, "");
 }
 
 // --- 6. FAMOUS_LIST entries resolve and match their builders ---

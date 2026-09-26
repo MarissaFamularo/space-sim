@@ -9,6 +9,63 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-09-26): 🔴 THE AFRA SYSTEM — his little red dwarf with a big family
+
+His spec, built: red dwarf **Afra** ("too small for a home planet"), lava-lake **Esis**
+with islands, 3-g **Verder** under rough clouds (you must LAND to scan it), **Tessia**
+(the most habitable, comets in its sky), comets **Phobie** (a tail you can see across
+the system) and **Drez** (a different speed), **Magrelle** (Earth-sized, ringed, looks
+like a gas giant from orbit, secretly a warm living world under a cloud roof that hides
+the star) with moons **Glacier** (inside the ring, feeding it), **Hoth**, and Moon-sized
+**Necla**, and dwarf planet **Seretta**. Reach it by typing "Afra" in the Starmap.
+
+**Flagged / rung 4 (his calls — each a one-line edit in famous.js if vetoed):**
+- **Pip is NOT his:** the engine needs a `moon` role on the pad world, so Tessia got a
+  small captured moon "Pip" (Owius/Splinter precedent). He may want to name it, or
+  swap in one of his own.
+- **"No home planet" is content, not contract** (Kcalbeloh 2026-08-29 precedent):
+  Tessia is BASE CAMP — `stations: []`, no base, blurb says "Nobody lives here". A
+  crashed rocket still rebuilds on Tessia's pad.
+- **The blurb/Navigator gently correct the premise:** small size isn't what stops red
+  dwarfs having homes — they have warm zones (TRAPPIST-1); the real worry is FLARES and
+  tidal locking. His fiction stands (nobody lives here); the true reason is taught.
+- **Hoth has no spec beyond its name** — I gave it an icy face (the Star Wars nod). His
+  call. No "hoth" Starmap alias on purpose.
+- **Magrelle's lifeforms reuse Hundun's dino-bird grazers + plant tufts** (`life:
+  "dinobird"`). Magrelle-specific creatures would be a new render model — ask him.
+- **Glacier "feeding the ring" is told, not shown** (no particle stream from moon to
+  ring). Glacier is honestly unorbitable (tinyMoon, like Pan in the real Encke Gap):
+  ✨ Teleport flies formation.
+- **Verder is a one-way trip for small rockets** (3 g; parking-orbit speed 5.0 km/s vs
+  Tessia's much gentler climb). Intentional — the Navigator suggests a robot probe.
+- **No wormhole gate** to Afra (not asked for). Starmap only.
+- **Worth one play-test:** Starmap → "Afra"; launch from Tessia; ✨ Teleport to
+  Magrelle and see the banded "gas giant" + ring; descend below ~3 km and the sky turns
+  to overcast cloud with plants and grazers underneath; teleport to Verder, land, open
+  🔭 Exploration — the scan button reads "🔎 Scan from the ground"; map view to watch
+  Phobie's two tails.
+
+**Shipped (evidence):**
+- famous.js `afraSystem()` + aliases + FAMOUS_LIST; render.js: `cloudDeck` shell,
+  comet `tail {len,width,dust}` (defaults unchanged for all older comets), face kind
+  `lavaLake`; exploration.js `scanAccess()` + ground-scan button; main.js WORLD_FACTS
+  (Afra family) + `groundScanOnly` in the exploration context; copilot.js Afra bullet
+  (game knowledge only). ARCHITECTURE.md: 2026-09-26 revision.
+- **Node-tested:** all 21 suites green. famous_test 211 (numbers predicted before
+  running: Afra g0 1035.9; Tessia year 413,470 s ≈ 4.79 game-days ≈ 15 real days;
+  Drez/Phobie period ratio 3.007); teleport_test +5; exploration_test +7.
+  navigator_check ALL CHECKS PASSED.
+- **Browser-verified:** afra-check.mjs 15/15 green (arrival at Tessia, no station,
+  picker lists all 10 bodies, Verder parking r and v match prediction, Esis holds its
+  orbit, Magrelle parks ring-clear, hover under Magrelle's cloud roof, Glacier
+  formation, zero page errors). kcalbeloh-check and boot-smoke still green. Screenshots
+  inspected: Magrelle banded + ringed from orbit; grey overcast ceiling over green
+  ground with plant tufts from below; Verder's grey storm-knotted deck; Esis's
+  molten sea with dark rimmed islands; Phobie's blue ion tail + bent pale dust tail.
+  NOT browser-verified: an actual powered landing on Verder or Magrelle, the
+  Exploration board DOM on Verder (the gate is node-tested; the context flag is
+  browser-checked), and comets as seen from Tessia's surface.
+
 ## Status (2026-09-02): 🏠 Cera is HOME — a living world with Cera Harbor, Cera Home Base, and Konnies (his call, via Mom)
 
 Two steps, same day. First his veto: "the home planet looks like an uninhabitable

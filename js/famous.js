@@ -704,10 +704,145 @@ function kcalbelohSystem() {
   };
 }
 
+// ---------- THE AFRA SYSTEM (his design, 2026-09-26) — a little RED DWARF with a big family ----------
+// His spec: red dwarf Afra, too small for a home planet. Lava-lake Esis with islands;
+// Verder at 3x Earth's gravity under clouds so rough you must LAND to scan it; rocky
+// Tessia, the most habitable, with comets crossing its sky; comets Phobie (a trail
+// visible across the whole system) and Drez (a different speed); Magrelle — Earth-sized
+// but dressed like a gas giant, ringed, cloud-roofed, and secretly a warm living world
+// underneath (the clouds trap the heat; the star can't be seen from the ground), with
+// moons Glacier (inside the ring, feeding it ice and dust), Hoth, and Moon-sized Necla;
+// and dwarf planet Seretta far out.
+// Afra is a real-looking M dwarf: 0.20 M☉, 0.23 R☉ → g0 = 274·0.20/0.23² ≈ 1036, and
+// luminosity ≈ 0.005 L☉, so its warm zone huddles at ~0.07 AU (like TRAPPIST-1's
+// planets). "No home planet" is kept as CONTENT, not contract (Kcalbeloh 2026-08-29
+// precedent): the engine needs an earth-role world for the pad, TWR reference and
+// crash-rebuild, so Tessia is BASE CAMP — no station, no base, nobody lives here.
+function afraSystem() {
+  const defs = {
+    sun: { name: "Afra", radius: 0.23 * 6.957e8, g0: 274 * 0.20 / (0.23 * 0.23),
+           parent: null, a: 0, solid: false, atmo: null, phase0: 0, gen: true,
+           style: { color: 0xff6040, star: true, glow: "255,96,64" } },
+    // ESIS — a world-wide LAVA LAKE with dark islands of cooled crust. Too close to
+    // Afra for its orbit to stay round: the star kneads it every lap (TIDAL HEATING,
+    // the engine that melts Io), which keeps the magma sea liquid pole to pole.
+    esis: { name: "Esis", radius: 5.4e6, g0: 8.4, parent: "sun", a: 0.011 * AU,
+            solid: true, atmo: null, phase0: 1.2, gen: true, ecc: 0.05, periAngle: 0.4,
+            style: { color: 0xff6a20 },
+            face: { kind: "lavaLake", base: "#ff6a1a", accent: "#2a1810", accent2: "#ffd060" } },
+    // VERDER — a heavy super-Earth: 10 Earth masses in 1.83 Earth radii gives 3.0 g
+    // (g ∝ M/R²). Rough cloud decks hide the ground from orbit (style.cloudDeck), so
+    // a satellite scan sees nothing — the scan has to be done from the SURFACE
+    // (style.groundScanOnly). Getting back up at 3 g is the real challenge.
+    verder: { name: "Verder", radius: 1.83 * 6.371e6, g0: 29.4, parent: "sun", a: 0.035 * AU,
+              solid: true, atmo: { height: 8.0e4, seaLevelDensity: 2.2 }, phase0: 3.4, gen: true,
+              style: { color: 0x6e6a64, groundScanOnly: true,
+                       cloudDeck: { alt: 0.3, bands: ["#6a6660", "#55524e", "#86817a", "#403e3b"], rough: true } },
+              face: { kind: "rocky", base: "#6e6258", accent: "#4a4038", accent2: "#9a8e80" } },
+    // TESSIA — BASE CAMP (earth role). The most habitable world here: rocky, real air,
+    // and both comets cross its sky. In Afra's warm zone at 0.07 AU its year is ~2 weeks.
+    earth: { name: "Tessia", radius: 6.05e6, g0: 9.0, parent: "sun", a: 0.07 * AU,
+             solid: true, atmo: { height: 6.0e4, seaLevelDensity: 1.0 }, phase0: 0, gen: true, home: true,
+             style: { color: 0x8a7a5e, halo: 0xd8a080 },
+             face: { kind: "terra", base: "#6a5a44", accent: "#4a6a52", accent2: "#3a6a8a" } },
+    // PIP — a small captured rock keeping Tessia company. NOT in his spec: the game
+    // wants the pad world to have a moon (Owius/Splinter precedent) — flagged to him.
+    moon: { name: "Pip", radius: 5.0e5, g0: 0.7, parent: "earth", a: 5.0e7,
+            solid: true, atmo: null, phase0: 2.3, gen: true,
+            style: { color: 0x7a746c }, face: { kind: "rocky", base: "#7a746c", accent: "#54504a", accent2: "#a8a298" } },
+    // PHOBIE — the great comet: its dive crosses inside Tessia's orbit, and its long
+    // twin tail (blue ion + pale dust) stretches far enough to see across the system.
+    phobie: { name: "Phobie", radius: 8.0e3, g0: 0.0013, parent: "sun", a: 0.12 * AU,
+              solid: true, atmo: null, phase0: 5.6, gen: true, ecc: 0.7, periAngle: 5.9,
+              style: { color: 0xcfeaf4, comet: true, tail: { len: 80000, width: 4000, dust: true } },
+              face: { kind: "ice", base: "#cfe4ea", accent: "#9ab4c0", accent2: "#f0fbff" } },
+    // DREZ — a second comet on a wider, slower loop (Kepler's third law: bigger
+    // orbit, slower lap — about 3x Phobie's year).
+    drez: { name: "Drez", radius: 5.5e3, g0: 0.0009, parent: "sun", a: 0.25 * AU,
+            solid: true, atmo: null, phase0: 2.2, gen: true, ecc: 0.8, periAngle: 2.6,
+            style: { color: 0xd8f0f6, comet: true, tail: { len: 30000, width: 2000 } },
+            face: { kind: "ice", base: "#d8ecf2", accent: "#a4bec8", accent2: "#f4fdff" } },
+    // MAGRELLE — Earth-sized, ringed, and wrapped in banded cloud tops that make it
+    // LOOK like a gas giant from orbit. Underneath is a warm, wet, living world: at
+    // 0.16 AU Afra alone would leave it frozen (~−90 °C), but the thick cloudy air
+    // traps heat — a greenhouse, like Venus but gentle. From the ground the cloud roof
+    // hides the star completely.
+    magrelle: { name: "Magrelle", radius: 6.371e6, g0: 9.81, parent: "sun", a: 0.16 * AU,
+                solid: true, atmo: { height: 9.0e4, seaLevelDensity: 2.5 }, phase0: 4.4, gen: true,
+                style: { color: 0xc8a878, halo: 0xe0c898, rings: true, ringBand: { inner: 1.6, outer: 3.2 },
+                         life: "dinobird",
+                         cloudDeck: { alt: 0.35, bands: ["#d8b888", "#b89464", "#e8d4ac", "#a07c50"] } },
+                face: { kind: "terra", base: "#1e5a6a", accent: "#3a8a3a", accent2: "#6ab04a" } },
+    // GLACIER — a small icy moon orbiting INSIDE Magrelle's ring (in its own gap,
+    // like Saturn's Pan in the Encke Gap). This close in, tides tug at it harder than
+    // its own gravity can hold loose ice — it sheds ice and dust that feed the ring.
+    glacier: { name: "Glacier", radius: 1.2e5, g0: 0.07, parent: "magrelle", a: 2.4 * 6.371e6,
+               solid: true, atmo: null, phase0: 0.7, gen: true,
+               style: { color: 0xdaf0fa },
+               face: { kind: "ice", base: "#d4eaf4", accent: "#9ec4d8", accent2: "#ffffff" } },
+    hoth: { name: "Hoth", radius: 6.0e5, g0: 0.6, parent: "magrelle", a: 5.5e7,
+            solid: true, atmo: null, phase0: 3.0, gen: true,
+            style: { color: 0xc8dce8 },
+            face: { kind: "ice", base: "#c8dce8", accent: "#96b0c4", accent2: "#eef8ff" } },
+    // NECLA — as big as Earth's own Moon (1,737 km radius, 1.62 m/s²).
+    necla: { name: "Necla", radius: 1.737e6, g0: 1.62, parent: "magrelle", a: 1.3e8,
+             solid: true, atmo: null, phase0: 5.3, gen: true,
+             style: { color: 0x8a8680 },
+             face: { kind: "rocky", base: "#8a8680", accent: "#5e5a56", accent2: "#b4b0aa" } },
+    // SERETTA — a dwarf planet far out: round, but too small to clear its orbit
+    // (the same rule that made Pluto a dwarf planet in 2006).
+    seretta: { name: "Seretta", radius: 5.5e5, g0: 0.35, parent: "sun", a: 0.6 * AU,
+               solid: true, atmo: null, phase0: 1.9, gen: true, ecc: 0.15, periAngle: 4.1,
+               style: { color: 0xb8aca0 },
+               face: { kind: "ice", base: "#b8aca0", accent: "#8a7e72", accent2: "#e4dcd2" } },
+  };
+  const order = ["sun", "esis", "verder", "earth", "moon", "phobie", "drez",
+                 "magrelle", "glacier", "hoth", "necla", "seretta"];
+  const bodies = buildCatalog(defs, order);
+  return {
+    key: "gen:afra",
+    name: "The Afra System",
+    seed: "Afra",
+    blackHole: false,
+    starClass: "M",
+    starLabel: "red dwarf — the smallest kind of true star",
+    homeName: "Tessia",
+    moonName: "Pip",
+    planetCount: 4,
+    frostAU: 0.12, // a dim red dwarf: the cold starts close in
+    baseCamp: true, // his spec: no home planet — no station, no base, nobody lives here
+    bodies,
+    planetKeys: order.slice(1),
+    stations: [],
+    wormholes: [],
+    famous: "afra",
+    blurb: "🔴 <b>Welcome to the AFRA SYSTEM — a little RED DWARF, designed by " +
+      "you-know-who!</b> Afra is the smallest kind of true star — a fifth of the Sun's " +
+      "mass, dim and red — and red dwarfs are the most common stars in the universe. " +
+      "Nobody lives here: you're at <b>BASE CAMP on Tessia</b>, the most livable world " +
+      "in the system, with little <b>Pip</b> overhead. Because Afra is so dim, its warm " +
+      "zone huddles close — Tessia's whole year is about two weeks. Watch Tessia's sky " +
+      "for the comets: <b>Phobie</b> drags a tail of ice and dust so long you can spot " +
+      "it from anywhere in the system, and <b>Drez</b> loops wider and slower (bigger " +
+      "orbit, slower lap — Kepler's law). Closest in, <b>Esis</b> is one giant LAVA " +
+      "LAKE with dark islands, kept molten because Afra squeezes it every orbit. " +
+      "<b>Verder</b> pulls THREE times Earth's gravity and hides under rough clouds — " +
+      "no satellite can see its ground, so to scan it you have to land (and climbing " +
+      "back out at 3 g is a real test). <b>Magrelle</b> looks like a ringed gas giant… " +
+      "but it's only Earth-sized, and under its cloud roof hides a warm world full of " +
+      "LIFE — the clouds trap the heat, and you can't see the star from down there. " +
+      "Its moons: <b>Glacier</b>, circling INSIDE the ring and shedding ice into it; " +
+      "<b>Hoth</b>; and <b>Necla</b>, as big as Earth's Moon. Far out, dwarf planet " +
+      "<b>Seretta</b> keeps watch. One honest note: real planets this close to a red " +
+      "dwarf face its FLARES — big blasts of light — which is the real reason " +
+      "scientists argue about whether red-dwarf worlds can be homes. Fly brave! 🚀",
+  };
+}
+
 // ---------- Registry ----------
 // Aliases are normalized (lowercase, letters+digits only) so "The Kerbal System",
 // "kerbin", "KSP", "avatar", "Alpha Centauri"… all land on the same canonical system.
-const BUILDERS = { kerbol: kerbolSystem, pandora: pandoraSystem, youngcow: youngcowSystem, luhman: luhmanSystem, owius: owiusSystem, kcalbeloh: kcalbelohSystem };
+const BUILDERS = { kerbol: kerbolSystem, pandora: pandoraSystem, youngcow: youngcowSystem, luhman: luhmanSystem, owius: owiusSystem, kcalbeloh: kcalbelohSystem, afra: afraSystem };
 const ALIASES = {
   kerbol: "kerbol", kerbin: "kerbol", kerbal: "kerbol", ksp: "kerbol",
   kerbalsystem: "kerbol", kerbolsystem: "kerbol", thekerbolsystem: "kerbol",
@@ -733,6 +868,11 @@ const ALIASES = {
   kang: "kcalbeloh", kishi: "kcalbeloh", malgrow: "kcalbeloh", sonsarck: "kcalbeloh",
   cera: "kcalbeloh", yang: "kcalbeloh", dizi: "kcalbeloh", zidi: "kcalbeloh",
   aleca: "kcalbeloh", alecb: "kcalbeloh", anetta: "kcalbeloh", ethyl: "kcalbeloh",
+  afra: "afra", afrasystem: "afra", theafrasystem: "afra",
+  esis: "afra", verder: "afra", tessia: "afra", phobie: "afra", drez: "afra",
+  magrelle: "afra", glacier: "afra", necla: "afra", seretta: "afra",
+  // NOTE: no "hoth" / "pip" aliases — "Hoth" belongs to Star Wars first, and both are
+  // short enough to collide with seeds kids type for other reasons.
 };
 
 // Shown in the Starmap panel and pre-lit on the galaxy map.
@@ -743,6 +883,7 @@ export const FAMOUS_LIST = [
   { seed: "Luhman 16", name: "The Luhman 16 System", hint: "the real closest BROWN DWARFS — two failed stars the size of Jupiter, glowing like coals", color: 0xd85a3a },
   { seed: "Owius", name: "The Owius System", hint: "HIS design — five blue worlds around a spinning pulsar lighthouse: bones on Monk, a crack-lake on Donk, the Silent Spire on ringed Sera", color: 0x9ad4ff },
   { seed: "Kcalbeloh", name: "The Kcalbeloh System", hint: "HIS design — a BLACK HOLE with a family of orbiting stars: uranium-glow Kang, ocean world Kishi, twin giants waltzing, and home on green-and-blue Cera", color: 0xb08aff, blackHole: true },
+  { seed: "Afra", name: "The Afra System", hint: "HIS design — a little RED DWARF: lava-lake Esis, 3-g Verder under rough clouds, comet-lit Tessia, and Magrelle, a ringed \"gas giant\" hiding a living world", color: 0xff6040 },
 ];
 
 // null if the name isn't famous — the seeded generator takes over as usual.

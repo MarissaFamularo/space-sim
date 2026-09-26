@@ -64,6 +64,19 @@ export function isSmallWorld(body, homeRadius) {
   return !!body.tinyMoon || body.radius <= ref * 0.45;
 }
 
+// Can this world be scanned right now? Normally a powered satellite in orbit does it.
+// Cloud-roofed worlds (Afra's Verder, style.groundScanOnly) hide their ground from
+// orbit entirely, so the scan has to be taken from the SURFACE by a landed ship —
+// real radar can pierce some clouds (Magellan mapped Venus that way), but this game's
+// orbital scanner is an optical one. Pure: node-tested in tests/exploration_test.mjs.
+export function scanAccess(body, { sat = null, here = false, status = "" } = {}) {
+  if (body && body.groundScanOnly) {
+    const ok = here && status === "landed";
+    return { ok, why: ok ? "" : "Clouds hide the ground from orbit — land here to scan it" };
+  }
+  return { ok: !!sat, why: sat ? "" : "Needs a powered satellite orbiting this world" };
+}
+
 export function scienceYield(kind, quality, sharpScan = false) {
   const q = Math.max(1, Math.min(5, Math.round(Number(quality) || 1)));
   if (kind === "scan") return 4 + q + (sharpScan ? 3 : 0);
@@ -217,12 +230,14 @@ function show() {
       <div style="margin:10px 0;padding:9px;background:#091020;border-radius:9px;">
         <div style="font-size:12px;color:#8ba5cb;">RESOURCE SIGNAL</div>
         <div style="font-size:20px;letter-spacing:.08em;color:${scanned ? "#70d6ff" : "#64708b"};font-weight:900;">${bars}</div>
-        <div style="font-size:12px;color:#b7c8e8;min-height:34px;">${scanned ? `<b>${profile.label}</b> · ${esc(profile.resources.join(" + "))}` : "Unknown — put a powered satellite in orbit to look beneath the surface."}</div>
+        <div style="font-size:12px;color:#b7c8e8;min-height:34px;">${scanned ? `<b>${profile.label}</b> · ${esc(profile.resources.join(" + "))}` : (body.groundScanOnly ? "Unknown — clouds hide this ground from orbit. Land here to scan it." : "Unknown — put a powered satellite in orbit to look beneath the surface.")}</div>
       </div>`;
     const actions = document.createElement("div");
     actions.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:start;";
-    actions.appendChild(button(scanned ? "✓ Surface scanned" : "🛰 Scan surface", !scanned && !!sat,
-      sat ? "Already scanned" : "Needs a powered satellite orbiting this world",
+    const access = scanAccess(body, { sat, here, status: ctx.status });
+    actions.appendChild(button(scanned ? "✓ Surface scanned" : body.groundScanOnly ? "🔎 Scan from the ground" : "🛰 Scan surface",
+      !scanned && access.ok,
+      scanned ? "Already scanned" : access.why,
       () => {
         state.scans[wid] = true; saveState(state);
         award("scan", scienceYield("scan", profile.quality, sharp), body, profile.quality); show();

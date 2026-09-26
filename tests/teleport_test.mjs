@@ -155,5 +155,25 @@ for (const key of PLANET_KEYS) {
   returnToSol();
 }
 
+// --- Afra (2026-09-26): ringed Magrelle parks clear of its WIDE band; Glacier (inside
+//     the ring) can't be orbited — Magrelle's pull wins — so teleport flies formation ---
+{
+  const sys = famousSystem("Afra");
+  setSystem(sys.bodies, sys.planetKeys, { key: sys.seed, name: sys.name, seed: sys.seed });
+  const mg = Physics.parkingOrbit("magrelle", 0);
+  check("Magrelle teleport parks outside its custom ring band (outer 3.2 R)",
+    mg.radius > BODIES.magrelle.radius * BODIES.magrelle.style.ringBand.outer,
+    `r=${(mg.radius / BODIES.magrelle.radius).toFixed(2)} R`);
+  check("…and still inside Hoth's orbit (you arrive among the rings' neighbors, not past them)",
+    mg.radius < BODIES.hoth.orbitRadius, "");
+  check("Glacier is a tinyMoon (true SOI < 2 radii)", BODIES.glacier.tinyMoon === true, "");
+  const gl = Physics.parkingOrbit("glacier", 0);
+  check("Glacier teleport flies formation", gl.coOrbit === true, "");
+  const vd = Physics.parkingOrbit("verder", 0);
+  check("Verder teleport parks above 3x its air (no stray drag at 3 g)",
+    vd.radius >= BODIES.verder.radius + 3 * BODIES.verder.atmosphere.height, "");
+  returnToSol();
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

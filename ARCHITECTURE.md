@@ -842,3 +842,40 @@ vehicle carrier that lands on belly boosters, with two SHIFT-switched engine sta
   circumbinary stability zone, Alec B balance-point SOI, ring/SOI clearances);
   teleport_test 42; wormhole_test 59; kcalbeloh-check.mjs added to the
   browser-verification skill (20 checks ALL GREEN + 6 screenshots).
+
+## CONTRACT REVISION 2026-09-26 — 🔴 The Afra System (his spec: a little red dwarf, no home planet)
+
+- **Base-camp famous system (content, not contract — Kcalbeloh 2026-08-29 precedent)** —
+  Afra keeps the frozen `sun`/`earth`/`moon` roles (Tessia/Pip); "no home planet" is
+  fiction: `stations: []`, `wormholes: []`, no `style.bases`, blurb says BASE CAMP /
+  "Nobody lives here". New optional famous-meta flag **`baseCamp: true`** — used ONLY
+  by famous_test to swap the "has a home station" rule for "has NO station". Nothing
+  in main/render reads it. Pip is NOT in his spec (the pad world needs a moon role,
+  Owius/Splinter precedent) — flagged.
+- **New body-style flags render.js understands**:
+  `cloudDeck {alt, bands[], rough?}` — an opaque DoubleSide cloud shell at
+  `R + atmosphere.height·alt` (96×64 segments so facet sag stays far under the deck
+  altitude; casts no shadow). From orbit it is the whole look (Magrelle reads as a gas
+  giant, Verder's ground is hidden); from below it is an overcast sky that occludes the
+  star. Requires `atmo`. Visual only — physics/collision never see it.
+  `tail {len, width, dust?}` on `comet` bodies — tail length/width in nucleus radii
+  (default 60 / 2.2, unchanged for every existing comet); `dust: true` adds a paler,
+  wider dust tail bent 0.3 rad to the trailing side (orbits are CCW).
+  `groundScanOnly` — see Exploration below (render ignores it).
+- **New face kind `"lavaLake"`** — molten base with dark crust islands, each painted
+  over a hot rim from the same seeded lump walk; night-side emissive 0.35 like
+  `uranium` (molten rock shines by its own heat).
+- **Exploration** — new pure export `scanAccess(body, {sat, here, status})` →
+  `{ok, why}`. Normal worlds: unchanged (a powered satellite in orbit). Bodies whose
+  context entry carries `groundScanOnly` (main.js `getExplorationContext` forwards
+  `style.groundScanOnly`) scan only when the ship is LANDED on that world. No save
+  shape changed (`spacesim.exploration.v1` untouched).
+- **Navigator** — SYSTEM prompt gains THE AFRA SYSTEM bullet (game knowledge only;
+  safety block untouched, navigator_check ALL CHECKS PASSED).
+- **No Sol gate** — reached by typing "Afra" in the Starmap; the Starmap home button
+  returns to Sol. wormhole_test still asserts 5 Sol gates.
+- **Verification**: famous_test 211 (new §5g: Afra g0, Tessia year predicted 413,470 s,
+  Drez/Phobie period ratio 3.007, comet rails cross Tessia's orbit, Glacier inside the
+  ring band, base-camp/no-station), teleport_test (+5: Magrelle ring-clear park,
+  Glacier formation, Verder 3×air park), exploration_test (+7 scanAccess); afra-check.mjs
+  added to the browser-verification skill (15 checks ALL GREEN).

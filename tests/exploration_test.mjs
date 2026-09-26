@@ -2,7 +2,7 @@
 // small-world targeting, and garbage-tolerant persistence.
 import {
   EXPLORATION_TECH, isTechUnlocked, resourceProfile, isSmallWorld,
-  scienceYield, parseExplorationSave,
+  scienceYield, parseExplorationSave, scanAccess,
 } from "../js/exploration.js";
 import { PARTS } from "../js/parts.js";
 
@@ -55,6 +55,21 @@ check("valid one-time mission records survive", good.scans["sol:moon"] && good.p
 check("invalid keys and non-boolean completions are dropped", !good.scans["bad key!"] && !good.scans.nope);
 check("broken JSON degrades to an empty save", Object.keys(parseExplorationSave("{oops").scans).length === 0);
 check("wrong save version degrades safely", Object.keys(parseExplorationSave({ v: 99, scans: { "sol:moon": true } }).scans).length === 0);
+
+// Cloud-roofed worlds (Afra's Verder): orbit can't see the ground, so only a landed
+// ship on that world may scan; ordinary worlds keep the satellite rule unchanged.
+{
+  const sat = { bodyKey: "moon", hasPower: true };
+  const verder = { key: "verder", name: "Verder", solid: true, radius: 1166000, groundScanOnly: true };
+  check("ordinary world: a powered satellite scans it", scanAccess(moon, { sat }).ok === true);
+  check("ordinary world: no satellite, no scan", scanAccess(moon, {}).ok === false);
+  check("cloud world: a satellite is NOT enough", scanAccess(verder, { sat }).ok === false);
+  check("cloud world: flying overhead is not enough",
+    scanAccess(verder, { sat, here: true, status: "orbit" }).ok === false);
+  check("cloud world: landed on it scans it", scanAccess(verder, { here: true, status: "landed" }).ok === true);
+  check("cloud world: landed somewhere else does not", scanAccess(verder, { here: false, status: "landed" }).ok === false);
+  check("cloud world: the reason says to land", /land/i.test(scanAccess(verder, { sat }).why));
+}
 
 console.log(`\nExploration Mode: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

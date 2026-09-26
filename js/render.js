@@ -556,6 +556,34 @@ function makePlanetCanvas(key) {
           craters(30, "#241010", face.accent, 6);
           break;
         }
+        case "lavaLake": {
+          // Esis (Afra): the inverse of "lava" — the whole world IS the molten sea,
+          // and the dark things are ISLANDS of cooled crust floating on it, each with a
+          // bright rim where the crust meets the glow.
+          fill(face.base);
+          streaks([face.accent2, face.base], 40, 220, 5, 18);    // churning currents
+          for (let i = 0; i < 14; i++) {
+            // One seeded walk of lumps per island, painted twice: a hot rim first,
+            // then the dark crust on top (so every island wears a glowing shoreline).
+            const lumps = [];
+            let x = rng() * W, y = H * (0.15 + rng() * 0.7);
+            const r = 8 + rng() * 10;
+            for (let k = 0; k < 14; k++) {
+              lumps.push([x, y, r * (0.35 + rng() * 0.5)]);
+              x += (rng() - 0.5) * r * 1.7; y += (rng() - 0.5) * r * 1.1;
+            }
+            for (const [col, grow, a] of [[face.accent2, 1.45, 0.75], [face.accent, 1, 1]]) {
+              ctx.globalAlpha = a; ctx.fillStyle = col;
+              for (const [lx, ly, lr] of lumps) {
+                const xw = ((lx % W) + W) % W;
+                ctx.beginPath(); ctx.arc(xw, ly, lr * grow, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(xw - W, ly, lr * grow, 0, Math.PI * 2); ctx.fill(); // wrap seam
+              }
+            }
+            ctx.globalAlpha = 1;
+          }
+          break;
+        }
         case "lavaLocked": {
           // The base sphere is the FROZEN night side (a molten shell covers the day
           // side, aimed at the star per frame): near-black rock, dull ember veins
@@ -725,6 +753,48 @@ function planetTexture(key) {
     tex.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 1;
   }
   _texCache[key] = tex;
+  return tex;
+}
+
+// ☁ Cloud-deck paint (style.cloudDeck): gas-giant-style latitude bands plus wind
+// wisps; `rough` decks (Verder) add churning knots so they read as storm, not stripes.
+// Seeded per system + body, so the clouds look the same every visit.
+function cloudDeckTexture(key, deck) {
+  const W = 512, H = 256;
+  const cv = document.createElement("canvas");
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext("2d");
+  const rng = mulberry32(hashStr((SYSTEM.key || "sol") + ":" + key + ":clouds"));
+  const cols = deck.bands;
+  let y = 0;
+  while (y < H) { // uneven bands, edges softened by the wisps drawn over them
+    const h = 8 + rng() * 26;
+    ctx.fillStyle = cols[Math.floor(rng() * cols.length)];
+    ctx.fillRect(0, y, W, h + 1);
+    y += h;
+  }
+  for (let i = 0; i < 70; i++) {
+    const y0 = rng() * H, x0 = rng() * W, len = 80 + rng() * 260;
+    ctx.strokeStyle = cols[Math.floor(rng() * cols.length)];
+    ctx.globalAlpha = 0.25 + rng() * 0.35;
+    ctx.lineWidth = 2 + rng() * 6;
+    ctx.beginPath(); ctx.moveTo(x0, y0);
+    ctx.bezierCurveTo(x0 + len * 0.33, y0 + (rng() - 0.5) * 14, x0 + len * 0.66,
+                      y0 + (rng() - 0.5) * 14, x0 + len, y0 + (rng() - 0.5) * 8);
+    ctx.stroke();
+  }
+  if (deck.rough) {
+    for (let i = 0; i < 45; i++) { // storm knots: tight curls of darker and paler cloud
+      const x = rng() * W, yy = H * (0.08 + rng() * 0.84), r = 4 + rng() * 14;
+      ctx.strokeStyle = cols[Math.floor(rng() * cols.length)];
+      ctx.globalAlpha = 0.5 + rng() * 0.4;
+      ctx.lineWidth = 1.5 + rng() * 3;
+      ctx.beginPath(); ctx.arc(x, yy, r, rng() * 6.28, rng() * 6.28 + 4); ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
@@ -1133,7 +1203,8 @@ function makeBodyGroup(key) {
     const bump = planetBumpTexture(key);
     // Uranium faces (Kang) glow brighter in the dark than the standard dim night
     // side — the veins shine by their OWN decay heat, not reflected disk-light.
-    const nightGlow = b.face && b.face.kind === "uranium" ? 0.35 : 0.1;
+    // Lava-lake faces (Esis) glow the same way: molten rock shines by its own heat.
+    const nightGlow = b.face && (b.face.kind === "uranium" || b.face.kind === "lavaLake") ? 0.35 : 0.1;
     mat = new THREE.MeshStandardMaterial({
       map: tex, roughness: 0.95, metalness: 0,
       emissive: 0xffffff, emissiveIntensity: nightGlow, emissiveMap: tex,
@@ -1259,6 +1330,30 @@ function makeBodyGroup(key) {
     const halo = new THREE.Mesh(new THREE.SphereGeometry(atmoR, 64, 40), makeAtmoShellMaterial(style));
     g.add(halo);
     atmoShells.push({ key, mesh: halo, atmoR });
+  }
+
+  // ☁ CLOUD DECK (Afra's Verder + Magrelle, style.cloudDeck): an OPAQUE cloud roof at
+  // `alt` × the air's height. From orbit it is all you see (Magrelle passes for a gas
+  // giant; Verder's ground stays hidden); fly under it and the same shell becomes an
+  // overcast sky that blocks the star — the ground is a separate painted face below.
+  // 96 segments keeps the shell's facet sag (~R·(1−cos π/96)) well under the deck
+  // altitude on both worlds, so the roof never dips into the ground. Casts no shadow:
+  // real overcast still lets diffuse daylight through.
+  if (style.cloudDeck && b.atmosphere) {
+    const deck = style.cloudDeck;
+    const deckR = b.radius + b.atmosphere.height * deck.alt;
+    const shell = new THREE.Mesh(
+      new THREE.SphereGeometry(deckR, 96, 64),
+      (() => {
+        const tex = cloudDeckTexture(key, deck);
+        return new THREE.MeshStandardMaterial({
+          map: tex, roughness: 1, metalness: 0, side: THREE.DoubleSide,
+          emissive: 0xffffff, emissiveIntensity: 0.18, emissiveMap: tex,
+        });
+      })());
+    shell.castShadow = false;
+    shell.receiveShadow = false;
+    g.add(shell);
   }
 
   if (style.rings) {
@@ -1434,9 +1529,13 @@ function makeBodyGroup(key) {
   // it dives sunward (real tails are the sun's doing — they always point AWAY).
   if (style.comet) {
     const tailGroup = new THREE.Group();
-    const len = b.radius * 60;
+    // style.tail (Afra's Phobie + Drez): a GREAT comet's tail, in nucleus radii. Real
+    // ones outrun whole planetary orbits — Hyakutake's (1996) stretched 570 million km.
+    const tl = style.tail || {};
+    const len = b.radius * (tl.len || 60);
+    const tailW = b.radius * (tl.width || 2.2);
     const tail = new THREE.Mesh(
-      new THREE.ConeGeometry(b.radius * 2.2, len, 12, 1, true),
+      new THREE.ConeGeometry(tailW, len, 12, 1, true),
       new THREE.MeshBasicMaterial({
         color: 0x9fd8f0, transparent: true, opacity: 0.28,
         blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
@@ -1447,6 +1546,23 @@ function makeBodyGroup(key) {
     tail.rotation.z = Math.PI;
     tail.position.y = len * 0.5;
     tailGroup.add(tail);
+    // Two tails, like every bright real comet: the blue ION tail streams straight away
+    // from the star; the paler DUST tail is heavier, so it lags behind the comet's
+    // motion and bends off to the trailing side (orbits run CCW, so "behind" is local +X).
+    if (tl.dust) {
+      const bend = new THREE.Group();
+      bend.rotation.z = -0.3;
+      const dust = new THREE.Mesh(
+        new THREE.ConeGeometry(tailW * 1.8, len * 0.8, 12, 1, true),
+        new THREE.MeshBasicMaterial({
+          color: 0xf2e6c8, transparent: true, opacity: 0.2,
+          blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+        }));
+      dust.rotation.z = Math.PI;
+      dust.position.y = len * 0.4;
+      bend.add(dust);
+      tailGroup.add(bend);
+    }
     const coma = new THREE.Sprite(new THREE.SpriteMaterial({
       map: plumeGlowTexture(), color: 0xcfeeff, transparent: true, opacity: 0.5,
       blending: THREE.AdditiveBlending, depthWrite: false,

@@ -103,6 +103,19 @@ const WORLD_FACTS = {
   "Alec B": "Small stars live longest — a red dwarf like Alec B will keep shining for TRILLIONS of years, thousands of times longer than our Sun. The smallest fires burn slowest.",
   Anetta: "Anetta circles OUTSIDE Alec B's rail, so it orbits both suns at once — a true Tatooine world. That's real: Kepler-16b, found in 2011, was the first planet confirmed to orbit two stars.",
   Ethyl: "Two dim suns can't warm Ethyl this far out — TIDES do it: Anetta kneads the moon like dough, the same real engine that melts Io's volcanoes and keeps Europa's hidden ocean liquid. (Real tidal heat is rarely this cozy — Ethyl got lucky.)",
+  // The Afra System (HIS design, 2026-09-26) — a little red dwarf, no home planet.
+  Afra: "Afra is a red dwarf — the smallest kind of true star, and the most common kind in the universe. It's so dim that its warm zone huddles very close, which is why Tessia's year lasts only about two weeks.",
+  Esis: "Esis is one giant LAVA LAKE with islands of cooled crust floating on it. Its orbit is a little stretched, so Afra squeezes and relaxes it every lap — that TIDAL HEATING is real, and it's what keeps Jupiter's moon Io covered in volcanoes.",
+  Verder: "Verder pulls THREE times Earth's gravity: ten Earths of mass packed into a planet less than twice Earth's size. Its clouds hide the ground from orbit, so you have to land to scan it — and climbing back out at 3 g takes a LOT of rocket.",
+  Tessia: "Tessia is BASE CAMP — the most livable world here, but nobody lives here. Real planets this close to a red dwarf are probably tidally locked, with one side always facing the star.",
+  Pip: "Pip is Tessia's little captured rock of a moon. Plenty of small real moons are captured wanderers, like Mars's Phobos and Deimos may be.",
+  Phobie: "A comet's tail always points AWAY from its star — sunlight and the stellar wind push it. Big comets grow TWO tails: a straight blue one of glowing gas and a curved pale one of dust. Real great comets' tails have stretched hundreds of millions of kilometers.",
+  Drez: "Drez loops wider than Phobie, so it laps slower — about three of Phobie's years for each of its own. That's Kepler's third law: bigger orbit, longer year, every time.",
+  Magrelle: "From orbit Magrelle LOOKS like a gas giant, but it's only Earth-sized, with solid ground under its cloud roof. The thick cloudy air traps heat — a greenhouse, like Venus's but gentle — so down there it's warm and alive, even though the star can't be seen.",
+  Glacier: "Glacier circles INSIDE Magrelle's ring. That close, Magrelle's tides pull at it harder than its own gravity holds loose ice — so it sheds ice and dust that feed the ring. Saturn's little moon Pan really does orbit inside Saturn's rings, in a gap it keeps clear.",
+  Hoth: "Hoth is an icy moon of Magrelle, circling outside the ring.",
+  Necla: "Necla is as big as Earth's own Moon — 3,474 km across (in the real universe; this practice universe is 10x smaller).",
+  Seretta: "Seretta is a DWARF PLANET: round like a planet, but too small to sweep its orbit clear of other stuff. That exact rule is why Pluto was renamed a dwarf planet in 2006.",
 };
 
 // Any star in the active system: the sun role, plus star-styled companions
@@ -804,7 +817,8 @@ function getExplorationContext() {
     systemName: SYSTEM.name,
     homeRadius: BODIES.earth.radius,
     bodies: Object.values(BODIES).map((b) => ({ key: b.key, name: b.name, radius: b.radius,
-      solid: !!b.solid, atmosphere: b.atmosphere, tinyMoon: !!b.tinyMoon })),
+      solid: !!b.solid, atmosphere: b.atmosphere, tinyMoon: !!b.tinyMoon,
+      groundScanOnly: !!(b.style && b.style.groundScanOnly) })),
     satellites: SATELLITES.filter((s) => (s.system || "sol") === sys).map((s) => ({
       bodyKey: s.bodyKey, hasPower: !!s.hasPower, hasScanner: !!s.hasScanner,
     })),
