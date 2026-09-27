@@ -214,6 +214,7 @@ const _m4 = new THREE.Matrix4();
 let rockField = null;
 let plantField = null;     // instanced plant tufts on living worlds (Hundun)
 let dinoFlock = null;      // [{group, neck}] armored dino-bird grazers
+let magLife = null;        // Magrelle (Afra): {dark, stalks, caps, floaters[], walkers[]}
 const PLANT_COUNT = 64;
 let boneField = null;      // instanced rib arches on fossil worlds (Monk)
 const BONE_COUNT = 48;
@@ -4366,6 +4367,149 @@ function ensureDinoLife() {
   }
 }
 
+// 🌑 MAGRELLE'S OWN LIFE (Afra, his 2026-09-27 ask: "plants and different creatures").
+// Every piece is built on a real idea:
+//  • DARKLEAF fronds are near-black purple: scientists predict plants under dim red-dwarf
+//    light may be dark, to soak up every photon they can get (Kiang et al., 2007).
+//  • GLOWCAPS: under a cloud roof that never shows the star, life makes its own light —
+//    bioluminescence is real (glowing mushrooms, fireflies, deep-sea fish).
+//  • FLOATERS: drifting jelly-balloons. Thick air (2.5x Earth's here) holds floaters up
+//    better — Carl Sagan imagined balloon creatures for Jupiter's air in 1976.
+//  • SIX-LEGGED GRAZERS walk with the ALTERNATING TRIPOD gait real insects use: three
+//    legs down (a stable triangle) while the other three swing forward.
+const MAG_DARK = 90, MAG_CAPS = 56;
+function ensureMagrelleLife() {
+  if (magLife) return;
+  const inst = (geo, mat, n) => {
+    const m = new THREE.InstancedMesh(geo, mat, n);
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    m.frustumCulled = false; m.visible = false;
+    scene.add(m);
+    return m;
+  };
+  // Darkleaf: five curved leaf blades fanned around the stem (merged into ONE geometry
+  // so a whole thicket stays a single instanced draw), leaning outward like a fern.
+  const blade = new THREE.Shape();
+  blade.moveTo(0, 0);
+  blade.quadraticCurveTo(0.9, 2.2, 0.15, 5.2);
+  blade.quadraticCurveTo(-0.5, 2.4, 0, 0);
+  const parts = [];
+  for (let k = 0; k < 5; k++) {
+    const g = new THREE.ShapeGeometry(blade, 6).toNonIndexed();
+    g.rotateX(-0.35 - (k % 2) * 0.2);              // lean out from the stem
+    g.rotateY((k / 5) * Math.PI * 2);
+    parts.push(g);
+  }
+  const frond = new THREE.BufferGeometry();
+  const pos = [];
+  for (const g of parts) pos.push(...g.getAttribute("position").array);
+  frond.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  frond.computeVertexNormals();
+  const dark = inst(frond, new THREE.MeshStandardMaterial({
+    color: 0x3a2058, roughness: 0.8, metalness: 0, side: THREE.DoubleSide,
+    emissive: 0x1c0c30, emissiveIntensity: 0.4,
+  }), MAG_DARK);
+  // Glowcaps: pale stalk + glowing dome cap sharing one matrix per instance.
+  const stalkG = new THREE.CylinderGeometry(0.16, 0.24, 1.6, 6);
+  stalkG.translate(0, 0.8, 0);
+  const capG = new THREE.SphereGeometry(0.75, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+  capG.translate(0, 1.5, 0);
+  const stalks = inst(stalkG, new THREE.MeshStandardMaterial({
+    color: 0xc8c0d8, roughness: 0.8, metalness: 0, emissive: 0x4a4458, emissiveIntensity: 0.3,
+  }), MAG_CAPS);
+  const caps = inst(capG, new THREE.MeshBasicMaterial({
+    color: 0x2ad8c4, // teal glow — kept under 1.0 so it stays teal instead of blooming white
+  }), MAG_CAPS);
+  const floaters = [];
+  for (let i = 0; i < 6; i++) floaters.push(makeFloater(i));
+  const walkers = [];
+  for (let i = 0; i < 8; i++) walkers.push(makeWalker(i));
+  for (const c of [...floaters, ...walkers]) { c.group.visible = false; scene.add(c.group); }
+  magLife = { dark, stalks, caps, floaters, walkers };
+}
+
+function makeFloater(i) {
+  const g = new THREE.Group();
+  const hue = [0xc07ae8, 0x7ab8f0, 0xe07ab0][i % 3];
+  const r = 2.2 + (i % 3) * 0.7;
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(r, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshStandardMaterial({
+      color: hue, transparent: true, opacity: 0.72, roughness: 0.4, metalness: 0,
+      emissive: hue, emissiveIntensity: 0.45, side: THREE.DoubleSide, depthWrite: false,
+    }));
+  g.add(dome);
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(r * 0.35, 10, 8),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(hue).multiplyScalar(1.3) }));
+  glow.position.y = r * 0.35;
+  g.add(glow);
+  const tentacles = [];
+  const tMat = new THREE.MeshStandardMaterial({
+    color: hue, transparent: true, opacity: 0.6, emissive: hue, emissiveIntensity: 0.3, depthWrite: false,
+  });
+  for (let k = 0; k < 6; k++) {
+    const len = r * (1.6 + (k % 3) * 0.5);
+    const geo = new THREE.CylinderGeometry(0.07, 0.03, len, 5);
+    geo.translate(0, -len / 2, 0);
+    const tn = new THREE.Mesh(geo, tMat);
+    const a = (k / 6) * Math.PI * 2;
+    tn.position.set(Math.cos(a) * r * 0.6, 0, Math.sin(a) * r * 0.6);
+    g.add(tn);
+    tentacles.push(tn);
+  }
+  return { group: g, tentacles };
+}
+
+function makeWalker(i) {
+  const g = new THREE.Group();
+  const hide = new THREE.MeshStandardMaterial({
+    color: [0x3a7a8a, 0x5a8a4a, 0x7a5a8a][i % 3], roughness: 0.75, metalness: 0.05,
+    emissive: 0x14282c, emissiveIntensity: 0.3,
+  });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.3, 14, 10), hide);
+  body.scale.set(1.8, 0.8, 1.0);
+  body.position.y = 1.9;
+  g.add(body);
+  const shell = new THREE.Mesh( // a speckled back-shell, like a beetle's
+    new THREE.SphereGeometry(1.25, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0xd8b060, roughness: 0.5, metalness: 0.2,
+      emissive: 0x3a2c10, emissiveIntensity: 0.3 }));
+  shell.scale.set(1.8, 0.7, 1.0);
+  shell.position.y = 2.1;
+  g.add(shell);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.6, 12, 8), hide);
+  head.position.set(2.4, 2.0, 0);
+  g.add(head);
+  for (const sz of [-0.25, 0.25]) { // eyestalks with glowing tips
+    const st = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.8, 5), hide);
+    st.position.set(2.55, 2.75, sz);
+    st.rotation.x = sz * 0.8;
+    g.add(st);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xfff2a0 }));
+    eye.position.set(2.55, 3.15, sz * 1.5);
+    g.add(eye);
+  }
+  // Six legs, pivoting at the hip. Tripod sets: (front-L, mid-R, back-L) vs the rest.
+  const legs = [];
+  let k = 0;
+  for (const lx of [1.3, 0, -1.3]) {
+    for (const side of [-1, 1]) {
+      const pivot = new THREE.Group();
+      pivot.position.set(lx, 1.9, side * 0.9);
+      const geo = new THREE.CylinderGeometry(0.12, 0.08, 2.1, 6);
+      geo.translate(0, -1.05, 0);
+      const leg = new THREE.Mesh(geo, hide);
+      leg.rotation.x = side * 0.45; // splay outward, bug-style
+      pivot.add(leg);
+      g.add(pivot);
+      legs.push({ pivot, set: (k + (side > 0 ? 1 : 0)) % 2 });
+    }
+    k++;
+  }
+  return { group: g, legs };
+}
+
 // =====================================================================
 // Phase 5: near-surface rocks + landing reticle (the "how close am I" cues),
 // the deployed rover with wheel tracks, and satellites.
@@ -4476,6 +4620,84 @@ function updateSurfaceExtras(sim, dom) {
   } else {
     if (plantField) plantField.visible = false;
     if (dinoFlock) for (const d of dinoFlock) d.group.visible = false;
+  }
+
+  // 🌑 MAGRELLE'S LIFE (style.life === "magrelle") — same deterministic ground-slot
+  // trick as the dino-birds: things hold still (or amble) while you descend past them.
+  const magLively = near && dom.body.style && dom.body.style.life === "magrelle";
+  if (magLively) {
+    ensureMagrelleLife();
+    const Rb = dom.body.radius;
+    const cx = dom.center.x - ORIGIN.x, cy = dom.center.y - ORIGIN.y;
+    const phi = Math.atan2(dom.rel.y, dom.rel.x);
+    const t = sim.time || 0;
+    const seed = hashStr(dom.body.key);
+    // Place at arc-length slot `slot` (plus a jitter), `lift` meters above the ground.
+    const place = (rr, slot, arc, spread, lift, along = 0) => {
+      const phiK = (slot * arc + (rr() - 0.5) * arc * 0.9 + along) / Rb;
+      const psi = ((rr() - 0.5) * spread) / Rb;
+      const cpk = Math.cos(phiK), spk = Math.sin(phiK);
+      const cps = Math.cos(psi), sps = Math.sin(psi);
+      const R = Rb + lift;
+      _v3.set(cx + R * cpk * cps, cy + R * spk * cps, R * sps);
+      _q1.setFromUnitVectors(_v1.set(0, 1, 0), _v2.set(cpk, spk, 0));
+    };
+    const ML = magLife;
+    for (let i = 0; i < MAG_DARK; i++) { // darkleaf thickets
+      const slot = Math.round((phi * Rb) / 16) - MAG_DARK / 2 + i;
+      const rr = mulberry32(((slot * 2654435761) ^ seed ^ 0xda4c) >>> 0);
+      place(rr, slot, 16, 150, 0);
+      _q2.setFromAxisAngle(_v1.set(0, 1, 0), rr() * Math.PI);
+      _q1.multiply(_q2);
+      const sz = 1.0 + rr() * 1.8; // 5–15 m fronds: an alien forest
+      _s3.set(sz, sz * (0.8 + rr() * 0.8), sz);
+      _m4.compose(_v3, _q1, _s3);
+      ML.dark.setMatrixAt(i, _m4);
+    }
+    for (let i = 0; i < MAG_CAPS; i++) { // glowcap clusters
+      const slot = Math.round((phi * Rb) / 23) - MAG_CAPS / 2 + i;
+      const rr = mulberry32(((slot * 2654435761) ^ seed ^ 0x61c4) >>> 0);
+      place(rr, slot, 23, 130, 0);
+      const sz = 1.2 + rr() * 1.8;
+      _s3.set(sz, sz, sz);
+      _m4.compose(_v3, _q1, _s3);
+      ML.stalks.setMatrixAt(i, _m4);
+      ML.caps.setMatrixAt(i, _m4);
+    }
+    for (const m of [ML.dark, ML.stalks, ML.caps]) { m.instanceMatrix.needsUpdate = true; m.visible = true; }
+    // Floaters: drift slowly along the track, bobbing 25–70 m up, tentacles swaying.
+    for (let i = 0; i < ML.floaters.length; i++) {
+      const f = ML.floaters[i];
+      const slot = Math.round((phi * Rb) / 70) - Math.floor(ML.floaters.length / 2) + i;
+      const rr = mulberry32(((slot * 2654435761) ^ seed ^ 0xf10a) >>> 0);
+      const h = 12 + rr() * 26 + Math.sin(t * 0.05 + i) * 3;
+      place(rr, slot, 70, 90, h, Math.sin(t * 0.004 + rr() * 6.28) * 20);
+      f.group.position.copy(_v3);
+      f.group.quaternion.copy(_q1);
+      for (let k = 0; k < f.tentacles.length; k++)
+        f.tentacles[k].rotation.z = Math.sin(t * 0.08 + k * 1.3 + i) * 0.25;
+      f.group.visible = true;
+    }
+    // Six-legged grazers: amble along the track on an alternating-tripod gait.
+    for (let i = 0; i < ML.walkers.length; i++) {
+      const w = ML.walkers[i];
+      const slot = Math.round((phi * Rb) / 45) - Math.floor(ML.walkers.length / 2) + i;
+      const rr = mulberry32(((slot * 2654435761) ^ seed ^ 0x6e65) >>> 0);
+      const stroll = Math.sin(t * 0.01 + rr() * 6.28) * 12;
+      place(rr, slot, 45, 70, 0, stroll);
+      w.group.position.copy(_v3);
+      w.group.scale.setScalar(1.3);
+      // Face the way it is strolling (local +X is its nose; flip when heading back).
+      const heading = Math.cos(t * 0.01 + rr() * 6.28) >= 0 ? 0 : Math.PI;
+      _q2.setFromAxisAngle(_v1.set(0, 1, 0), heading);
+      w.group.quaternion.copy(_q1).multiply(_q2);
+      const step = Math.sin(t * 0.6 + i * 1.7);
+      for (const L of w.legs) L.pivot.rotation.z = (L.set ? step : -step) * 0.35;
+      w.group.visible = true;
+    }
+  } else if (magLife) {
+    for (const m of [magLife.dark, magLife.stalks, magLife.caps]) m.visible = false;
+    for (const c of [...magLife.floaters, ...magLife.walkers]) c.group.visible = false;
   }
 
   // 🦴 BONES (Monk, style.bones): the old world's ribs weathering out of the dry

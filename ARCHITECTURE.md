@@ -879,3 +879,8 @@ vehicle carrier that lands on belly boosters, with two SHIFT-switched engine sta
   ring band, base-camp/no-station), teleport_test (+5: Magrelle ring-clear park,
   Glacier formation, Verder 3×air park), exploration_test (+7 scanAccess); afra-check.mjs
   added to the browser-verification skill (15 checks ALL GREEN).
+
+- **2026-09-27 addendum — `life: "magrelle"`** (new value for the existing `style.life`
+  flag): darkleaf ferns + glowcaps (instanced, deterministic ground slots) and animated
+  floaters + six-legged grazers (groups), shown within the same `near` band (< 6 km,
+  follow view) as `"dinobird"`. Magrelle switched from `"dinobird"` to it. No shape change.

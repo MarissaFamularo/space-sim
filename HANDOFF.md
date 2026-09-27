@@ -9,6 +9,36 @@ This file is the single source an agent needs to pick up the work. Read it first
 
 ---
 
+## Status (2026-09-27): 🌑 Magrelle gets its OWN life (his ask: "plants and different creatures")
+
+Magrelle no longer borrows Hundun's dino-birds. New `life: "magrelle"` in render.js,
+four kinds, each on a real idea:
+- **Darkleaf** — near-black purple fern thickets, 5–15 m (real hypothesis: plants under
+  dim red-dwarf light may be dark to catch every photon — Kiang et al. 2007).
+- **Glowcaps** — teal glowing mushroom caps (bioluminescence is real; useful under a
+  roof of cloud that never shows the star).
+- **Floaters** — purple/blue/pink jelly-balloons with swaying tentacles, drifting 12–38 m
+  up (thick air holds floaters — Sagan & Salpeter's 1976 Jupiter floaters, an idea only).
+- **Six-legged grazers** — beetle-shelled, eyestalks with glowing tips, legs swinging in
+  the alternating-tripod gait real insects use.
+
+**Flagged / rung 4:**
+- **The names are placeholders** (Darkleaf, Glowcaps, Floaters, grazers) — the in-game
+  fact and the Navigator invite him to name them. One-line edits in main.js WORLD_FACTS
+  Magrelle + the copilot.js Afra bullet.
+- **Worth one play-test:** ✨ Teleport to Magrelle, descend under the cloud roof, land —
+  everything appears below ~6 km altitude around your landing spot. Watch the grazers'
+  legs (tripod gait) at 1x time.
+- Hundun's dino-birds are untouched code-wise (separate branch in the same function);
+  code-verified only, not re-screenshotted.
+
+**Evidence:** node — all 21 suites green (famous_test now asserts `life === "magrelle"`);
+navigator_check ALL CHECKS PASSED. Browser — afra-check 15/15, kcalbeloh-check and
+boot-smoke green; screenshots at 25 m and 60 m hover inspected: fern thickets, teal
+glowcaps, grazers, and floaters all in frame around the landing spot, zero page errors.
+Gotcha I hit and fixed: a creature's slot index and its placement arc MUST use the same
+spacing — mismatched (260 vs 200) put every floater hundreds of meters off-screen.
+
 ## Status (2026-09-26): 🔴 THE AFRA SYSTEM — his little red dwarf with a big family
 
 His spec, built: red dwarf **Afra** ("too small for a home planet"), lava-lake **Esis**
@@ -31,8 +61,8 @@ the star) with moons **Glacier** (inside the ring, feeding it), **Hoth**, and Mo
   tidal locking. His fiction stands (nobody lives here); the true reason is taught.
 - **Hoth has no spec beyond its name** — I gave it an icy face (the Star Wars nod). His
   call. No "hoth" Starmap alias on purpose.
-- **Magrelle's lifeforms reuse Hundun's dino-bird grazers + plant tufts** (`life:
-  "dinobird"`). Magrelle-specific creatures would be a new render model — ask him.
+- ~~Magrelle's lifeforms reuse Hundun's dino-birds~~ — superseded 2026-09-27: Magrelle
+  has its own life (see above).
 - **Glacier "feeding the ring" is told, not shown** (no particle stream from moon to
   ring). Glacier is honestly unorbitable (tinyMoon, like Pan in the real Encke Gap):
   ✨ Teleport flies formation.

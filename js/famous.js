@@ -766,11 +766,12 @@ function afraSystem() {
     // LOOK like a gas giant from orbit. Underneath is a warm, wet, living world: at
     // 0.16 AU Afra alone would leave it frozen (~−90 °C), but the thick cloudy air
     // traps heat — a greenhouse, like Venus but gentle. From the ground the cloud roof
-    // hides the star completely.
+    // hides the star completely. Its life is its OWN (his 2026-09-27 ask): darkleaf
+    // fronds, glowcaps, drifting floaters, six-legged grazers — render.js life "magrelle".
     magrelle: { name: "Magrelle", radius: 6.371e6, g0: 9.81, parent: "sun", a: 0.16 * AU,
                 solid: true, atmo: { height: 9.0e4, seaLevelDensity: 2.5 }, phase0: 4.4, gen: true,
                 style: { color: 0xc8a878, halo: 0xe0c898, rings: true, ringBand: { inner: 1.6, outer: 3.2 },
-                         life: "dinobird",
+                         life: "magrelle", // its OWN ecosystem (his 2026-09-27 ask) — render.js
                          cloudDeck: { alt: 0.35, bands: ["#d8b888", "#b89464", "#e8d4ac", "#a07c50"] } },
                 face: { kind: "terra", base: "#1e5a6a", accent: "#3a8a3a", accent2: "#6ab04a" } },
     // GLACIER — a small icy moon orbiting INSIDE Magrelle's ring (in its own gap,

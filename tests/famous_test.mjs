@@ -418,7 +418,7 @@ for (const seed of ["Kerbol", "Pandora", "Youngcow", "Luhman 16", "Owius", "Kcal
   // MAGRELLE
   check("Magrelle is Earth-sized and SOLID (not a gas giant), ringed, cloud-roofed, alive",
     approx(B.magrelle.radius, 6.371e5, 1e-9) && B.magrelle.solid && !B.magrelle.gas &&
-    B.magrelle.style.rings && B.magrelle.style.cloudDeck && B.magrelle.style.life === "dinobird" &&
+    B.magrelle.style.rings && B.magrelle.style.cloudDeck && B.magrelle.style.life === "magrelle" &&
     B.magrelle.atmosphere.seaLevelDensity >= 0.9, "");
   check("Magrelle's moons: Glacier, Hoth, Necla — all inside its SOI",
     ["glacier", "hoth", "necla"].every((k) => B[k].parent === "magrelle" &&
